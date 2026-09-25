@@ -120,7 +120,7 @@ class ArchitectureTest {
 
   /**
    * @param wholeContext true 表示禁止依赖其他上下文的任何包（Controller 用）；
-   *                     false 表示仅禁止依赖其他上下文的 internal/query（跨上下文普通类用）
+   *                     false 表示仅允许依赖其他上下文的 api 包（跨上下文普通类用）
    */
   private static ArchCondition<JavaClass> dependOnOtherContextNonApi(boolean wholeContext) {
     String description =
@@ -135,10 +135,10 @@ class ArchitectureTest {
           if (targetContext == null || targetContext.equals(ownContext)) {
             continue;
           }
-          String targetPackage = target.getPackageName();
-          boolean violation =
-              wholeContext || targetPackage.contains(".internal") || targetPackage.contains(".query");
-          if (violation) {
+          // 白名单判定：目标必须落在对方的 api 包里（05 §12 R-A 的原文是「跨上下文仅允许依赖 ..api..」）。
+          // 只拦 internal/query 的黑名单写法会漏掉对方其它包，例如误放进 ..web.. 的类。
+          boolean targetIsApi = target.getPackageName().contains(".api");
+          if (wholeContext || !targetIsApi) {
             events.add(SimpleConditionEvent.violated(item, dependency.getDescription()));
           }
         }
