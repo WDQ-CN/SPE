@@ -5,7 +5,7 @@ import axios, {
 } from 'axios'
 
 import { refreshCurrentView } from '@/app/view-state'
-import { BizError, segmentOf, type ErrorSegment } from '@/shared/error-code'
+import { BizError, LOGIN_FAILED, segmentOf, type ErrorSegment } from '@/shared/error-code'
 import type { Result } from '@/shared/types/result'
 import { navigateTo } from './navigation'
 import { clearToken, getToken } from './token'
@@ -37,6 +37,12 @@ instance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 function failWith(result: Result<unknown>): never {
   const segment = segmentOf(result.code)
   const message = result.message || DEFAULT_MESSAGE[segment]
+
+  // 登录失败与 2xxx 同等待遇（10 §E2）：不清 token、不跳登录、不弹全局提示，只抛给表单回显。
+  // 若按 1xxx 段处理，用户输错密码会看到「会话已失效」并被跳一次登录页。
+  if (result.code === LOGIN_FAILED) {
+    throw new BizError(result.code, message)
+  }
 
   if (segment === 'auth') {
     clearToken()
@@ -115,5 +121,9 @@ export const http = {
   },
   put<T>(url: string, data?: unknown): Promise<T> {
     return instance.put<Result<T>>(url, data).then((response) => response.data.data)
+  },
+  // 02 §4 已有 DELETE 类端点（如 /api-tokens），先备好，避免届时绕开统一封装
+  delete<T>(url: string, params?: Record<string, unknown>): Promise<T> {
+    return instance.delete<Result<T>>(url, { params }).then((response) => response.data.data)
   },
 }
