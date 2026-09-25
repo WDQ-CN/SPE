@@ -7,13 +7,14 @@ package com.spe.common.web;
 public record Result<T>(int code, String message, T data) {
 
   public static final int SUCCESS_CODE = 0;
+  private static final String SUCCESS_MESSAGE = "成功";
 
   public static <T> Result<T> ok(T data) {
-    return new Result<>(SUCCESS_CODE, "ok", data);
+    return new Result<>(SUCCESS_CODE, SUCCESS_MESSAGE, data);
   }
 
   public static Result<Void> ok() {
-    return new Result<>(SUCCESS_CODE, "ok", null);
+    return new Result<>(SUCCESS_CODE, SUCCESS_MESSAGE, null);
   }
 
   public static <T> Result<T> fail(ErrorCode errorCode) {
