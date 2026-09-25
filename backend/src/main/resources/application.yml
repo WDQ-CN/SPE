@@ -2,6 +2,9 @@ server:
   # 宿主直跑默认 18080：本机 8003–8102 被 Windows 保留（含 8080/8081），绑定直接失败（09 D3）。
   # 容器内由 Compose 用 SERVER_PORT=8080 覆盖，容器网络里不受 Windows 保留区间影响。
   port: ${SERVER_PORT:18080}
+  # 经 Nginx 反代时按 X-Forwarded-For / X-Forwarded-Proto 还原客户端信息。
+  # 不设它（Boot 3 默认 NONE）时 getRemoteAddr() 拿到的是 nginx 容器地址，audit_log.ip 就失去溯源意义。
+  forward-headers-strategy: framework
 
 spring:
   application:
