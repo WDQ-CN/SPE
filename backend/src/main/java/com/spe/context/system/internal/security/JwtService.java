@@ -2,6 +2,7 @@ package com.spe.context.system.internal.security;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.MalformedJwtException;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -17,11 +18,13 @@ import javax.crypto.SecretKey;
  * JWT 签发与校验（09 D6）：HS256，claims 契约见 {@link JwtPayload}，默认 TTL 2 小时。
  *
  * <p>不依赖 Spring 容器，便于单元测试；密钥缺失或强度不足时启动即失败，避免带弱密钥上线。
+ * 校验容忍 {@value #CLOCK_SKEW_SECONDS} 秒时钟偏差（即过期后该窗口内仍被接受），并要求 {@code sub} 非空。
  */
 public class JwtService {
 
   private static final Duration DEFAULT_TTL = Duration.ofHours(2);
   private static final int MIN_SECRET_BYTES = 32;
+  private static final long CLOCK_SKEW_SECONDS = 60;
   private static final String CLAIM_UID = "uid";
   private static final String CLAIM_ROLES = "roles";
   private static final String CLAIM_DEPARTMENT = "dept";
@@ -63,11 +66,22 @@ public class JwtService {
   /**
    * 解析并校验签名与有效期。
    *
-   * @throws io.jsonwebtoken.JwtException 签名不符、已过期或格式非法
+   * @throws io.jsonwebtoken.JwtException 签名不符、已过期（超出时钟容差）、格式非法或缺少 {@code sub}
    */
   public JwtPayload parse(String token) {
-    Claims claims = Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
-    return new JwtPayload(readUid(claims), claims.getSubject(), readRoles(claims), readDepartment(claims));
+    Claims claims =
+        Jwts.parser()
+            .verifyWith(key)
+            .clockSkewSeconds(CLOCK_SKEW_SECONDS)
+            .build()
+            .parseSignedClaims(token)
+            .getPayload();
+    String subject = claims.getSubject();
+    if (subject == null || subject.isBlank()) {
+      // 账号是后续数据可见性过滤的依据，缺失即视为非法令牌（P1 起 principal 会用于查用户）
+      throw new MalformedJwtException("令牌缺少 sub（账号）");
+    }
+    return new JwtPayload(readUid(claims), subject, readRoles(claims), readDepartment(claims));
   }
 
   private static long readUid(Claims claims) {

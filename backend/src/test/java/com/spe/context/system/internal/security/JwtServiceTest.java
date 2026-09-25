@@ -4,9 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Date;
 import java.util.Set;
+import javax.crypto.SecretKey;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -39,12 +44,36 @@ class JwtServiceTest {
   }
 
   @Test
-  @DisplayName("过期令牌被拒绝")
-  void expiredTokenIsRejected() {
-    JwtService jwtService = service(Duration.ofSeconds(-1));
+  @DisplayName("过期超出 60s 时钟容差的令牌被拒绝")
+  void tokenExpiredBeyondClockSkewIsRejected() {
+    JwtService jwtService = service(Duration.ofSeconds(-120));
     String token = jwtService.issue(payload(), Instant.now());
 
     assertThatThrownBy(() -> jwtService.parse(token)).isInstanceOf(JwtException.class);
+  }
+
+  @Test
+  @DisplayName("过期但在 60s 时钟容差内的令牌仍被接受")
+  void tokenExpiredWithinClockSkewIsAccepted() {
+    JwtService jwtService = service(Duration.ofSeconds(-30));
+    String token = jwtService.issue(payload(), Instant.now());
+
+    assertThat(jwtService.parse(token).username()).isEqualTo("zhangsan");
+  }
+
+  @Test
+  @DisplayName("缺少 sub 的令牌被拒绝（账号是数据可见性过滤的依据）")
+  void tokenWithoutSubjectIsRejected() {
+    SecretKey key = Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
+    String token =
+        Jwts.builder()
+            .claim("uid", 1L)
+            .issuedAt(new Date())
+            .expiration(Date.from(Instant.now().plusSeconds(3600)))
+            .signWith(key)
+            .compact();
+
+    assertThatThrownBy(() -> service(TTL).parse(token)).isInstanceOf(JwtException.class);
   }
 
   @Test
