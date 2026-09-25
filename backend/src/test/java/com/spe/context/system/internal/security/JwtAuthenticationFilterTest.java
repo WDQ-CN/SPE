@@ -87,4 +87,22 @@ class JwtAuthenticationFilterTest {
 
     assertThat(filterWith("Basic " + token)).isNull();
   }
+
+  @Test
+  @DisplayName("Bearer 前缀大小写不敏感（RFC 6750）")
+  void bearerPrefixIsCaseInsensitive() throws Exception {
+    String token = jwtService.issue(payload(), Instant.now());
+
+    assertThat(filterWith("bearer " + token)).isNotNull();
+    SecurityContextHolder.clearContext();
+    assertThat(filterWith("BEARER " + token)).isNotNull();
+    SecurityContextHolder.clearContext();
+    assertThat(filterWith("BeArEr " + token)).isNotNull();
+  }
+
+  @Test
+  @DisplayName("只有 Bearer 前缀而没有令牌：保持未认证")
+  void bearerPrefixWithoutTokenLeavesContextEmpty() throws Exception {
+    assertThat(filterWith("Bearer ")).isNull();
+  }
 }

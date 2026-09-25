@@ -9,6 +9,7 @@ import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.Date;
 import java.util.Set;
 import javax.crypto.SecretKey;
@@ -108,5 +109,19 @@ class JwtServiceTest {
     assertThatThrownBy(() -> new JwtService(new JwtProperties("too-short-secret", TTL)))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("32");
+  }
+
+  @Test
+  @DisplayName("签发算法恒为 HS256，不随密钥长度漂移")
+  void signingAlgorithmIsAlwaysHs256() {
+    // 未显式指定算法时，三段拼接的 111 字节密钥会被 jjwt 选成 HS512
+    JwtService jwtService = new JwtService(new JwtProperties(SECRET.repeat(3), TTL));
+
+    String token = jwtService.issue(payload(), Instant.now());
+    String header =
+        new String(Base64.getUrlDecoder().decode(token.split("\\.")[0]), StandardCharsets.UTF_8);
+
+    assertThat(header).contains("\"alg\":\"HS256\"");
+    assertThat(jwtService.parse(token).username()).isEqualTo("zhangsan");
   }
 }

@@ -59,7 +59,9 @@ public class JwtService {
         .claim(CLAIM_DEPARTMENT, payload.department())
         .issuedAt(Date.from(issuedAt))
         .expiration(Date.from(issuedAt.plus(ttl)))
-        .signWith(key)
+        // 显式钉死 HS256：只写 signWith(key) 时 jjwt 按密钥长度自选算法，
+        // 64 字节密钥会变成 HS512，与 09 D6 与本类声明不符
+        .signWith(key, Jwts.SIG.HS256)
         .compact();
   }
 

@@ -36,12 +36,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
     String header = request.getHeader(HttpHeaders.AUTHORIZATION);
-    if (header != null
-        && header.startsWith(BEARER_PREFIX)
-        && SecurityContextHolder.getContext().getAuthentication() == null) {
+    if (hasBearerPrefix(header) && SecurityContextHolder.getContext().getAuthentication() == null) {
       authenticate(header.substring(BEARER_PREFIX.length()), request);
     }
     filterChain.doFilter(request, response);
+  }
+
+  /** RFC 6750 规定 auth-scheme 大小写不敏感；长度比较同时排除只有「Bearer 」而无可校验令牌的头。 */
+  private static boolean hasBearerPrefix(String header) {
+    return header != null
+        && header.length() > BEARER_PREFIX.length()
+        && header.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length());
   }
 
   private void authenticate(String token, HttpServletRequest request) {

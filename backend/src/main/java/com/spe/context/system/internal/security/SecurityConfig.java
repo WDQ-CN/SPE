@@ -1,6 +1,7 @@
 package com.spe.context.system.internal.security;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -31,6 +32,19 @@ public class SecurityConfig {
   @Bean
   public JwtService jwtService(JwtProperties jwtProperties) {
     return new JwtService(jwtProperties);
+  }
+
+  /**
+   * 该过滤器由安全链显式挂载（见 {@code addFilterBefore}）。Boot 会把容器里的 Filter Bean 自动注册到
+   * servlet 过滤链，若不禁用就会重复注册一次（第二次虽因上下文已认证而跳过，但顺序与语义都会失去预期）。
+   */
+  @Bean
+  public FilterRegistrationBean<JwtAuthenticationFilter> jwtAuthenticationFilterRegistration(
+      JwtAuthenticationFilter jwtAuthenticationFilter) {
+    FilterRegistrationBean<JwtAuthenticationFilter> registration =
+        new FilterRegistrationBean<>(jwtAuthenticationFilter);
+    registration.setEnabled(false);
+    return registration;
   }
 
   @Bean
