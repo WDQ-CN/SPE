@@ -1,0 +1,37 @@
+# 构建产物
+target/
+dist/
+*.jar
+*.war
+
+# 前端依赖与构建缓存
+node_modules/
+.vite/
+*.tsbuildinfo
+
+# 环境与密钥（实际 .env 不入库，仅 .env.example 入库）
+.env
+.env.local
+*.pem
+
+# 日志与运行时产物
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# 测试与覆盖率
+.nyc_output/
+coverage/
+
+# IDE 与编辑器
+.idea/
+*.iml
+.vscode/
+*.swp
+*~
+
+# 操作系统
+Thumbs.db
+desktop.ini
+.DS_Store
