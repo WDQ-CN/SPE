@@ -2,6 +2,11 @@ package com.spe.common.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.Validation;
+import jakarta.validation.constraints.NotBlank;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -61,4 +66,21 @@ class GlobalExceptionHandlerTest {
     assertThat(response.getBody().message()).isEqualTo(ErrorCode.INTERNAL_ERROR.message());
     assertThat(response.getBody().message()).doesNotContain("内部敏感细节");
   }
+
+  @Test
+  @DisplayName("方法级校验失败：按 2xxx 返回，不落 5xxx 兜底")
+  void constraintViolationMapsToBadRequest() {
+    Set<ConstraintViolation<Sample>> violations =
+        Validation.buildDefaultValidatorFactory().getValidator().validate(new Sample(""));
+
+    var response = handler.handleConstraintViolation(new ConstraintViolationException(violations));
+
+    assertThat(response.getStatusCode()).isEqualTo(ErrorCode.BAD_REQUEST.httpStatus());
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().code()).isEqualTo(ErrorCode.BAD_REQUEST.code());
+    assertThat(response.getBody().message()).contains("不能为空");
+  }
+
+  /** 仅用于造出方法级校验违规的最小对象（类上 @Validated 的接口触发的是同一类异常）。 */
+  private record Sample(@NotBlank(message = "不能为空") String name) {}
 }

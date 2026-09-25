@@ -5,8 +5,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Valid;
+import jakarta.validation.Validation;
 import jakarta.validation.constraints.NotBlank;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -50,6 +54,16 @@ class GlobalExceptionHandlerValidationTest {
         .andExpect(jsonPath("$.code").value(Result.SUCCESS_CODE));
   }
 
+  @Test
+  @DisplayName("方法级校验失败：400 + Result(2001)，不落 5xxx 兜底")
+  void methodValidationFailureBecomesBadRequestResult() throws Exception {
+    mockMvc
+        .perform(post("/probe/constraint"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value(ErrorCode.BAD_REQUEST.code()))
+        .andExpect(jsonPath("$.message").value(containsString("不能为空")));
+  }
+
   /** 校验探针用的载荷。 */
   record ProbePayload(@NotBlank(message = "不能为空") String name) {
   }
@@ -61,6 +75,18 @@ class GlobalExceptionHandlerValidationTest {
     @PostMapping("/probe")
     Result<Void> probe(@Valid @RequestBody ProbePayload payload) {
       return Result.ok();
+    }
+
+    /**
+     * 类上 {@code @Validated} + 参数约束触发的是 {@code ConstraintViolationException}。
+     * standalone MockMvc 不装配 {@code MethodValidationPostProcessor}（方法级校验依赖 AOP 代理），
+     * 故这里抛出同类异常，验证它在 HTTP 层被映射为 400 + 2001 而不是 5xxx。
+     */
+    @PostMapping("/probe/constraint")
+    Result<Void> probeConstraint() {
+      Set<ConstraintViolation<ProbePayload>> violations =
+          Validation.buildDefaultValidatorFactory().getValidator().validate(new ProbePayload(""));
+      throw new ConstraintViolationException(violations);
     }
   }
 }

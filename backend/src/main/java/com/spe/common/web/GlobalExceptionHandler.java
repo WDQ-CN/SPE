@@ -1,6 +1,7 @@
 package com.spe.common.web;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -56,6 +57,20 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
       MethodArgumentNotValidException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
     String message = ex.getBindingResult().getFieldErrors().stream()
         .map(fieldError -> fieldError.getField() + " " + fieldError.getDefaultMessage())
+        .collect(Collectors.joining("；"));
+    log.warn("参数校验失败：{}", message);
+    return ResponseEntity.status(ErrorCode.BAD_REQUEST.httpStatus())
+        .body(Result.fail(ErrorCode.BAD_REQUEST.code(), message.isEmpty() ? ErrorCode.BAD_REQUEST.message() : message));
+  }
+
+  /**
+   * 方法级校验失败（类上 {@code @Validated} + 参数上的约束注解）：与 body 校验同样归 2xxx。
+   * 缺少本处理器时它会落到下面的 {@code Exception} 兜底，返回 5xxx 并被当成系统异常。
+   */
+  @ExceptionHandler(ConstraintViolationException.class)
+  public ResponseEntity<Result<Void>> handleConstraintViolation(ConstraintViolationException ex) {
+    String message = ex.getConstraintViolations().stream()
+        .map(violation -> violation.getPropertyPath() + " " + violation.getMessage())
         .collect(Collectors.joining("；"));
     log.warn("参数校验失败：{}", message);
     return ResponseEntity.status(ErrorCode.BAD_REQUEST.httpStatus())
