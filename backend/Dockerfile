@@ -14,6 +14,10 @@ WORKDIR /app
 COPY --from=build /build/target/spe-backend-*.jar app.jar
 USER spe
 EXPOSE 8080
+# 镜像内固定监听 8080，与 EXPOSE 和下面的 HEALTHCHECK 保持一致。
+# 必须显式设置：application.yml 的默认端口是 18080（给宿主直跑用），裸跑 `docker run` 时若缺此项，
+# 应用会监听 18080 而健康检查打 8080，容器将永远处于 unhealthy（实测确认）。
+ENV SERVER_PORT=8080
 # 探活走 /actuator/health（09 D6 中该路径 permitAll）；alpine 自带 busybox wget
 HEALTHCHECK --interval=10s --timeout=3s --start-period=40s --retries=12 \
   CMD wget -q -O - http://127.0.0.1:8080/actuator/health || exit 1

@@ -32,8 +32,7 @@ services:
       DB_USERNAME: root
       DB_PASSWORD: ${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
-      # 容器内监听 8080（宿主直跑默认 18080，见 09 D3）
-      SERVER_PORT: "8080"
+      # 容器内监听端口由镜像的 ENV SERVER_PORT=8080 固定（宿主映射见 ports）
       TZ: UTC
     ports:
       # 直连后端调试用；与本地 `mvnw spring-boot:run` 同端口，二者不可同时占用
