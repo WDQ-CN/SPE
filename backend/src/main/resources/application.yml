@@ -7,9 +7,13 @@ spring:
   application:
     name: spe-backend
   datasource:
-    # 开发期连本机容器映射端口 13306（09 D3）；Compose 内由环境变量覆盖为 service 名 :3306
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:13306}/${DB_NAME:spe}?characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    # 开发期连本机容器映射端口 13306（09 D3）；Compose 内由环境变量覆盖为 service 名 :3306。
+    # 时间口径（09 D3）：连接时区固定 UTC，与容器内 MySQL 的会话时区一致；应用内部一律用 Instant，
+    # 前端按浏览器本地时区渲染。不设 serverTimezone/connectionTimeZone=LOCAL，否则库内时间戳会差 8 小时。
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:13306}/${DB_NAME:spe}?characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&connectionTimeZone=UTC
     username: ${DB_USERNAME:root}
+    # 必填项，见 backend/README.md；未提供时会以空口令连接、以 MySQL 鉴权失败（1045）告终
+    # ——实测 Boot 不会为缺省的占位符报错，所以这里保留显式空默认值，不做「无默认即报错」的假设
     password: ${DB_PASSWORD:}
   flyway:
     enabled: true
