@@ -1,0 +1,32 @@
+server:
+  # 宿主直跑默认 18080：本机 8003–8102 被 Windows 保留（含 8080/8081），绑定直接失败（09 D3）。
+  # 容器内由 Compose 用 SERVER_PORT=8080 覆盖，容器网络里不受 Windows 保留区间影响。
+  port: ${SERVER_PORT:18080}
+
+spring:
+  application:
+    name: spe-backend
+  datasource:
+    # 开发期连本机容器映射端口 13306（09 D3）；Compose 内由环境变量覆盖为 service 名 :3306
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:13306}/${DB_NAME:spe}?characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+app:
+  jwt:
+    # 必须由环境变量提供；缺失或短于 32 字节时启动即失败（09 D6）
+    secret: ${JWT_SECRET:}
+    ttl: 2h
