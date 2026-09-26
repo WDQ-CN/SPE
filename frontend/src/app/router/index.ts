@@ -4,6 +4,10 @@ import { setNavigate } from '@/app/http/navigation'
 import { APP_NAME } from '@/shared/constants'
 import { registerGuard } from './guard'
 
+/**
+ * 路由表。入口级权限不写在这里——`meta` 只放标题，可见角色统一由 `app/menu.ts` 判定，
+ * 免得同一份权限规则在路由与菜单里各写一份（那也是「菜单隐藏了但还能进」的常见成因）。
+ */
 const routes: RouteRecordRaw[] = [
   {
     path: '/login',
@@ -20,6 +24,24 @@ const routes: RouteRecordRaw[] = [
         name: 'home',
         component: () => import('@/app/views/HomeView.vue'),
         meta: { title: '首页' },
+      },
+      {
+        path: 'suppliers',
+        name: 'suppliers',
+        component: () => import('@/features/supplier/views/SupplierListView.vue'),
+        meta: { title: '供应商' },
+      },
+      {
+        path: 'users',
+        name: 'users',
+        component: () => import('@/features/user/views/UserListView.vue'),
+        meta: { title: '用户管理' },
+      },
+      {
+        path: 'settings',
+        name: 'settings',
+        component: () => import('@/features/setting/views/SettingView.vue'),
+        meta: { title: '系统设置' },
       },
     ],
   },

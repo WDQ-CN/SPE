@@ -1,32 +1,50 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import type { FormInstance, FormRules } from 'element-plus'
 
-import { ping } from '@/features/auth/api'
+import { login } from '@/features/auth/api'
+import { useAuthStore } from '@/features/auth/store'
+import { useSubmit } from '@/shared/composables/useSubmit'
+import { APP_NAME } from '@/shared/constants'
+import { safeRedirect } from '@/shared/redirect'
 
+const auth = useAuthStore()
+const route = useRoute()
+const router = useRouter()
+
+const formRef = ref<FormInstance>()
 const form = reactive({ username: '', password: '' })
 
-const checking = ref(false)
-const checkState = ref<'idle' | 'ok' | 'fail'>('idle')
-const checkMessage = ref('')
+// 用 useSubmit 而不是自己写 submitting/errorMessage：它的闸门在**同步入口**处就置位，
+// 而把 submitting 写在 `await validate()` 之后再置位等于没防——两次快速点击会同时通过检查、
+// 发两次登录请求，还会让第二次的错误覆盖第一次（04-037，由组件测试发现）。
+const { submitting, errorMessage, run } = useSubmit()
 
-async function runSelfCheck(): Promise<void> {
-  checking.value = true
-  checkState.value = 'idle'
-  checkMessage.value = ''
-  try {
-    const data = await ping()
-    checkState.value = 'ok'
-    checkMessage.value = `已连通，/api/ping 返回 ${JSON.stringify(data ?? null)}`
-  } catch (error) {
-    checkState.value = 'fail'
-    checkMessage.value = error instanceof Error ? error.message : '未知错误'
-  } finally {
-    checking.value = false
-  }
+// 与后端 LoginRequest 的约束一致（账号非空且 ≤50、口令非空）；这里只做即时反馈，判定在后端
+const rules: FormRules = {
+  username: [
+    { required: true, message: '请输入账号', trigger: 'blur' },
+    { max: 50, message: '账号长度不得超过 50', trigger: 'blur' },
+  ],
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 }
 
-function submit(): void {
-  ElMessage.info('登录接口在 P1 接入（01 A1 / 02 §4 POST /auth/login）')
+async function submit(): Promise<void> {
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) {
+    return
+  }
+  await run(async () => {
+    const result = await login({ username: form.username.trim(), password: form.password })
+    auth.setSession({
+      token: result.token,
+      name: result.name,
+      roles: result.roles,
+      department: result.department,
+    })
+    await router.replace(safeRedirect(route.query.redirect))
+  })
 }
 </script>
 
@@ -37,76 +55,58 @@ function submit(): void {
       shadow="never"
     >
       <template #header>
-        SPE 供应商绩效评估
+        {{ APP_NAME }}
       </template>
+
+      <el-alert
+        v-if="errorMessage"
+        class="login__error"
+        type="error"
+        :title="errorMessage"
+        :closable="false"
+        show-icon
+      />
+
       <el-form
+        ref="formRef"
         :model="form"
+        :rules="rules"
         label-width="72px"
         @submit.prevent="submit"
       >
-        <el-form-item label="账号">
+        <el-form-item
+          label="账号"
+          prop="username"
+        >
           <el-input
             v-model="form.username"
-            placeholder="P1 接入真实登录"
+            placeholder="请输入账号"
+            :disabled="submitting"
+            @keyup.enter="submit"
           />
         </el-form-item>
-        <el-form-item label="密码">
+        <el-form-item
+          label="密码"
+          prop="password"
+        >
           <el-input
             v-model="form.password"
             type="password"
             show-password
-            placeholder="P1 接入真实登录"
+            placeholder="请输入密码"
+            :disabled="submitting"
+            @keyup.enter="submit"
           />
         </el-form-item>
         <el-button
           type="primary"
           class="login__submit"
+          :loading="submitting"
           @click="submit"
         >
           登录
         </el-button>
       </el-form>
-    </el-card>
-
-    <!-- P0 临时自检条：验证 Vite 代理与后端 ping 链路；P1 替换为真实登录（09 WP2） -->
-    <el-card
-      class="login__check"
-      shadow="never"
-    >
-      <div class="login__check-row">
-        <span>后端连通性</span>
-        <el-tag
-          v-if="checkState === 'ok'"
-          type="success"
-        >
-          成功
-        </el-tag>
-        <el-tag
-          v-else-if="checkState === 'fail'"
-          type="danger"
-        >
-          失败
-        </el-tag>
-        <el-tag
-          v-else
-          type="info"
-        >
-          未检测
-        </el-tag>
-        <el-button
-          size="small"
-          :loading="checking"
-          @click="runSelfCheck"
-        >
-          检测
-        </el-button>
-      </div>
-      <p
-        v-if="checkMessage"
-        class="login__check-message"
-      >
-        {{ checkMessage }}
-      </p>
     </el-card>
   </div>
 </template>
@@ -114,8 +114,6 @@ function submit(): void {
 <style scoped>
 .login {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
   align-items: center;
   justify-content: center;
   height: 100%;
@@ -125,25 +123,11 @@ function submit(): void {
   width: 360px;
 }
 
+.login__error {
+  margin-bottom: 16px;
+}
+
 .login__submit {
   width: 100%;
-}
-
-.login__check {
-  width: 360px;
-}
-
-.login__check-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.login__check-message {
-  margin: 12px 0 0;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  word-break: break-all;
 }
 </style>

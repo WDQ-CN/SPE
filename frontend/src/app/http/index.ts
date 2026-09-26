@@ -113,8 +113,10 @@ instance.interceptors.response.use(
 )
 
 // 拦截器负责校验与提示，这里解包 Result，调用方直接拿到 data
+// params 用 object 而不是 Record<string, unknown>：调用方传的是强类型查询接口
+// （PageParams、SupplierQuery），它们没有索引签名，用 Record 会逼调用方把字段拆开重拼
 export const http = {
-  get<T>(url: string, params?: Record<string, unknown>): Promise<T> {
+  get<T>(url: string, params?: object): Promise<T> {
     return instance.get<Result<T>>(url, { params }).then((response) => response.data.data)
   },
   post<T>(url: string, data?: unknown): Promise<T> {
@@ -124,7 +126,7 @@ export const http = {
     return instance.put<Result<T>>(url, data).then((response) => response.data.data)
   },
   // 02 §4 已有 DELETE 类端点（如 /api-tokens），先备好，避免届时绕开统一封装
-  delete<T>(url: string, params?: Record<string, unknown>): Promise<T> {
+  delete<T>(url: string, params?: object): Promise<T> {
     return instance.delete<Result<T>>(url, { params }).then((response) => response.data.data)
   },
 }

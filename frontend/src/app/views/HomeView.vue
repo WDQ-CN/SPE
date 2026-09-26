@@ -1,9 +1,46 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+
+import { useAuthStore } from '@/features/auth/store'
+import { DEPARTMENT_LABEL, ROLE_LABEL } from '@/shared/labels'
+
+const auth = useAuthStore()
+
+const roleText = computed(() => auth.roles.map((role) => ROLE_LABEL[role]).join(' / ') || '—')
+const departmentText = computed(() =>
+  auth.department ? DEPARTMENT_LABEL[auth.department] : '—',
+)
+</script>
+
 <template>
   <el-card shadow="never">
     <template #header>
-      P0 工程骨架已就位
+      当前登录
     </template>
-    <p>这里是占位首页。各业务页随阶段接入：供应商 P1、评估模板 P2、评估任务与打分 P3、审批与报告 P4。</p>
-    <p>后端骨架（WP1）与部署链路（WP3）依赖 JDK 17、Maven、Docker Desktop，环境齐备后接管本页的真实数据。</p>
+    <el-descriptions
+      :column="1"
+      border
+    >
+      <el-descriptions-item label="姓名">
+        {{ auth.name || '—' }}
+      </el-descriptions-item>
+      <el-descriptions-item label="角色">
+        {{ roleText }}
+      </el-descriptions-item>
+      <el-descriptions-item label="部门">
+        {{ departmentText }}
+      </el-descriptions-item>
+    </el-descriptions>
+    <p class="home__hint">
+      左侧菜单按角色显示可用功能；没有权限的入口不会出现（越权访问仍由后端拒绝并留日志）。
+    </p>
   </el-card>
 </template>
+
+<style scoped>
+.home__hint {
+  margin: 16px 0 0;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+</style>

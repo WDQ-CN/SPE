@@ -42,3 +42,18 @@ export class BizError extends Error {
     this.code = code
   }
 }
+
+/**
+ * 该错误是否需要**页面自己回显**（而不是已经由拦截器全局提示过）。
+ *
+ * <p>两种情况：① `2xxx` 参数/校验类——拦截器刻意不弹提示（06 §3.3），不回显的话用户只看到
+ * 「请求失败」却不知道哪个字段不对；② 登录页的 1002/1003——同理，它们只在登录表单里有意义。
+ *
+ * <p>其余分段（1xxx 认证、3xxx 冲突、4xxx 权限、5xxx 系统）与传输层错误都已经弹过提示，
+ * 页面再显示一遍就是重复打扰。
+ */
+export function isFormLevelError(error: unknown): error is BizError {
+  return (
+    error instanceof BizError && (segmentOf(error.code) === 'param' || isLoginFormCode(error.code))
+  )
+}

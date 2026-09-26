@@ -1,10 +1,30 @@
 import { http } from '@/app/http'
+import type { Department, Role } from '@/shared/types/enums'
+
+/** 登录入参（后端 `LoginRequest`）：账号 ≤50，口令只做非空——长度规则由后端 `PasswordPolicy` 判定 */
+export interface LoginPayload {
+  username: string
+  password: string
+}
 
 /**
- * P0 临时自检，用于验证「Vite 代理 → 后端」链路（09 WP2）。
- * `/api/ping` 归属 system 上下文 web 包（09 D6），其 data 契约由 WP1 定稿，
- * 故此处按 unknown 处理、页面原样展示；P1 接入真实登录后本函数移除。
+ * 登录响应（后端 `AuthController.LoginResponse`）。
+ *
+ * <p>`department` 可能为 null（`sys_user.department` 允许为空），前端据此按「未知部门」展示。
  */
-export function ping(): Promise<unknown> {
-  return http.get<unknown>('/ping')
+export interface LoginResult {
+  token: string
+  name: string
+  roles: Role[]
+  department: Department | null
+}
+
+/**
+ * 登录（01 A1 / 02 §4）。
+ *
+ * <p>失败时**不在这里做任何兜底**：1002/1003 与 2xxx 由 `app/http` 拦截器按「表单级」抛出
+ * `BizError`，调用方只负责把 message 显示在表单上（10 §E2、03 §16 的 SEC-5）。
+ */
+export function login(payload: LoginPayload): Promise<LoginResult> {
+  return http.post<LoginResult>('/auth/login', payload)
 }

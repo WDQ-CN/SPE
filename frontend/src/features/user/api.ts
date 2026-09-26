@@ -1,0 +1,54 @@
+import { http } from '@/app/http'
+import type { PageResult } from '@/shared/types/result'
+import type { Department, Role, UserStatus } from '@/shared/types/enums'
+import type { PageParams, UserSummary } from '@/shared/types/dto'
+
+/**
+ * 用户管理接口（02 §4 / 01 SM1、A4），**仅 ADMIN**。
+ *
+ * <p>所有写操作都要带 `version`（编辑与启停）——它是后端守卫 UPDATE 的前置条件，缺了就无法区分
+ * 「改到的是我看到的那一行」（10 §E13）。前端只负责原样回传列表里拿到的版本号。
+ */
+
+/** 新增用户（后端 `CreateUserRequest`）：新建一律 ENABLED，不能指定状态 */
+export interface CreateUserPayload {
+  username: string
+  password: string
+  name: string
+  role: Role
+  department: Department
+}
+
+/** 编辑用户（后端 `UpdateUserRequest`）：账号不可改，故入参里没有 username */
+export interface UpdateUserPayload {
+  name: string
+  role: Role
+  department: Department
+  version: number
+}
+
+export function listUsers(params: PageParams): Promise<PageResult<UserSummary>> {
+  return http.get<PageResult<UserSummary>>('/users', params)
+}
+
+export function createUser(payload: CreateUserPayload): Promise<UserSummary> {
+  return http.post<UserSummary>('/users', payload)
+}
+
+export function updateUser(id: number, payload: UpdateUserPayload): Promise<UserSummary> {
+  return http.put<UserSummary>(`/users/${id}`, payload)
+}
+
+/** 启停：只传**目标状态**，前置状态由后端按两态机推出（10 §E13） */
+export function changeUserStatus(
+  id: number,
+  status: UserStatus,
+  version: number,
+): Promise<void> {
+  return http.put<void>(`/users/${id}/status`, { status, version })
+}
+
+/** ADMIN 重置他人口令（01 SM1）：口令规则由后端 `PasswordPolicy` 判定，前端只做长度提示 */
+export function resetUserPassword(id: number, newPassword: string): Promise<void> {
+  return http.put<void>(`/users/${id}/password`, { newPassword })
+}

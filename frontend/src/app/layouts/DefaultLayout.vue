@@ -2,16 +2,20 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import { visibleMenus } from '@/app/menu'
 import { useViewKey } from '@/app/view-state'
 import { useAuthStore } from '@/features/auth/store'
 import { APP_NAME } from '@/shared/constants'
+import { ROLE_LABEL } from '@/shared/labels'
 
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const viewKey = useViewKey()
 
-const displayName = computed(() => auth.name || '未登录')
+// 角色驱动的菜单：真正的过滤规则在 app/menu.ts（与路由守卫共用），这里只做渲染
+const menus = computed(() => visibleMenus(auth.roles))
+const roleText = computed(() => auth.roles.map((role) => ROLE_LABEL[role]).join(' / '))
 
 function logout(): void {
   auth.clearSession()
@@ -28,44 +32,32 @@ function logout(): void {
       <div class="layout__brand">
         {{ APP_NAME }}
       </div>
-      <!-- 侧边菜单为 P0 占位：仅首页可用，业务入口随 P1~P4 接入并按角色渲染（05 §11） -->
       <el-menu
         :default-active="route.path"
         router
       >
-        <el-menu-item index="/">
-          首页
-        </el-menu-item>
         <el-menu-item
-          index="/suppliers"
-          disabled
+          v-for="menu in menus"
+          :key="menu.path"
+          :index="menu.path"
         >
-          供应商 · P1
-        </el-menu-item>
-        <el-menu-item
-          index="/templates"
-          disabled
-        >
-          评估模板 · P2
-        </el-menu-item>
-        <el-menu-item
-          index="/tasks"
-          disabled
-        >
-          评估任务 · P3
-        </el-menu-item>
-        <el-menu-item
-          index="/my/todo"
-          disabled
-        >
-          我的待办 · P3
+          {{ menu.title }}
         </el-menu-item>
       </el-menu>
     </el-aside>
 
     <el-container>
       <el-header class="layout__header">
-        <span>{{ displayName }}</span>
+        <span class="layout__user">
+          {{ auth.name || '未登录' }}
+          <el-tag
+            v-if="roleText"
+            size="small"
+            type="info"
+          >
+            {{ roleText }}
+          </el-tag>
+        </span>
         <el-button
           link
           type="primary"
@@ -102,5 +94,11 @@ function logout(): void {
   align-items: center;
   justify-content: flex-end;
   border-bottom: 1px solid var(--el-border-color-light);
+}
+
+.layout__user {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 </style>
