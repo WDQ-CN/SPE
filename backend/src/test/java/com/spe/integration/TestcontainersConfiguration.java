@@ -20,7 +20,12 @@ import org.testcontainers.containers.MySQLContainer;
 public class TestcontainersConfiguration {
 
   private static final MySQLContainer<?> MYSQL =
-      new MySQLContainer<>("mysql:8.4").withDatabaseName("spe");
+      new MySQLContainer<>("mysql:8.4")
+          .withDatabaseName("spe")
+          // 给测试容器也设内存上限。宿主 Docker 引擎的内存上限约 7.8 GB，而 MySQL 默认按宿主机内存
+          // 自行放大缓冲池；连续跑多轮全量测试时，无限制的测试容器叠加应用容器曾把引擎压垮
+          // （现象是 Docker Desktop 引擎整个停掉、所有容器一起消失，见 04-043）。512 MB 够跑本项目用例。
+          .withCreateContainerCmdModifier(cmd -> cmd.getHostConfig().withMemory(512L * 1024 * 1024));
 
   static {
     MYSQL.start();
