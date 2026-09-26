@@ -20,6 +20,9 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.DefaultTransactionDefinition;
 
 /**
  * 并发用例（12 §3-W2 要求的三条）。**刻意不标 `@Transactional`**：其他线程看不到未提交的数据，
@@ -31,6 +34,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 class TemplateConcurrencyIntegrationTest extends AbstractIntegrationTest {
 
   @Autowired private TemplateService templateService;
+  @Autowired private PlatformTransactionManager txManager;
 
   @Test
   @DisplayName("并发：同一草稿下改两个**不同**维度 → 都成功（守卫粒度是行，不是版本）")
@@ -120,7 +124,69 @@ class TemplateConcurrencyIntegrationTest extends AbstractIntegrationTest {
         .isEqualTo(ErrorCode.TEMPLATE_INDICATOR_CODE_DUPLICATE);
   }
 
+  @Test
+  @DisplayName("并发：别的事务改了权重还没提交时，发布必须看得见它并拒绝——若发布成功，那份内容从未通过校验（04-057）")
+  void publishSeesAnotherTransactionsUncommittedContentEdits() throws Exception {
+    long versionId = newPublishableDraft();
+    Dimension dimension = dimensionsOf(versionId).get(0);
+    TemplateVersion draft = versionRow(versionId);
+
+    // 主线程起一笔事务：把维度权重 100 → 60（合计不再合规），**先不提交**。
+    // 此刻它持有版本行的锁（updateDimension → ensureEditable 的 FOR UPDATE）。
+    TransactionStatus editing = txManager.getTransaction(new DefaultTransactionDefinition());
+    templateService.updateDimension(
+        dimension.getId(), dimension.getName(), new BigDecimal("60.00"), dimension.getSortNo(),
+        dimension.getSuggestedDept(), Boolean.TRUE.equals(dimension.getIsKey()), dimension.getVersion());
+
+    // 另一个线程去发布：它第一条就是 findByIdForUpdate，会被上面的锁挡住
+    CountDownLatch started = new CountDownLatch(1);
+    ExecutorService pool = Executors.newSingleThreadExecutor();
+    Future<Object> publishing =
+        pool.submit(
+            () -> {
+              started.countDown();
+              try {
+                templateService.publish(versionId, draft.getVersion());
+                return "published";
+              } catch (Exception ex) {
+                return ex;
+              }
+            });
+    started.await();
+    Thread.sleep(500); // 时序手段：够它发起那条锁定读即可（本用例断言的是结果，不是时序）
+
+    txManager.commit(editing);
+
+    Object result = publishing.get(60, TimeUnit.SECONDS);
+    pool.shutdownNow();
+
+    // 这条断言同时钉住两件事：① 发布的校验读集能看到别人刚提交的内容改动（即 read view 是在锁定读
+    // **之后**才建立的）；② 不合规的内容不会被发布出去。若把 publish 的第一条从 findByIdForUpdate
+    // 换回 requireVersion（普通读），这里会拿到 "published"，而库里会留下一个合计 60 的已发布版本。
+    assertThat(result)
+        .as("发布必须拒绝；拿到 published 说明校验读的是旧快照")
+        .isInstanceOf(BizException.class);
+    assertThat(((BizException) result).errorCode()).isEqualTo(ErrorCode.TEMPLATE_WEIGHT_INVALID);
+    assertThat(versionRow(versionId).getStatus())
+        .as("校验没过就不能落 PUBLISHED")
+        .isEqualTo(com.spe.context.template.api.TemplateVersionStatus.DRAFT);
+  }
+
   // ---------------------------------------------------------------- 辅助
+
+  /** 建一个「内容合规但未发布」的草稿：1 个维度(100) + 1 个指标(100)。 */
+  private long newPublishableDraft() {
+    TemplateSummary created = templateService.create("发布并发用例-" + System.nanoTime());
+    long versionId = created.latestVersionId();
+    EffectiveVersion afterDimension =
+        templateService.addDimension(versionId, "质量", new BigDecimal("100.00"), 1, "质量", false);
+    long effectiveVersionId = afterDimension.versionId();
+    Dimension dimension = dimensionsOf(effectiveVersionId).get(0);
+    templateService.addIndicator(
+        dimension.getId(), "来料批次合格率", "IQC_" + System.nanoTime(), new BigDecimal("100.00"),
+        IndicatorType.QUANT, com.spe.context.template.api.ScoreMode.RATIO, "%", null, null, 1);
+    return effectiveVersionId;
+  }
 
   /** 新建一个只有草稿的模板，带两个各 100 权重的维度（够并发用例用，不必发布）。 */
   private long newDraftWithTwoDimensions() {

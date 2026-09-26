@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -200,10 +201,7 @@ public class TemplateService {
 
     // 落到新草稿时，手里这一行已经是"旧版本的旧行"：用映射找到新草稿里的对应行。
     // 复用别人的草稿时映射为空——那一行确实不在生效版本里，报不存在让用户刷新后重做，而不是猜。
-    if (effective.switchedWithoutMap(current.getTemplateVersionId())) {
-      throw new BizException(ErrorCode.TEMPLATE_DIMENSION_NOT_FOUND);
-    }
-    long targetId = effective.resolveDimension(dimensionId);
+    long targetId = effective.requireDimensionId(dimensionId, current.getTemplateVersionId());
     // 复制出来的行是全新的、version 必为 0，不能拿调用方手里那个（属于旧行的）版本号去守卫。
     int guardVersion = effective.copied() ? 0 : version;
 
@@ -233,10 +231,7 @@ public class TemplateService {
   public EffectiveVersion deleteDimension(long dimensionId, int version) {
     Dimension current = requireDimension(dimensionId);
     EffectiveVersion effective = ensureEditable(current.getTemplateVersionId());
-    if (effective.switchedWithoutMap(current.getTemplateVersionId())) {
-      throw new BizException(ErrorCode.TEMPLATE_DIMENSION_NOT_FOUND);
-    }
-    long targetId = effective.resolveDimension(dimensionId);
+    long targetId = effective.requireDimensionId(dimensionId, current.getTemplateVersionId());
     int guardVersion = effective.copied() ? 0 : version;
 
     if (dimensionMapper.delete(targetId, guardVersion) == 0) {
@@ -268,11 +263,16 @@ public class TemplateService {
       int sortNo) {
     Dimension dimension = requireDimension(dimensionId);
     EffectiveVersion effective = ensureEditable(dimension.getTemplateVersionId());
+    // 关键：落到新草稿时 dimension.getId() 属于**旧版本**，必须翻译成新草稿里的行 id。
+    // 漏了这一步不会报错（表上无外键），但会写出一行"版本指向新草稿、维度指向旧版本"的脏指标：
+    // 树上按 dimension_id 分组看不见它、发布校验按 dimension_id 联结不计它的权重、删维度也删不掉它（04-057）。
+    long targetDimensionId =
+        effective.requireDimensionId(dimensionId, dimension.getTemplateVersionId());
 
     requireCodeAvailable(effective.versionId(), code, null);
 
     Indicator indicator = new Indicator();
-    indicator.setDimensionId(dimension.getId());
+    indicator.setDimensionId(targetDimensionId);
     indicator.setTemplateVersionId(effective.versionId());
     indicator.setName(name);
     indicator.setCode(code);
@@ -284,7 +284,7 @@ public class TemplateService {
     indicator.setStandard(standard);
     indicator.setSortNo(sortNo);
     indicator.setVersion(0);
-    insertIndicatorOrConflict(indicator, effective.versionId());
+    insertIndicatorOrConflict(indicator);
 
     Map<String, Object> detail = new LinkedHashMap<>();
     detail.put("code", code);
@@ -310,10 +310,7 @@ public class TemplateService {
       int version) {
     Indicator current = requireIndicator(indicatorId);
     EffectiveVersion effective = ensureEditable(current.getTemplateVersionId());
-    if (effective.switchedWithoutMap(current.getTemplateVersionId())) {
-      throw new BizException(ErrorCode.TEMPLATE_INDICATOR_NOT_FOUND);
-    }
-    long targetId = effective.resolveIndicator(indicatorId);
+    long targetId = effective.requireIndicatorId(indicatorId, current.getTemplateVersionId());
     int guardVersion = effective.copied() ? 0 : version;
 
     requireCodeAvailable(effective.versionId(), code, targetId);
@@ -322,9 +319,19 @@ public class TemplateService {
     AuditDetails.putIfChanged(detail, "code", current.getCode(), code);
     AuditDetails.putIfChanged(detail, "name", current.getName(), name);
     AuditDetails.putIfChanged(detail, "weight", current.getWeight(), weight);
-    if (indicatorMapper.update(
-            targetId, name, code, weight, type, scoreMode, unit, targetValue, standard, sortNo, guardVersion)
-        == 0) {
+    // 唯一键也会被 UPDATE 踩到（不只是 INSERT）：把 A 的编码改成 B 已在用的值时，前置查重在并发下可能读的是
+    // 旧快照（04-057 的同一根因：读的结果决定后续动作，而那个读不是当前读），真正的判定落在这条 UPDATE 上——
+    // 不翻译就会漏成 5001（04-030 的形态：同一约束只在一部分写路径上处理）。
+    try {
+      if (indicatorMapper.update(
+              targetId, name, code, weight, type, scoreMode, unit, targetValue, standard, sortNo, guardVersion)
+          == 0) {
+        throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
+      }
+    } catch (DuplicateKeyException ex) {
+      throw new BizException(
+          ErrorCode.TEMPLATE_INDICATOR_CODE_DUPLICATE, "该版本内已存在编码 " + code);
+    } catch (PessimisticLockingFailureException ex) {
       throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
     }
 
@@ -337,10 +344,7 @@ public class TemplateService {
   public EffectiveVersion deleteIndicator(long indicatorId, int version) {
     Indicator current = requireIndicator(indicatorId);
     EffectiveVersion effective = ensureEditable(current.getTemplateVersionId());
-    if (effective.switchedWithoutMap(current.getTemplateVersionId())) {
-      throw new BizException(ErrorCode.TEMPLATE_INDICATOR_NOT_FOUND);
-    }
-    long targetId = effective.resolveIndicator(indicatorId);
+    long targetId = effective.requireIndicatorId(indicatorId, current.getTemplateVersionId());
     int guardVersion = effective.copied() ? 0 : version;
 
     if (indicatorMapper.delete(targetId, guardVersion) == 0) {
@@ -363,10 +367,23 @@ public class TemplateService {
    * 任何东西），而状态竞争由 UPDATE 的 `status = 'DRAFT' AND version = ?` 兜住。
    *
    * <p>**草稿允许权重合计不为 100**（E4）：否则用户想把 40 改成 30 时会先被拦住、根本改不动。校验只在这里。
+   *
+   * <p>⚠️ <b>第一条语句必须是锁版本行的当前读</b>（`findByIdForUpdate`），这是 04-057 修的那个 P0：
+   * 校验的**读集**与落状态的**写**之间必须有互斥。另一个事务完全可能"改了权重、还没提交"——此时普通读看到
+   * 的仍是旧的合规值、五类校验全过，而它提交之后本事务的守卫 UPDATE 照样成立（维度编辑只 bump
+   * `dimension.version`，不动版本行的 `version`），于是一份**从未通过校验的内容**被发布出去（违反 01 T4
+   * 与 05 ADR-3 的本意）。锁定读与「编辑」的 `FOR UPDATE` 互斥，校验读集才可信。
+   *
+   * <p>⚠️ 写成**第一条**也不是风格问题：REPEATABLE READ 下 read view 由事务的**第一条一致性读**建立，
+   * 锁定读不建立它；若先做一次普通读（如 `requireVersion`）再锁，快照已被钉死，锁了也白锁。
+   * `TemplateConcurrencyIntegrationTest` 有一条用例专门钉这个事实。
    */
   @Transactional
   public void publish(long versionId, int version) {
-    TemplateVersion current = requireVersion(versionId);
+    TemplateVersion current =
+        templateVersionMapper
+            .findByIdForUpdate(versionId)
+            .orElseThrow(() -> new BizException(ErrorCode.TEMPLATE_VERSION_NOT_FOUND));
 
     List<DimensionValidationRow> rows = dimensionMapper.findForValidation(versionId);
     if (rows.isEmpty()) {
@@ -435,11 +452,19 @@ public class TemplateService {
    */
   @Transactional
   public EffectiveVersion ensureEditable(long versionId) {
-    TemplateVersion version = requireVersion(versionId);
+    // 当前读（不是 requireVersion 的普通读）：状态决定"要不要复制"，而普通读走的是事务开始时的快照——
+    // 另一个事务可能刚把这个草稿发布了，拿快照里的 DRAFT 去插入维度就会污染已发布版本，且没有守卫能拦
+    // （版本守卫挡的是 UPDATE，不是 INSERT）。FOR UPDATE 同时与「发布」那条 UPDATE 互斥，读到的状态才是权威的。
+    TemplateVersion version =
+        templateVersionMapper
+            .findByIdForUpdate(versionId)
+            .orElseThrow(() -> new BizException(ErrorCode.TEMPLATE_VERSION_NOT_FOUND));
+
     if (version.getStatus() == TemplateVersionStatus.DRAFT) {
       return EffectiveVersion.sameAs(version.getId(), version.getVersion());
     }
 
+    // 锁顺序在所有路径上一致：先版本行、再模板行（模板行锁用来串行化"同一模板下的复制"）
     long templateId = version.getTemplateId();
     templateMapper.lockById(templateId)
         .orElseThrow(() -> new BizException(ErrorCode.TEMPLATE_NOT_FOUND));
@@ -498,7 +523,7 @@ public class TemplateService {
         indicatorCopy.setStandard(indicator.getStandard());
         indicatorCopy.setSortNo(indicator.getSortNo());
         indicatorCopy.setVersion(0);
-        insertIndicatorOrConflict(indicatorCopy, draft.getId());
+        insertIndicatorOrConflict(indicatorCopy);
         indicatorIdMap.put(indicator.getId(), indicatorCopy.getId());
       }
     }
@@ -549,20 +574,26 @@ public class TemplateService {
     }
   }
 
-  /** 插入版本并把唯一键冲突翻成 3001（见 {@link #create} 的说明）。 */
+  /**
+   * 插入版本并把并发异常翻成 3001（见 {@link #create} 的说明）。
+   *
+   * <p>**两类都要翻**（12 §6 风险表第 2 行与 §E12 的明文要求）：唯一键冲突（`DuplicateKeyException`）与
+   * 锁等待/死锁（`PessimisticLockingFailureException`，含 `CannotAcquireLockException`——REPEATABLE READ 下
+   * 唯一索引插入会先等锁、超时抛它）。只翻前者的话，后者会经兜底变成 5001。
+   */
   private void insertVersionOrConflict(TemplateVersion version) {
     try {
       templateVersionMapper.insert(version);
-    } catch (DuplicateKeyException ex) {
+    } catch (DuplicateKeyException | PessimisticLockingFailureException ex) {
       throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
     }
   }
 
-  /** 插入指标并把唯一键冲突翻成 2014（与前置查重同一个码，别让并发那条路径漏成 5xxx）。 */
-  private void insertIndicatorOrConflict(Indicator indicator, long versionId) {
+  /** 插入指标并把两类并发异常翻成 2014（与前置查重同一个码，别让并发那条路径漏成 5xxx）。 */
+  private void insertIndicatorOrConflict(Indicator indicator) {
     try {
       indicatorMapper.insert(indicator);
-    } catch (DuplicateKeyException ex) {
+    } catch (DuplicateKeyException | PessimisticLockingFailureException ex) {
       throw new BizException(
           ErrorCode.TEMPLATE_INDICATOR_CODE_DUPLICATE, "该版本内已存在编码 " + indicator.getCode());
     }

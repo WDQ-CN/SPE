@@ -58,7 +58,9 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
         .containsExactly("质量", "交付物流", "采购", "服务");
     assertThat(snapshot.dimensions()).allSatisfy(d -> assertThat(d.isKey()).isFalse());
 
-    // 指标：13 个，编码与权重逐条列出（不是"取第一条看看"）
+    // 指标：13 个，**(code, weight, unit) 逐条全列**。
+    // ⚠️ V8 是直插 PUBLISHED、**绕过了服务层的发布校验**，所以种子数据的正确性没有第二道守卫——
+    // 把 FILL_RATE 抄成 50（维度内合计变 130）或把 unit 全留空，此处不红就没人会发现（出口判据 1 的原文理由）。
     Map<String, IndicatorSnapshot> byCode =
         snapshot.dimensions().stream()
             .flatMap(d -> d.indicators().stream())
@@ -71,26 +73,67 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
             "COST_DOWN_RATE", "PRICE_COMPETITIVENESS", "PAYMENT_COOP",
             "ISSUE_RESPONSE", "ABNORMAL_COOP", "CONTACT_STABILITY");
 
-    assertThat(byCode.get("IQC_PASS_RATE").weight()).isEqualByComparingTo("30");
-    assertThat(byCode.get("QUALITY_ACCIDENT").weight()).isEqualByComparingTo("20");
-    assertThat(byCode.get("QMS_AUDIT_SCORE").weight()).isEqualByComparingTo("30");
-    assertThat(byCode.get("OTD_RATE").weight()).isEqualByComparingTo("50");
-    assertThat(byCode.get("ISSUE_RESPONSE").weight()).isEqualByComparingTo("40");
+    Map<String, String> expectedWeights =
+        Map.ofEntries(
+            Map.entry("IQC_PASS_RATE", "30"), Map.entry("QUALITY_ACCIDENT", "20"),
+            Map.entry("IQC_ON_TIME_RATE", "20"), Map.entry("QMS_AUDIT_SCORE", "30"),
+            Map.entry("OTD_RATE", "50"), Map.entry("FILL_RATE", "30"),
+            Map.entry("URGENT_RESPONSE", "20"), Map.entry("COST_DOWN_RATE", "50"),
+            Map.entry("PRICE_COMPETITIVENESS", "30"), Map.entry("PAYMENT_COOP", "20"),
+            Map.entry("ISSUE_RESPONSE", "40"), Map.entry("ABNORMAL_COOP", "30"),
+            Map.entry("CONTACT_STABILITY", "30"));
+    expectedWeights.forEach(
+        (code, weight) ->
+            assertThat(byCode.get(code).weight())
+                .as("指标 %s 的权重（附录 A）", code)
+                .isEqualByComparingTo(weight));
+
+    // unit：附录 A 没有这一列，四类取值是按它的「说明」列推导的（12 §E15），同样是"没人守就会漂"的地方
+    Map<String, String> expectedUnits =
+        Map.ofEntries(
+            Map.entry("IQC_PASS_RATE", "%"), Map.entry("QUALITY_ACCIDENT", "次"),
+            Map.entry("IQC_ON_TIME_RATE", "%"), Map.entry("QMS_AUDIT_SCORE", "分"),
+            Map.entry("OTD_RATE", "%"), Map.entry("FILL_RATE", "%"),
+            Map.entry("URGENT_RESPONSE", "档"), Map.entry("COST_DOWN_RATE", "%"),
+            Map.entry("PRICE_COMPETITIVENESS", "档"), Map.entry("PAYMENT_COOP", "档"),
+            Map.entry("ISSUE_RESPONSE", "档"), Map.entry("ABNORMAL_COOP", "档"),
+            Map.entry("CONTACT_STABILITY", "档"));
+    expectedUnits.forEach(
+        (code, unit) ->
+            assertThat(byCode.get(code).unit()).as("指标 %s 的单位", code).isEqualTo(unit));
 
     // 计分方式：TARGET 的目标值按百分数数值记（与 01 §6.1 的公式同口径）
-    assertThat(byCode.get("OTD_RATE").scoreMode()).isEqualTo(ScoreMode.TARGET);
+    assertThat(byCode.values().stream().filter(i -> i.scoreMode() == ScoreMode.TARGET).map(IndicatorSnapshot::code))
+        .containsExactlyInAnyOrder("OTD_RATE", "COST_DOWN_RATE");
     assertThat(byCode.get("OTD_RATE").targetValue()).isEqualByComparingTo("98");
     assertThat(byCode.get("COST_DOWN_RATE").targetValue()).isEqualByComparingTo("3");
 
-    // 定性指标没有计分方式（策略由 type 决定）；定性档位文案只对 URGENT_RESPONSE 有（附录 A 只给了它）
-    assertThat(byCode.get("URGENT_RESPONSE").type()).isEqualTo(IndicatorType.QUAL);
-    assertThat(byCode.get("URGENT_RESPONSE").scoreMode()).isNull();
+    // 定性指标没有计分方式（策略由 type 决定）；定性档位文案只有 URGENT_RESPONSE 有（附录 A 只给了它）
+    assertThat(byCode.values().stream().filter(i -> i.type() == IndicatorType.QUAL))
+        .hasSize(6)
+        .allSatisfy(i -> assertThat(i.scoreMode()).isNull());
     assertThat(byCode.get("URGENT_RESPONSE").standard()).contains("4 小时内响应");
     assertThat(byCode.get("ISSUE_RESPONSE").standard()).isNull();
 
     // DIRECT 指标的换算表必须落进 standard，否则 P3 会把它当普通 0~100 直接打分（12 §E15 的 R-2）
     assertThat(byCode.get("QUALITY_ACCIDENT").standard()).isEqualTo("0 次=100，1 次=60，≥2 次=0");
     assertThat(byCode.get("QMS_AUDIT_SCORE").standard()).isEqualTo("0~100");
+
+    // 把 W1 手工跑过的那两条权重判据变成用例：维度合计 100、**每个维度内**指标合计 100
+    BigDecimal dimensionSum =
+        jdbcTemplate.queryForObject(
+            "SELECT SUM(weight) FROM dimension WHERE template_version_id = ?", BigDecimal.class, versionId);
+    assertThat(dimensionSum).as("维度权重合计").isEqualByComparingTo("100");
+    List<BigDecimal> perDimensionSums =
+        jdbcTemplate.queryForList(
+            "SELECT SUM(i.weight) FROM dimension d JOIN indicator i ON i.dimension_id = d.id"
+                + " WHERE d.template_version_id = ? GROUP BY d.id",
+            BigDecimal.class,
+            versionId);
+    assertThat(perDimensionSums)
+        .as("每个维度内的指标权重合计")
+        .hasSize(4)
+        .allSatisfy(sum -> assertThat(sum).isEqualByComparingTo("100"));
   }
 
   @Test
@@ -130,7 +173,7 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
     assertThat(snapshotDimensions(effective.versionId())).hasSize(sourceDimensions.size());
     assertThat(effective.dimensionIdMap()).hasSize(sourceDimensions.size());
     assertThat(effective.indicatorIdMap()).hasSize(13);
-    assertThat(effective.resolveDimension(sourceDimensions.get(0).getId()))
+    assertThat(effective.requireDimensionId(sourceDimensions.get(0).getId(), sourceVersionId))
         .isNotEqualTo(sourceDimensions.get(0).getId());
   }
 
@@ -208,6 +251,56 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
     // 若把它写成 primitive `boolean isKey`，Lombok 会生成 `isKey()`、属性名被推断成 `key`，
     // 该列会被**静默丢弃**——默认的 autoMappingUnknownColumnBehavior 不报错。这条用例就是那个开关。
     assertThat(tree.dimensions().get(0).isKey()).isTrue();
+  }
+
+  @Test
+  @DisplayName("对【已发布】版本的维度加指标 → 落到新草稿，且 dimension_id 指向**新草稿**的行（04-057 的回归）")
+  void addIndicatorOnPublishedDimensionLandsInTheNewDraft() {
+    long publishedVersionId = publishedDefaultVersionId();
+    Dimension target = snapshotDimensions(publishedVersionId).get(0);
+    String code = "NEW_CODE_" + System.nanoTime();
+
+    EffectiveVersion effective =
+        templateService.addIndicator(
+            target.getId(), "新增指标", code, new BigDecimal("10.00"),
+            IndicatorType.QUANT, ScoreMode.RATIO, "%", null, null, 99);
+
+    assertThat(effective.copied()).isTrue();
+    long draftId = effective.versionId();
+    long expectedDimensionId = effective.requireDimensionId(target.getId(), publishedVersionId);
+
+    // 关键断言：新指标必须挂在新草稿的对应维度上。若漏了 id 翻译，这里会是**旧版本**的维度 id ——
+    // 插入照样成功（表上无外键），但从此看不进树、不计入权重、删维度也删不掉。
+    Long actualDimensionId =
+        jdbcTemplate.queryForObject(
+            "SELECT dimension_id FROM indicator WHERE template_version_id = ? AND code = ? ORDER BY id DESC LIMIT 1",
+            Long.class,
+            draftId,
+            code);
+    assertThat(actualDimensionId).isEqualTo(expectedDimensionId);
+
+    // 它必须在树里看得见（曾经是"看不见"的那类静默失败）
+    TemplateVersionTree tree = templateService.detail(draftId);
+    assertThat(
+            tree.dimensions().stream()
+                .flatMap(d -> d.indicators().stream())
+                .map(IndicatorView::code))
+        .contains(code);
+
+    // 且它必须计入发布校验的权重统计（否则会报一个莫名其妙的"合计不是 100"）
+    Long indicatorCountOnTarget =
+        jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM indicator WHERE template_version_id = ? AND dimension_id = ?",
+            Long.class,
+            draftId,
+            expectedDimensionId);
+    Long expectedCount =
+        jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) + 1 FROM indicator WHERE template_version_id = ? AND dimension_id = ?",
+            Long.class,
+            publishedVersionId,
+            target.getId());
+    assertThat(indicatorCountOnTarget).isEqualTo(expectedCount);
   }
 
   // ---------------------------------------------------------------- 辅助

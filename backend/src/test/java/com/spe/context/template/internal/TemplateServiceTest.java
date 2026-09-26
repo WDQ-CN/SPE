@@ -17,6 +17,8 @@ import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
 import com.spe.context.system.api.AuditAction;
 import com.spe.context.system.api.AuditFacade;
+import com.spe.context.template.api.IndicatorType;
+import com.spe.context.template.api.ScoreMode;
 import com.spe.context.template.api.TemplateVersionStatus;
 import java.math.BigDecimal;
 import java.util.List;
@@ -67,7 +69,7 @@ class TemplateServiceTest {
   @Test
   @DisplayName("发布：维度权重合计 99.98 → 2011，且报文里带实际值（用户要知道差多少）")
   void publishRejectsDimensionWeightBelowFull() {
-    when(templateVersionMapper.findById(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
+    when(templateVersionMapper.findByIdForUpdate(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
     when(dimensionMapper.findForValidation(1L))
         .thenReturn(List.of(validationRow(10L, "质量", "99.98", 4, "100.00")));
 
@@ -82,7 +84,7 @@ class TemplateServiceTest {
   @Test
   @DisplayName("发布：合计 100.01 同样被拒——边界两侧都要拦，不能只判小于")
   void publishRejectsDimensionWeightAboveFull() {
-    when(templateVersionMapper.findById(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
+    when(templateVersionMapper.findByIdForUpdate(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
     when(dimensionMapper.findForValidation(1L))
         .thenReturn(List.of(validationRow(10L, "质量", "100.01", 4, "100.00")));
 
@@ -94,7 +96,7 @@ class TemplateServiceTest {
   @Test
   @DisplayName("发布：某维度一个指标都没有 → 2012（LEFT JOIN 必须把空维度带回来）")
   void publishRejectsEmptyDimension() {
-    when(templateVersionMapper.findById(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
+    when(templateVersionMapper.findByIdForUpdate(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
     when(dimensionMapper.findForValidation(1L))
         .thenReturn(List.of(validationRow(10L, "质量", "100.00", 0, "0")));
 
@@ -108,7 +110,7 @@ class TemplateServiceTest {
   @Test
   @DisplayName("发布：某维度内指标合计 99.99 → 2011（这是「维度内」口径，不是模板内）")
   void publishRejectsIndicatorWeightNotFull() {
-    when(templateVersionMapper.findById(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
+    when(templateVersionMapper.findByIdForUpdate(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
     when(dimensionMapper.findForValidation(1L))
         .thenReturn(List.of(validationRow(10L, "质量", "100.00", 4, "99.99")));
 
@@ -122,7 +124,7 @@ class TemplateServiceTest {
   @Test
   @DisplayName("发布：TARGET 目标值缺失或 ≤ 0 → 2013，并列出违规编码")
   void publishRejectsInvalidTarget() {
-    when(templateVersionMapper.findById(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
+    when(templateVersionMapper.findByIdForUpdate(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
     when(dimensionMapper.findForValidation(1L))
         .thenReturn(List.of(validationRow(10L, "交付", "100.00", 3, "100.00")));
     when(indicatorMapper.findInvalidTargets(1L)).thenReturn(List.of("OTD_RATE"));
@@ -137,7 +139,7 @@ class TemplateServiceTest {
   @Test
   @DisplayName("发布：版本内编码重复 → 2014（唯一键之外的发布期兜底）")
   void publishRejectsDuplicateCode() {
-    when(templateVersionMapper.findById(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
+    when(templateVersionMapper.findByIdForUpdate(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
     when(dimensionMapper.findForValidation(1L))
         .thenReturn(List.of(validationRow(10L, "质量", "100.00", 4, "100.00")));
     when(indicatorMapper.findDuplicateCodes(1L)).thenReturn(List.of("IQC_PASS_RATE"));
@@ -150,7 +152,7 @@ class TemplateServiceTest {
   @Test
   @DisplayName("发布：模板一个维度都没有 → 2012")
   void publishRejectsNoDimension() {
-    when(templateVersionMapper.findById(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
+    when(templateVersionMapper.findByIdForUpdate(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
     when(dimensionMapper.findForValidation(1L)).thenReturn(List.of());
 
     assertThatThrownBy(() -> service.publish(1L, 0))
@@ -161,7 +163,7 @@ class TemplateServiceTest {
   @Test
   @DisplayName("发布：守卫 UPDATE 影响 0 行（状态已被别人改走）→ 3001，且不写审计")
   void publishConflictOnGuardMiss() {
-    when(templateVersionMapper.findById(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
+    when(templateVersionMapper.findByIdForUpdate(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
     when(dimensionMapper.findForValidation(1L))
         .thenReturn(List.of(validationRow(10L, "质量", "100.00", 4, "100.00")));
     when(templateVersionMapper.publish(1L, 0)).thenReturn(0);
@@ -175,7 +177,7 @@ class TemplateServiceTest {
   @Test
   @DisplayName("发布：校验通过 → 落状态并在成功之后留痕")
   void publishSuccessWritesAudit() {
-    when(templateVersionMapper.findById(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
+    when(templateVersionMapper.findByIdForUpdate(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
     when(dimensionMapper.findForValidation(1L))
         .thenReturn(List.of(validationRow(10L, "质量", "100.00", 4, "100.00")));
     when(templateVersionMapper.publish(1L, 0)).thenReturn(1);
@@ -190,7 +192,7 @@ class TemplateServiceTest {
   @Test
   @DisplayName("ensureEditable：本来就是草稿 → 原样返回，不去锁模板行（不必为无复制付代价）")
   void ensureEditableKeepsDraft() {
-    when(templateVersionMapper.findById(1L)).thenReturn(Optional.of(draft(1L, 1, 7)));
+    when(templateVersionMapper.findByIdForUpdate(1L)).thenReturn(Optional.of(draft(1L, 1, 7)));
 
     EffectiveVersion effective = service.ensureEditable(1L);
 
@@ -205,7 +207,7 @@ class TemplateServiceTest {
   @DisplayName("ensureEditable：已发布 → 先锁模板行、再复制整棵树，带回 id 映射并写 AUTO_COPY")
   void ensureEditableCopiesPublished() {
     stubInsertsWithGeneratedIds();
-    when(templateVersionMapper.findById(PUBLISHED_VERSION_ID))
+    when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(published(PUBLISHED_VERSION_ID, TEMPLATE_ID, 3)));
     when(templateMapper.lockById(TEMPLATE_ID)).thenReturn(Optional.of(TEMPLATE_ID));
     when(templateVersionMapper.findDraftCopiedFrom(TEMPLATE_ID, PUBLISHED_VERSION_ID))
@@ -220,8 +222,8 @@ class TemplateServiceTest {
 
     assertThat(effective.copied()).isTrue();
     assertThat(effective.versionId()).isNotEqualTo(PUBLISHED_VERSION_ID);
-    assertThat(effective.resolveDimension(10L)).isNotEqualTo(10L);
-    assertThat(effective.resolveIndicator(100L)).isNotEqualTo(100L);
+    assertThat(effective.requireDimensionId(10L, PUBLISHED_VERSION_ID)).isNotEqualTo(10L);
+    assertThat(effective.requireIndicatorId(100L, PUBLISHED_VERSION_ID)).isNotEqualTo(100L);
     // 锁先于复用查询 —— 顺序反了"复用"就不可信
     var order = org.mockito.Mockito.inOrder(templateMapper, templateVersionMapper);
     order.verify(templateMapper).lockById(TEMPLATE_ID);
@@ -232,9 +234,34 @@ class TemplateServiceTest {
   }
 
   @Test
+  @DisplayName("ensureEditable：状态必须**当前读**——只凭普通读（快照）就断定'还是草稿'，会往已发布版本里写内容")
+  void ensureEditableReadsStatusWithCurrentRead() {
+    stubInsertsWithGeneratedIds();
+    // 只提供"当前读"的返回。**故意不 stub 普通读** `findById`：早先的实现用它判状态，
+    // 在这条用例里会拿到空、抛 2010 —— 也就是说这条用例在旧写法上是红的。
+    when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
+        .thenReturn(Optional.of(published(PUBLISHED_VERSION_ID, TEMPLATE_ID, 3)));
+    when(templateMapper.lockById(TEMPLATE_ID)).thenReturn(Optional.of(TEMPLATE_ID));
+    when(templateVersionMapper.findDraftCopiedFrom(TEMPLATE_ID, PUBLISHED_VERSION_ID))
+        .thenReturn(Optional.empty());
+    when(templateVersionMapper.findMaxVersionNoForUpdate(TEMPLATE_ID)).thenReturn(Optional.of(3));
+    when(dimensionMapper.findByVersionId(PUBLISHED_VERSION_ID))
+        .thenReturn(List.of(dimension(10L, PUBLISHED_VERSION_ID)));
+    when(indicatorMapper.findByVersionId(PUBLISHED_VERSION_ID))
+        .thenReturn(List.of(indicator(100L, 10L)));
+
+    EffectiveVersion effective = service.ensureEditable(PUBLISHED_VERSION_ID);
+
+    // 已发布版本上的写操作必须经"复制"落地。若判状态用的是快照（旧写法），这里会走 sameAs 分支、
+    // 把维度直接插进已发布版本，而版本守卫只能拦 UPDATE、拦不住 INSERT（05 ADR-3 就此失守）。
+    assertThat(effective.copied()).as("必须复制出新草稿，而不是把改动落进已发布版本").isTrue();
+    assertThat(effective.versionId()).isNotEqualTo(PUBLISHED_VERSION_ID);
+  }
+
+  @Test
   @DisplayName("ensureEditable：已有同源草稿 → 复用，且不写 AUTO_COPY（本次没发生复制）")
   void ensureEditableReusesExistingDraft() {
-    when(templateVersionMapper.findById(PUBLISHED_VERSION_ID))
+    when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(published(PUBLISHED_VERSION_ID, TEMPLATE_ID, 3)));
     when(templateMapper.lockById(TEMPLATE_ID)).thenReturn(Optional.of(TEMPLATE_ID));
     when(templateVersionMapper.findDraftCopiedFrom(TEMPLATE_ID, PUBLISHED_VERSION_ID))
@@ -253,7 +280,7 @@ class TemplateServiceTest {
   @DisplayName("复制：连续两次复制拿到递增的版本号（2、3），且每次都用 max+1 而不是硬编码")
   void copyUsesIncreasingVersionNo() {
     stubInsertsWithGeneratedIds();
-    when(templateVersionMapper.findById(PUBLISHED_VERSION_ID))
+    when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(published(PUBLISHED_VERSION_ID, TEMPLATE_ID, 3)));
     when(templateMapper.lockById(TEMPLATE_ID)).thenReturn(Optional.of(TEMPLATE_ID));
     when(templateVersionMapper.findDraftCopiedFrom(eq(TEMPLATE_ID), anyLong()))
@@ -287,7 +314,7 @@ class TemplateServiceTest {
   void updateDimensionUsesZeroGuardAfterCopy() {
     stubInsertsWithGeneratedIds();
     when(dimensionMapper.findById(10L)).thenReturn(Optional.of(dimension(10L, PUBLISHED_VERSION_ID)));
-    when(templateVersionMapper.findById(PUBLISHED_VERSION_ID))
+    when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(published(PUBLISHED_VERSION_ID, TEMPLATE_ID, 3)));
     when(templateMapper.lockById(TEMPLATE_ID)).thenReturn(Optional.of(TEMPLATE_ID));
     when(templateVersionMapper.findDraftCopiedFrom(TEMPLATE_ID, PUBLISHED_VERSION_ID))
@@ -311,7 +338,7 @@ class TemplateServiceTest {
   @DisplayName("updateDimension：复用别人的草稿时没有映射 → 2015，不去猜该改哪一行")
   void updateDimensionFailsWhenDraftReusedByOthers() {
     when(dimensionMapper.findById(10L)).thenReturn(Optional.of(dimension(10L, PUBLISHED_VERSION_ID)));
-    when(templateVersionMapper.findById(PUBLISHED_VERSION_ID))
+    when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(published(PUBLISHED_VERSION_ID, TEMPLATE_ID, 3)));
     when(templateMapper.lockById(TEMPLATE_ID)).thenReturn(Optional.of(TEMPLATE_ID));
     when(templateVersionMapper.findDraftCopiedFrom(TEMPLATE_ID, PUBLISHED_VERSION_ID))
@@ -341,7 +368,7 @@ class TemplateServiceTest {
   @DisplayName("addIndicator：保存时就查重（不等发布），编码重复 → 2014 且不插入")
   void addIndicatorChecksCodeEarly() {
     when(dimensionMapper.findById(10L)).thenReturn(Optional.of(dimension(10L, 1L)));
-    when(templateVersionMapper.findById(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
+    when(templateVersionMapper.findByIdForUpdate(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
     when(indicatorMapper.countByCode(1L, "IQC_PASS_RATE", null)).thenReturn(1L);
 
     assertThatThrownBy(
@@ -352,6 +379,40 @@ class TemplateServiceTest {
         .extracting(ex -> ((BizException) ex).errorCode())
         .isEqualTo(ErrorCode.TEMPLATE_INDICATOR_CODE_DUPLICATE);
     verify(indicatorMapper, never()).insert(any(Indicator.class));
+  }
+
+  @Test
+  @DisplayName("updateIndicator：把编码改成已存在的值 → 2014（唯一键也会被 UPDATE 踩到，不能漏成 5001）")
+  void updateIndicatorTranslatesDuplicateCode() {
+    when(indicatorMapper.findById(100L)).thenReturn(Optional.of(indicator(100L, 10L)));
+    when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
+        .thenReturn(Optional.of(draft(PUBLISHED_VERSION_ID, 3, 0)));
+    when(indicatorMapper.countByCode(PUBLISHED_VERSION_ID, "TAKEN_CODE", 100L)).thenReturn(0L);
+    when(indicatorMapper.update(
+            anyLong(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt()))
+        .thenThrow(new DuplicateKeyException("uk_indicator_version_code"));
+
+    assertThatThrownBy(
+            () ->
+                service.updateIndicator(
+                    100L, "指标一", "TAKEN_CODE", new BigDecimal("100.00"), IndicatorType.QUANT,
+                    ScoreMode.RATIO, "%", null, null, 1, 0))
+        .isInstanceOf(BizException.class)
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.TEMPLATE_INDICATOR_CODE_DUPLICATE);
+  }
+
+  @Test
+  @DisplayName("并发：锁等待超时（CannotAcquireLockException）也翻成 3001，不能漏成 5001（12 §E12 明确要求两类都翻）")
+  void lockWaitTimeoutIsTranslated() {
+    when(templateVersionMapper.insert(any(TemplateVersion.class)))
+        .thenThrow(
+            new org.springframework.dao.CannotAcquireLockException("Lock wait timeout exceeded"));
+
+    assertThatThrownBy(() -> service.create("季度绩效默认模板"))
+        .isInstanceOf(BizException.class)
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.CONCURRENT_CONFLICT);
   }
 
   // ---------------------------------------------------------------- 辅助

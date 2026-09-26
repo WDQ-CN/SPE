@@ -26,6 +26,19 @@ public interface TemplateVersionMapper extends BaseMapper<TemplateVersion> {
   @Select("SELECT " + COLUMNS + " FROM template_version WHERE id = #{id}")
   Optional<TemplateVersion> findById(@Param("id") long id);
 
+  /**
+   * **当前读**并锁住版本行（12 §E12 / 04-057）。
+   *
+   * <p>用于"按状态决定后续动作"的地方——普通读在 REPEATABLE READ 下走事务开始时的快照，读到的是**过期的
+   * 状态**：另一个事务可能在这两步之间把草稿发布了。而 `FOR UPDATE` 是当前读，同时与「发布」那条
+   * `UPDATE template_version ...` 天然互斥，因此拿到的状态在事务内不会再变。
+   *
+   * <p>这不是"更保险一点"，而是正确性：若拿快照里的 DRAFT 去插入维度，就会往一个**已发布版本**里加内容，
+   * 而版本守卫只能拦住 UPDATE、拦不住 INSERT（05 ADR-3 的「发布即冻结」就此失守）。
+   */
+  @Select("SELECT " + COLUMNS + " FROM template_version WHERE id = #{id} FOR UPDATE")
+  Optional<TemplateVersion> findByIdForUpdate(@Param("id") long id);
+
   /** 最新版本（不分状态），供"进入编辑器"定位初始版本。 */
   @Select(
       "SELECT " + COLUMNS
