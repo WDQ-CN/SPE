@@ -287,7 +287,7 @@ async function submitReset(): Promise<void> {
       v-model:page-size="size"
       class="page__pager"
       :total="total"
-      :page-sizes="[10, 20, 50]"
+      :page-sizes="[10, 20, 50, 100]"
       layout="total, sizes, prev, pager, next"
       @current-change="(target: number) => void load(target)"
       @size-change="() => void load(1)"

@@ -156,13 +156,18 @@ test('用户页：新增账号 → 列表可见 → 停用（覆盖对话框、�
   await menuItem(page, '用户管理').click()
   await expect(page).toHaveURL(/\/users$/)
 
+  // 列表按 id 升序，新账号排在末尾；dev 库里累积的账号早已不止一页（每跑一次 e2e 留一个停用账号），
+  // 所以先把每页设到后端上限 100，让新账号与它所在的行落在同一页——否则这条用例会随数据增长而变红。
+  await page.locator('.el-pagination .el-select').click()
+  await page.locator('.el-select-dropdown__item', { hasText: '100' }).first().click()
+
   await page.getByRole('button', { name: '新增用户' }).click()
   await page.getByPlaceholder('登录用的账号').fill(username)
   await page.getByPlaceholder('至少 8 位').fill('E2eTest@12345')
   await page.getByLabel('姓名').fill('E2E 用例账号')
   await page.getByRole('button', { name: '保存' }).click()
 
-  // 新增成功后对话框关闭，新账号出现在列表（后端按 id 升序，新账号在末页；dev 库账号很少故首页可见）
+  // 新增成功后对话框关闭，新账号出现在列表（上面已把页大小设到 100，新账号虽在末尾但仍在同一页）
   await expect(page.locator('.el-dialog')).toBeHidden()
   const row = page.locator('.el-table__row', { hasText: username })
   await expect(row).toContainText('启用')
