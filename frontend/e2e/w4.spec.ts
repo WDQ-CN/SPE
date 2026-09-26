@@ -1,4 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+
+import { ADMIN, FAILURE_PROBE, login, loginAsAdmin, menuItem, watchConsole } from './support'
 
 /**
  * P1-W4 的端到端验收：在真实 Chrome 里走一遍登录、菜单、三个页面，并盯住控制台。
@@ -15,48 +17,7 @@ import { expect, test, type Page } from '@playwright/test'
  * 3. **控制台错误按失败处理**：页面能跑但控制台在报错，通常意味着资源被拦或组件异常。
  */
 
-const ADMIN = { username: 'admin', password: 'Admin@12345' }
-const FAILURE_PROBE = 'e2e-w4-unknown-account'
-
-/** 收集控制台错误；CSP 违规单独挑出来，因为它是「页面看起来正常但资源被拦」的典型。 */
-function watchConsole(page: Page): { all: string[]; csp: string[] } {
-  const all: string[] = []
-  const csp: string[] = []
-  page.on('console', (message) => {
-    if (message.type() !== 'error') {
-      return
-    }
-    const text = message.text()
-    // 浏览器会为任何非 2xx 响应自动打一条 "Failed to load resource"：401/403 是本项目的**预期**结果
-    // （登录失败返回 401、越权返回 403），把它当缺陷会让用例在正确行为下变红。
-    // 真正要盯的是 **JS 异常**（pageerror）与 **CSP 违规**——这两类没有豁免。
-    if (/Failed to load resource/i.test(text)) {
-      return
-    }
-    all.push(text)
-    if (/Content Security Policy|Refused to (load|execute|apply)/i.test(text)) {
-      csp.push(text)
-    }
-  })
-  page.on('pageerror', (error) => all.push(`pageerror: ${error.message}`))
-  return { all, csp }
-}
-
-async function login(page: Page, username: string, password: string): Promise<void> {
-  await page.goto('/login')
-  await page.getByPlaceholder('请输入账号').fill(username)
-  await page.getByPlaceholder('请输入密码').fill(password)
-  await page.getByRole('button', { name: '登录' }).click()
-}
-
-function menuItem(page: Page, name: string) {
-  return page.locator('.el-menu-item', { hasText: name })
-}
-
-async function loginAsAdmin(page: Page): Promise<void> {
-  await login(page, ADMIN.username, ADMIN.password)
-  await expect(page.locator('.el-menu-item').first()).toBeVisible()
-}
+// 探针账号约定、控制台监视、登录与菜单定位统一放在 ./support（w5/w6 也用），见那里的注释
 
 test('admin 登录后落首页：菜单四项、身份正确、控制台无错误', async ({ page }) => {
   const console_ = watchConsole(page)
