@@ -67,7 +67,12 @@ const report = computed(() =>
     dimensions.value.map((dimension) => ({
       name: dimension.name,
       weight: dimension.weight,
-      indicators: dimension.indicators.map((indicator) => ({ weight: indicator.weight })),
+      indicators: dimension.indicators.map((indicator) => ({
+        weight: indicator.weight,
+        code: indicator.code,
+        scoreMode: indicator.scoreMode,
+        targetValue: indicator.targetValue,
+      })),
     })),
   ),
 )
@@ -91,24 +96,51 @@ const publishHint = computed(() => {
   if (report.value.indicatorIssues.length > 0) {
     return report.value.indicatorIssues.map((issue) => issue.check.message).join('；')
   }
+  if (report.value.invalidTargets.length > 0) {
+    return `以下"目标达成率"指标缺目标值（或不为正数）：${report.value.invalidTargets.join('、')}`
+  }
+  if (!canWrite.value) {
+    // P2-8：只读角色不该看到"可以发布"——文案与权限矛盾会误导（按钮本来就不渲染）
+    return '当前角色为只读：可以查看权重口径，但不能修改或发布。'
+  }
   return '权重合计正确，可以发布。'
 })
 
+/** 请求序号：只有最后一次 `loadTree` 的结果会被采用（见函数内注释）。 */
+let treeRequestSeq = 0
+
 async function loadTree(): Promise<void> {
   const versionId = Number(route.params.versionId)
+  // ⚠️ 请求序号：`loadTree` 可能被并发触发（快速点两次"重试"、或路由切换与重试叠加），
+  // 而 `usePagedList` 早就为列表做过同一件事。这里更要紧——乱序后 `tree.value` 可能是**另一个版本**
+  // 的树，而 `addDimension` 用的是 `tree.value.versionId`，那就等于**往非预期版本写**
+  // （03 §30 的 P2-10；审查者没能构造出高可达序列，但修法只要三行，不值得赌）。
+  const seq = ++treeRequestSeq
   if (!Number.isFinite(versionId)) {
+    // ⚠️ 这里必须**同时清掉 tree**：只设 loadError 的话，错误提示会与"上一个版本"的维度树同时渲染，
+    // 而写按钮仍然可用 → 用户能在"URL 与内容不一致"的状态下往旧版本写（03 §30 的 P2-6）。
+    tree.value = null
     loadError.value = '版本参数不合法'
     return
   }
   loading.value = true
   loadError.value = ''
   try {
-    tree.value = await getVersionTree(versionId)
+    const loaded = await getVersionTree(versionId)
+    if (seq !== treeRequestSeq) {
+      return
+    }
+    tree.value = loaded
   } catch (caught) {
+    if (seq !== treeRequestSeq) {
+      return
+    }
     tree.value = null
     loadError.value = caught instanceof Error ? caught.message : '加载失败'
   } finally {
-    loading.value = false
+    if (seq === treeRequestSeq) {
+      loading.value = false
+    }
   }
 }
 
@@ -674,6 +706,12 @@ function statusTagType(): 'success' | 'warning' | 'info' {
           <span class="editor__muted">（供预警规则使用）</span>
         </el-form-item>
       </el-form>
+      <p
+        v-if="errorMessage"
+        class="editor__error-text"
+      >
+        {{ errorMessage }}
+      </p>
       <template #footer>
         <el-button @click="dimensionDialog = false">
           取消
@@ -792,6 +830,12 @@ function statusTagType(): 'success' | 'warning' | 'info' {
           />
         </el-form-item>
       </el-form>
+      <p
+        v-if="errorMessage"
+        class="editor__error-text"
+      >
+        {{ errorMessage }}
+      </p>
       <template #footer>
         <el-button @click="indicatorDialog = false">
           取消
@@ -861,6 +905,15 @@ function statusTagType(): 'success' | 'warning' | 'info' {
   padding: 24px 0;
   text-align: center;
   color: var(--el-text-color-secondary);
+}
+
+/* ⚠️ 2xxx（如"编码重复 2014"、"维度不存在 2015"）由 useSubmit 只写进 errorMessage，
+   而 http 拦截器对 param 段刻意不弹全局提示——所以对话框里**必须**渲染它，否则用户在
+   对话框内提交失败时看不到任何原因（页面级那个 alert 在模态遮罩之下）。见 03 §30 的 P1-1。 */
+.editor__error-text {
+  margin: 0 0 4px;
+  color: var(--el-color-danger);
+  font-size: 13px;
 }
 
 .editor__add-dimension {

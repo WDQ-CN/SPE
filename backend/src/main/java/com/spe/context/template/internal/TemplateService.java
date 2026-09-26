@@ -500,12 +500,62 @@ public class TemplateService {
 
     return templateVersionMapper
         .findDraftCopiedFrom(templateId, version.getId())
-        .map(
-            draft ->
-                // 复用它：本次没有发生复制，因此不写 TEMPLATE_VERSION_AUTO_COPY，
-                // 也不带 id 映射——调用方若想"改/删某一行"，那一行不在这个版本里（EffectiveVersion 有判据）
-                new EffectiveVersion(draft.getId(), draft.getVersion(), false, Map.of(), Map.of()))
+        .map(draft -> reuseExistingDraft(draft, version))
         .orElseGet(() -> copyToNewDraft(version, templateId));
+  }
+
+  /**
+   * 复用别人已经建好的同源草稿，并**重建「源行 id → 草稿行 id」的映射**（12 §E5 的并发意图）。
+   *
+   * <p>⚠️ 这里原先返回空映射，于是 {@link EffectiveVersion#switchedWithoutMap} 判为真、调用方拿到
+   * 2015「维度不存在」——**而那一行明明在**（复制时照抄过去了），只是没有映射能定位它。后果是 E5 明写的
+   * 场景「两个人同时改同一已发布版本的**不同维度**，理应落在**同一份**新草稿上」实际会失败，而且报的错
+   * 有误导性（说"不存在"，其实存在）。P2 深审用一个并发用例把它钉住了
+   * （`TemplateConcurrencyIntegrationTest.concurrentEditsOnPublishedVersionShareOneDraft`）。
+   *
+   * <p>重建方式：**指标按 `code`**（版本内唯一，最可靠）、**维度按 `(sort_no, name)`**（维度没有唯一键，
+   * 但复制是逐一照抄，这两个字段必然原样带过去）。配对不上的行**不进映射**，调用方拿到 2015/2016——
+   * 那时它确实不在草稿里（例如它在源版本存在、但草稿里那一行被别人删掉了）。
+   *
+   * <p>`copied` 保持 `false`：本次**没有**发生复制，不该写 `TEMPLATE_VERSION_AUTO_COPY` 审计
+   * （12 §E5 的要求）。能否定位行由映射本身决定，与这个标志解耦。
+   * <p>⚠️ 这里的四条查询**必须用当前读**（`...ForShare`）。第一版我用了普通读，结果用例仍然红了：
+   * 调用方（如 `updateDimension`）在进入本方法前先做了一次 `requireDimension` 普通读，**read view 就此钉死**；
+   * 之后即便本方法拿了锁，普通读看到的仍是对方**提交前**的快照 → 草稿的维度一条都查不到 → 配对全空。
+   * 这是 CLAUDE 第 6 条那个坑的第四次显形，而且比前几次更隐蔽：**旧读发生在锁之后**。
+   */
+  private EffectiveVersion reuseExistingDraft(TemplateVersion draft, TemplateVersion source) {
+    Map<String, Long> draftDimensions = new HashMap<>();
+    for (Dimension dimension : dimensionMapper.findByVersionIdForShare(draft.getId())) {
+      draftDimensions.put(dimensionKey(dimension.getSortNo(), dimension.getName()), dimension.getId());
+    }
+    Map<Long, Long> dimensionIdMap = new HashMap<>();
+    for (Dimension dimension : dimensionMapper.findByVersionIdForShare(source.getId())) {
+      Long newId = draftDimensions.get(dimensionKey(dimension.getSortNo(), dimension.getName()));
+      if (newId != null) {
+        dimensionIdMap.put(dimension.getId(), newId);
+      }
+    }
+
+    Map<String, Long> draftIndicators = new HashMap<>();
+    for (Indicator indicator : indicatorMapper.findByVersionIdForShare(draft.getId())) {
+      draftIndicators.put(indicator.getCode(), indicator.getId());
+    }
+    Map<Long, Long> indicatorIdMap = new HashMap<>();
+    for (Indicator indicator : indicatorMapper.findByVersionIdForShare(source.getId())) {
+      Long newId = draftIndicators.get(indicator.getCode());
+      if (newId != null) {
+        indicatorIdMap.put(indicator.getId(), newId);
+      }
+    }
+
+    return new EffectiveVersion(
+        draft.getId(), draft.getVersion(), false, dimensionIdMap, indicatorIdMap);
+  }
+
+  /** 维度的配对键：`sort_no` 可重复、名称也可重复，但两者的组合在"复制照抄"的语境下足够定位。 */
+  private static String dimensionKey(Integer sortNo, String name) {
+    return (sortNo == null ? 0 : sortNo) + "\u0000" + name;
   }
 
   /** 把源版本整棵树复制成新草稿，返回新版本信息 + 旧行到新行的 id 映射。 */

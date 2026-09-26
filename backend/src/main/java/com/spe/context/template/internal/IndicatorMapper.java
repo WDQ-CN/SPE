@@ -31,6 +31,13 @@ public interface IndicatorMapper extends BaseMapper<Indicator> {
           + " FROM indicator WHERE template_version_id = #{versionId} ORDER BY dimension_id, sort_no, id")
   List<Indicator> findByVersionId(@Param("versionId") long versionId);
 
+  /** 同 {@link #findByVersionId}，但用共享锁（当前读）——理由见 `DimensionMapper.findByVersionIdForShare`。 */
+  @Select(
+      "SELECT " + COLUMNS
+          + " FROM indicator WHERE template_version_id = #{versionId}"
+          + " ORDER BY dimension_id, sort_no, id FOR SHARE")
+  List<Indicator> findByVersionIdForShare(@Param("versionId") long versionId);
+
   @Select("SELECT " + COLUMNS + " FROM indicator WHERE id = #{id}")
   Optional<Indicator> findById(@Param("id") long id);
 

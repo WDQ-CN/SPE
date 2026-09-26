@@ -12,6 +12,7 @@ import com.spe.context.template.internal.web.dto.UpdateDimensionRequest;
 import com.spe.context.template.internal.web.dto.UpdateIndicatorRequest;
 import com.spe.context.template.internal.web.dto.WriteResult;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -111,7 +112,7 @@ public class TemplateController {
    */
   @DeleteMapping("/dimensions/{id}")
   public Result<WriteResult> deleteDimension(
-      @PathVariable long id, @RequestParam int version) {
+      @PathVariable long id, @RequestParam @Min(0) int version) {
     return Result.ok(WriteResult.of(templateService.deleteDimension(id, version)));
   }
 
@@ -154,7 +155,7 @@ public class TemplateController {
 
   @DeleteMapping("/indicators/{id}")
   public Result<WriteResult> deleteIndicator(
-      @PathVariable long id, @RequestParam int version) {
+      @PathVariable long id, @RequestParam @Min(0) int version) {
     return Result.ok(WriteResult.of(templateService.deleteIndicator(id, version)));
   }
 

@@ -55,12 +55,18 @@ public record EffectiveVersion(
   }
 
   /**
-   * 是否"目标已发布、但草稿是别人先复制好的"——此时没有 id 映射，"改/删某一行"无法定位。
+   * 是否"目标版本换了、但没有可用的行映射"——此时"改/删某一行"无法定位。
+   *
+   * <p>⚠️ 判据是**映射为空**，不是 {@code !copied}。早先用 `!copied` 是错的：复用别人先复制好的草稿时
+   * 也不算"本次发生了复制"（`copied=false`），但那一行**确实在新草稿里**（复制时照抄过去了），
+   * 只要重建了映射就能定位。用 `!copied` 会让 E5 明写的并发场景（两人改同一已发布版本的不同维度、
+   * 落在同一份草稿上）的第二个请求拿到 2015「维度不存在」——一个既失败又有误导性的结果。
+   * 现在 {@code copied} 只表示"本次新建了草稿"（决定要不要写 AUTO_COPY 审计），与能否定位行解耦。
    *
    * <p>一般不需要直接用它：走 {@link #requireDimensionId} / {@link #requireIndicatorId} 即可。
    */
   public boolean switchedWithoutMap(long requestedVersionId) {
-    return versionId != requestedVersionId && !copied;
+    return versionId != requestedVersionId && dimensionIdMap.isEmpty() && indicatorIdMap.isEmpty();
   }
 
   private void requireMapped(long requestedVersionId, ErrorCode errorCode) {

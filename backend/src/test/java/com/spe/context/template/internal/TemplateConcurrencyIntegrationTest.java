@@ -186,7 +186,75 @@ class TemplateConcurrencyIntegrationTest extends AbstractIntegrationTest {
         .isEqualTo(com.spe.context.template.api.TemplateVersionStatus.DRAFT);
   }
 
+  // ---------------------------------------------------------------- 12 §E5 的并发意图（P2 深审加）
+
+  @Test
+  @DisplayName("并发：已发布版本上改两个**不同**维度 → 都应落在同一份新草稿（12 §E5 的明文意图）")
+  void concurrentEditsOnPublishedVersionShareOneDraft() throws Exception {
+    long publishedVersionId = newPublishedTemplateWithTwoDimensions();
+    List<Dimension> dimensions = dimensionsOf(publishedVersionId);
+    assertThat(dimensions).hasSize(2);
+
+    List<Object> results =
+        runConcurrently(
+            2,
+            List.of(
+                () -> updateDimensionName(dimensions.get(0), "质量-并发改"),
+                () -> updateDimensionName(dimensions.get(1), "交付-并发改")));
+
+    // 12 §E5 原文：「两个人同时改同一已发布版本的**不同维度**，理应落在**同一份**新草稿上」
+    assertThat(results)
+        .as("两个请求都应成功——第二个应当复用同一份草稿，而不是报 2015")
+        .allSatisfy(r -> assertThat(r).isInstanceOf(EffectiveVersion.class));
+
+    Set<Long> effectiveVersionIds =
+        results.stream().map(r -> ((EffectiveVersion) r).versionId()).collect(Collectors.toSet());
+    assertThat(effectiveVersionIds).as("两个改动必须落在同一个草稿上").hasSize(1);
+
+    long draftId = effectiveVersionIds.iterator().next();
+    assertThat(draftId).isNotEqualTo(publishedVersionId);
+    assertThat(versionRow(draftId).getStatus())
+        .isEqualTo(com.spe.context.template.api.TemplateVersionStatus.DRAFT);
+    // 源已发布版本一个字段都没动
+    assertThat(dimensionsOf(publishedVersionId))
+        .extracting(Dimension::getName)
+        .containsExactly("质量", "交付");
+    // 新草稿里两处改动都在
+    assertThat(dimensionsOf(draftId))
+        .extracting(Dimension::getName)
+        .containsExactlyInAnyOrder("质量-并发改", "交付-并发改");
+  }
+
   // ---------------------------------------------------------------- 辅助
+
+  /** 新建并**发布**一个带两个维度的模板（各 50 权重、各 1 个指标 100），供 §E5 的并发用例使用。 */
+  private long newPublishedTemplateWithTwoDimensions() {
+    TemplateSummary created = templateService.create("并发双维度用例-" + System.nanoTime());
+    long versionId = created.latestVersionId();
+    versionId =
+        templateService.addDimension(versionId, "质量", new BigDecimal("50.00"), 1, "质量", false).versionId();
+    versionId =
+        templateService
+            .addDimension(versionId, "交付", new BigDecimal("50.00"), 2, "交付物流", false)
+            .versionId();
+
+    for (Dimension dimension : dimensionsOf(versionId)) {
+      templateService.addIndicator(
+          dimension.getId(),
+          dimension.getName() + "指标",
+          "CONC_" + dimension.getSortNo() + "_" + System.nanoTime(),
+          new BigDecimal("100.00"),
+          IndicatorType.QUANT,
+          com.spe.context.template.api.ScoreMode.RATIO,
+          "%",
+          null,
+          null,
+          1);
+    }
+    TemplateVersion draft = versionRow(versionId);
+    templateService.publish(versionId, draft.getVersion());
+    return versionId;
+  }
 
   /** 建一个「内容合规但未发布」的草稿：1 个维度(100) + 1 个指标(100)。 */
   private long newPublishableDraft() {

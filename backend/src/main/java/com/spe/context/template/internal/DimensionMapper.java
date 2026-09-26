@@ -27,6 +27,23 @@ public interface DimensionMapper extends BaseMapper<Dimension> {
           + " FROM dimension WHERE template_version_id = #{versionId} ORDER BY sort_no, id")
   List<Dimension> findByVersionId(@Param("versionId") long versionId);
 
+  /**
+   * 与 {@link #findByVersionId} 同一条查询，但用**共享锁**（当前读）。
+   *
+   * <p>为什么需要它：{@code ensureEditable} 复用"别人刚复制好的草稿"时，要按业务键把源版本的行与草稿的
+   * 行配对。而那时本事务**可能已经建立过 read view**（调用方进入 service 前先做了一次 `requireDimension`
+   * 这样的普通读），普通读走的是那个快照、**看不到对方刚提交的草稿内容** → 配对全空 → 调用方拿到
+   * 2015「维度不存在」，而那一行明明在。
+   *
+   * <p>⚠️ 这是 CLAUDE 第 6 条（"加了锁不等于读到最新"）的第四次显形，而这次更隐蔽：**旧读发生在锁之后**。
+   * 锁定读（`FOR UPDATE`/`FOR SHARE`）不建立也不使用 read view，所以它能看到最新已提交的数据。
+   */
+  @Select(
+      "SELECT " + COLUMNS
+          + " FROM dimension WHERE template_version_id = #{versionId}"
+          + " ORDER BY sort_no, id FOR SHARE")
+  List<Dimension> findByVersionIdForShare(@Param("versionId") long versionId);
+
   @Select("SELECT " + COLUMNS + " FROM dimension WHERE id = #{id}")
   Optional<Dimension> findById(@Param("id") long id);
 

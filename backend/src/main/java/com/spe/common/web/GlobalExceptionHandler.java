@@ -9,10 +9,14 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 /**
@@ -70,6 +74,76 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   public ResponseEntity<Result<Void>> handleUnexpected(Exception ex, HttpServletRequest request) {
     log.error("未预期异常：{} {}", request.getMethod(), request.getRequestURI(), ex);
     return ResponseEntity.status(ErrorCode.INTERNAL_ERROR.httpStatus()).body(Result.fail(ErrorCode.INTERNAL_ERROR));
+  }
+
+  /**
+   * 把 Spring 的框架级异常统一包成 {@link Result}，**保留父类判定的 HTTP 状态**。
+   *
+   * <p>为什么必须逐个覆写：{@code ResponseEntityExceptionHandler} 默认产出 `ProblemDetail`
+   * （`application/problem+json`），**里面没有 `code` 字段**。而前端 `app/http/index.ts` 按
+   * `typeof result.code === 'number'` 分流——拿不到 code 就落到传输层兜底，用户看到的是一句
+   * 「请求未被接受（400）」，2xxx 的表单回显与 3xxx/4xxx 的全局提示**同时失效**。
+   *
+   * <p>⚠️ 这是同一个坑的第二次：W3 只覆写了 {@link #handleHttpMessageNotReadable}（非法枚举），
+   * 于是**其余五条路径**都还是 ProblemDetail。P2 深审用 curl 逐条实测后补齐（03 §30 的 P1-1）。
+   * 刻意**保留原状态码**而不是统统改成 400：405/415 的语义不该被抹掉，前端要的只是一个能分流的 `code`。
+   */
+  private static ResponseEntity<Object> asResult(HttpStatusCode status, String message) {
+    return ResponseEntity.status(status).body(Result.fail(ErrorCode.BAD_REQUEST.code(), message));
+  }
+
+  /**
+   * 缺少必填参数（如 `DELETE /dimensions/{id}` 漏传 `version`）。
+   *
+   * <p>⚠️ 这条是 W3 引入 `@RequestParam int version` 后**新增**的高频路径——漏传就走到这里。
+   */
+  @Override
+  protected ResponseEntity<Object> handleMissingServletRequestParameter(
+      MissingServletRequestParameterException ex,
+      HttpHeaders headers,
+      HttpStatusCode status,
+      WebRequest request) {
+    log.warn("缺少必需参数：{}", ex.getParameterName());
+    return asResult(status, "缺少必需的参数：" + ex.getParameterName());
+  }
+
+  /**
+   * 参数类型不符（如 `?page=abc`、`/indicators/abc`）。
+   *
+   * <p>⚠️ 这一条用 `@ExceptionHandler` 而**不是** `@Override`：`javap` 实测 Spring 6.2 的
+   * {@code ResponseEntityExceptionHandler} **已经没有** {@code handleMethodArgumentTypeMismatch}
+   * 钩子（其余四个仍在），它走的是 `ErrorResponse` 的通用路径、产出 `ProblemDetail`。
+   * 一开始我照其它三条的样子写 `@Override`，编译直接报"方法不会覆盖超类型的成员"——这就是
+   * "不猜框架的扩展点、去看它到底提供了什么"的价值（题面与实现不一致时，**去看实现**）。
+   */
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  public ResponseEntity<Result<Void>> handleMethodArgumentTypeMismatch(
+      MethodArgumentTypeMismatchException ex) {
+    log.warn("参数类型不符：{}={}", ex.getName(), ex.getValue());
+    return ResponseEntity.status(ErrorCode.BAD_REQUEST.httpStatus())
+        .body(Result.fail(ErrorCode.BAD_REQUEST.code(), "参数 " + ex.getName() + " 的取值不合法"));
+  }
+
+  /** 方法不允许（如对只读端点发 PATCH）。 */
+  @Override
+  protected ResponseEntity<Object> handleHttpRequestMethodNotSupported(
+      HttpRequestMethodNotSupportedException ex,
+      HttpHeaders headers,
+      HttpStatusCode status,
+      WebRequest request) {
+    log.warn("方法不允许：{}", ex.getMessage());
+    return asResult(status, "该接口不支持此请求方法");
+  }
+
+  /** 媒体类型不支持（如 `Content-Type: text/plain` 提交 JSON 接口）。 */
+  @Override
+  protected ResponseEntity<Object> handleHttpMediaTypeNotSupported(
+      HttpMediaTypeNotSupportedException ex,
+      HttpHeaders headers,
+      HttpStatusCode status,
+      WebRequest request) {
+    log.warn("媒体类型不支持：{}", ex.getContentType());
+    return asResult(status, "请求的 Content-Type 不受支持，请使用 application/json");
   }
 
   /** 参数校验失败：拼接字段错误，按 2xxx 返回，供表单回显。 */

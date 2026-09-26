@@ -124,6 +124,53 @@ describe('模板整体权重报告', () => {
     expect(report.dimensions.valid).toBe(false)
   })
 
+  it('TARGET 指标缺目标值或 ≤ 0 → 不可发布（对应后端 2013；面板不能谎称"可以发布"）', () => {
+    // 这是 P1-2 钉住的行为：表单允许目标值留空（E4 的中间态），但发布闸门必须跟着拦，
+    // 否则用户看到的是"权重合计正确，可以发布"，点下去必然被后端 2013 拒。
+    const missing = checkTemplateWeights([
+      {
+        name: '交付',
+        weight: 100,
+        indicators: [{ weight: 100, code: 'OTD_RATE', scoreMode: 'TARGET', targetValue: null }],
+      },
+    ])
+    expect(missing.publishable).toBe(false)
+    expect(missing.invalidTargets).toEqual(['交付/OTD_RATE'])
+
+    const zero = checkTemplateWeights([
+      {
+        name: '交付',
+        weight: 100,
+        indicators: [{ weight: 100, code: 'OTD_RATE', scoreMode: 'TARGET', targetValue: 0 }],
+      },
+    ])
+    expect(zero.publishable).toBe(false)
+
+    // 填了正数就放行
+    const ok = checkTemplateWeights([
+      {
+        name: '交付',
+        weight: 100,
+        indicators: [{ weight: 100, code: 'OTD_RATE', scoreMode: 'TARGET', targetValue: 98 }],
+      },
+    ])
+    expect(ok.invalidTargets).toHaveLength(0)
+    expect(ok.publishable).toBe(true)
+  })
+
+  it('非 TARGET 指标的目标值为空或 0 不影响发布（后端 SQL 也只判 score_mode=TARGET）', () => {
+    const report = checkTemplateWeights([
+      {
+        name: '质量',
+        weight: 100,
+        indicators: [{ weight: 100, code: 'IQC_PASS_RATE', scoreMode: 'RATIO', targetValue: null }],
+      },
+    ])
+
+    expect(report.invalidTargets).toHaveLength(0)
+    expect(report.publishable).toBe(true)
+  })
+
   it('不合规只是禁用发布，不阻止保存——报告里没有任何"禁止保存"的含义', () => {
     const report = checkTemplateWeights([{ name: '质量', weight: 30, indicators: [{ weight: 100 }] }])
 
@@ -133,6 +180,7 @@ describe('模板整体权重报告', () => {
       'dimensions',
       'emptyDimensions',
       'indicatorIssues',
+      'invalidTargets',
       'publishable',
     ])
   })

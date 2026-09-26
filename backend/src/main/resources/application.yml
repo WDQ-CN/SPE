@@ -21,6 +21,15 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  jackson:
+    deserialization:
+      # 未知字段直接报错——Boot 默认是 false（**静默忽略**）。P2 深审实测：`POST /api/templates
+      # {"name":"probe","weight":"abc"}` 里的 weight 不是 DTO 字段、被丢弃后请求仍判合法并**创建成功**。
+      # 而 PUT 是全量覆盖语义（IndicatorMapper.update 把 9 个字段一并 SET）：前端一旦把 targetValue
+      # 拼成 target、或漏传 standard，服务端不报错，而是把那列**静默写成 NULL**——DIRECT 指标的人工
+      # 换算表就此丢失，而**发布校验不检查 standard**，审计里也只记「从 X 变成 null」，没人会想到是拼错字段。
+      # 开启后这类拼写错误在入口就被 2001 拦下（03 §30 的 P1-2）。
+      fail-on-unknown-properties: true
 
 mybatis-plus:
   configuration:

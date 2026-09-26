@@ -70,11 +70,16 @@ async function submit(): Promise<void> {
   }
   const name = form.name.trim()
   const target = editing.value
+  // ⚠️ 用**包装对象**接住新建结果，而不是 `let created: TemplateSummary | null`：
+  // `useSubmit.run` 接收的是闭包，TS 的控制流分析看不到闭包内的赋值，会把 `let` 变量一直窄化成
+  // `null`（读属性直接报 `Property 'latestVersionId' does not exist on type 'never'`）。
+  // 它**只窄化变量、不窄化对象属性**，所以换成一个对象就正常了。
+  const created: { value: TemplateSummary | null } = { value: null }
   const ok = await runSave(async () => {
     if (target) {
       await renameTemplate(target.id, name)
     } else {
-      await createTemplate(name)
+      created.value = await createTemplate(name)
     }
   })
   if (!ok) {
@@ -88,15 +93,20 @@ async function submit(): Promise<void> {
     return
   }
 
-  // 新建的模板自带一个 v1 草稿，直接进编辑器最省事。重新拉一次列表是为了拿到新模板的 versionId
-  // （创建接口回的是 TemplateSummary，但它进的是"当前页"之外的排序位置，靠列表更可靠）
-  ElMessage.success('已新建，正在进入编辑器')
-  await load(1)
-  const created = rows.value.find((row) => row.name === name)
-  if (created?.latestVersionId) {
-    await router.push({ name: 'template-editor', params: { versionId: created.latestVersionId } })
+  // ⚠️ 新建成功后**直接用创建响应里的 latestVersionId**，不要再去列表里按名称找那一行：
+  //   · `template.name` 后端**没有唯一键**（12 §E2：不替需求加约束），同名时
+  //     `rows.find(r => r.name === name)` 会命中页面顺序靠前的**旧模板**（列表 `ORDER BY t.id` 升序）
+  //     → 用户被带进别人的模板，接着在那里改维度、发布，**写到了非预期的模板上**；
+  //   · 模板数超过一页时新模板根本不在第 1 页，按名称必然找不到。
+  // 创建响应本来就带 `latestVersionId`（`TemplateService.create` 的返回值），所以这样既更正确、
+  // 也省掉一次「为了拿 id 而重新拉列表」的请求。坑由 P2 深审的前端审查者发现（03 §30 的 P1-3）。
+  const versionId = created.value?.latestVersionId
+  if (versionId) {
+    ElMessage.success('已新建，正在进入编辑器')
+    await router.push({ name: 'template-editor', params: { versionId } })
   } else {
-    ElMessage.warning('已创建，但未取到版本 id，请从列表进入编辑器')
+    // 理论上到不了这里（create 一定回 latestVersionId）；留着是为了万一契约变了能说清楚
+    ElMessage.warning('已创建，但响应里没有版本 id，请从列表进入编辑器')
   }
 }
 
@@ -208,15 +218,18 @@ function draftTagType(row: TemplateSummary): 'warning' | 'info' {
       </el-table-column>
     </el-table>
 
+    <!-- ⚠️ 用 `v-model:` 双向绑定，与 UserListView/SupplierListView 一致（P2 深审的 P2-11）：
+         单向 `:current-page` + 模板里手写 `size = target` 虽然实测能工作（编译产物里 ref 赋值被改写成
+         `.value`），但失败路径下 Element Plus 内部的当前页与数据可能不一致，且偏离了两处既有约定。 -->
     <el-pagination
+      v-model:current-page="page"
+      v-model:page-size="size"
       class="page__pager"
       layout="total, prev, pager, next, sizes"
       :total="total"
-      :current-page="page"
-      :page-size="size"
       :page-sizes="[10, 20, 50]"
       @current-change="(target: number) => load(target)"
-      @size-change="(target: number) => { size = target; load(1) }"
+      @size-change="() => load(1)"
     />
 
     <el-dialog

@@ -74,7 +74,13 @@ export function getVersionTree(versionId: number): Promise<TemplateVersionTree> 
   return http.get<TemplateVersionTree>(`/template-versions/${versionId}`)
 }
 
-/** 已发布版本清单（P3 选版本也走同一份数据；草稿不会出现） */
+/**
+ * 已发布版本清单（P3 选版本也走同一份数据；草稿不会出现）。
+ *
+ * <p>⚠️ **当前（P2）没有调用方**：模板页按 12 §E18 只做"看默认模板 → 改权重 → 发布"，不需要选版本。
+ * 它对应 12 §E16 里"P3 建任务时选版本"的入口，**是为 P3 预留的**——CLAUDE 第 1 条要求占位式声明
+ * 要么当场用一次、要么删掉，这里选择保留并把用途写明（P3 直接消费，不必再补一个函数）。
+ */
 export function listPublishedVersions(templateId: number): Promise<PublishedVersionBrief[]> {
   return http.get<PublishedVersionBrief[]>(`/templates/${templateId}/published-versions`)
 }
