@@ -19,6 +19,7 @@ import com.spe.context.system.api.Role;
 import com.spe.context.system.api.UserStatus;
 import com.spe.context.system.internal.user.SysUser;
 import com.spe.context.system.internal.user.SysUserMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -61,7 +62,8 @@ class AuthServiceTest {
     loginAttemptLimiter =
         new LoginAttemptLimiter(
             Clock.fixed(Instant.parse("2026-09-26T00:00:00Z"), ZoneOffset.UTC),
-            LoginLimiterProperties.defaults());
+            LoginLimiterProperties.defaults(),
+            new SimpleMeterRegistry());
     authService =
         new AuthService(sysUserMapper, passwordEncoder, jwtService, auditFacade, loginAttemptLimiter);
   }

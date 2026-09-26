@@ -16,6 +16,8 @@ import com.spe.common.web.ErrorCode;
 import com.spe.context.system.api.AuditAction;
 import com.spe.context.system.api.AuditFacade;
 import com.spe.context.system.api.GradeThresholds;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Optional;
@@ -45,7 +47,13 @@ class SettingServiceTest {
 
   @BeforeEach
   void setUp() {
-    settingService = new SettingService(sysSettingMapper, objectMapper, auditFacade);
+    // 指标 Counter 用独立 registry：本类是纯单元测试，不启动 Spring 上下文
+    settingService =
+        new SettingService(
+            sysSettingMapper,
+            objectMapper,
+            auditFacade,
+            Counter.builder("test.settings.thresholds.loads").register(new SimpleMeterRegistry()));
   }
 
   private static GradeThresholds thresholds(String a, String b, String c, String d) {

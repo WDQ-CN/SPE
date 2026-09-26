@@ -30,7 +30,26 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        # 显式白名单，**绝不要写 "*"**：/actuator/env 与 /actuator/configprops 会把配置值原样打印，
+        # 其中就有 JWT_SECRET，等于把签名密钥公开发布（03 §19 有专门一条守卫测试钉住这行）。
+        # 三个端点里只有 health 免认证（容器 healthcheck 要用），metrics/prometheus 需 ADMIN（见 SecurityConfig）。
+        include: health,metrics,prometheus
+  endpoint:
+    health:
+      # 保持默认：不向未认证调用方展示 DB/磁盘等组件细节
+      show-details: never
+  # 度量导出：**只有具体 registry 的 `enabled` 会被 @ConditionalOnEnabledMetricsExport 认**。
+  # 不写这一项时，即使 classpath 上有 micrometer-registry-prometheus、相关的条件类也齐全，
+  # PrometheusMeterRegistry 也不会被创建——注入到业务里的会是 SimpleMeterRegistry，
+  # /actuator/prometheus 直接 404。实测细节（04-047）：条件评估报告里那行写的是
+  # `management.defaults.metrics.export.enabled is considered false`，但补一个 `defaults` 段写成 true
+  # **并不管用**（那个键读出来始终是 false），必须写下面这个具体键才生效。
+  # Simple 导出不用显式关：Prometheus registry 一旦先创建，SimpleMetricsExportAutoConfiguration 的
+  # @ConditionalOnMissingBean(MeterRegistry) 会自动让位。
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 app:
   jwt:

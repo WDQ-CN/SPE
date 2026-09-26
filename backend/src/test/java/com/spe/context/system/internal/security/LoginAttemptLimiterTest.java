@@ -2,6 +2,7 @@ package com.spe.context.system.internal.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -33,7 +34,7 @@ class LoginAttemptLimiterTest {
   @BeforeEach
   void setUp() {
     clock = new MutableClock();
-    limiter = new LoginAttemptLimiter(clock, LoginLimiterProperties.defaults());
+    limiter = new LoginAttemptLimiter(clock, LoginLimiterProperties.defaults(), new SimpleMeterRegistry());
   }
 
   @Test
@@ -115,7 +116,9 @@ class LoginAttemptLimiterTest {
     // 用极小的上限验证封顶行为（生产默认十万条：既测不起，也不该在单测里灌十万次）
     LoginAttemptLimiter capped =
         new LoginAttemptLimiter(
-            clock, new LoginLimiterProperties(ACCOUNT_LIMIT, IP_LIMIT, Duration.ofMinutes(15), 3));
+            clock,
+            new LoginLimiterProperties(ACCOUNT_LIMIT, IP_LIMIT, Duration.ofMinutes(15), 3),
+            new SimpleMeterRegistry());
 
     // 灌入 10 个互不相同的账号：条目数停在上限附近，不会随攻击无界增长
     for (int i = 0; i < 10; i++) {
@@ -135,7 +138,9 @@ class LoginAttemptLimiterTest {
   void expiredEntriesArePrunedOnceThresholdIsReached() {
     LoginAttemptLimiter small =
         new LoginAttemptLimiter(
-            clock, new LoginLimiterProperties(ACCOUNT_LIMIT, IP_LIMIT, Duration.ofMinutes(15), 3));
+            clock,
+            new LoginLimiterProperties(ACCOUNT_LIMIT, IP_LIMIT, Duration.ofMinutes(15), 3),
+            new SimpleMeterRegistry());
 
     small.recordFailure("a", "10.0.0.1");
     small.recordFailure("b", "10.0.0.2");

@@ -1,5 +1,8 @@
 package com.spe.context.system.internal.security;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -28,6 +31,10 @@ import org.springframework.stereotype.Component;
  * 后者不影响真正的攻击：同一账号或同一 IP 的攻击用的是已有 key，而且会先撞上 IP 维度阈值——
  * 要灌满十万条随机账号，得先有十万个不同来源 IP，那时瓶颈早已不在本进程。
  *
+ * <p><b>指标</b>（03 §19）：暴露条目数与三个计数（失败 / 进入锁定 / 锁定期内被拒），供
+ * `/actuator/metrics` 与 `/actuator/prometheus` 读取。**这些指标刻意不带任何标签**，
+ * 理由见 {@link #bindMetrics}。
+ *
  * <p><b>本地实现</b>：计数放在本进程的 `ConcurrentHashMap` 里，多实例部署时各算各的（演示项目可接受；
  * 生产应换成 Redis 计数或网关/WAF 限流，已登记 11 §9）。
  *
@@ -38,6 +45,9 @@ public class LoginAttemptLimiter {
 
   /** 条目数超过它时触发一次全量清理（摊还到每次操作上仍是 O(1)）。 */
   static final int PRUNE_THRESHOLD = 1_024;
+
+  /** 指标前缀：`spe.` 用于和 JVM/HTTP 等自带指标区分。 */
+  static final String METRIC_PREFIX = "spe.login.limiter.";
 
   private static final String ACCOUNT_PREFIX = "u:";
   private static final String IP_PREFIX = "ip:";
@@ -51,20 +61,24 @@ public class LoginAttemptLimiter {
   /** 条目数达到它就清理一次过期项；实际取 {@code min(PRUNE_THRESHOLD, maxEntries)}。 */
   private final int pruneThreshold;
 
+  private final Counter failures;
+  private final Counter blocked;
+  private final Counter rejected;
+
   /**
    * 生产构造器。
    *
    * <p><b>必须标 `@Autowired`</b>：本类有两个构造器（另一个是包可见的测试构造器，用于注入可控时钟），
    * 而 Spring 在「多个构造器且都没有 `@Autowired`」时会去找**无参**构造器——找不到就直接启动失败，
-   * 报的是 `No default constructor found`，与本类真正的依赖无关，很容易看偏（P1 收口后踩过）。
+   * 报的是 `No default constructor found`，与本类真正的依赖无关，很容易看偏（04-044）。
    */
   @Autowired
-  public LoginAttemptLimiter(LoginLimiterProperties properties) {
-    this(Clock.systemUTC(), properties);
+  public LoginAttemptLimiter(LoginLimiterProperties properties, MeterRegistry meterRegistry) {
+    this(Clock.systemUTC(), properties, meterRegistry);
   }
 
-  /** 测试用：注入可控时钟，避免用例依赖真实时间流逝。 */
-  LoginAttemptLimiter(Clock clock, LoginLimiterProperties properties) {
+  /** 测试用：注入可控时钟；指标走真实的 registry（单测传 SimpleMeterRegistry 即可直接断言）。 */
+  LoginAttemptLimiter(Clock clock, LoginLimiterProperties properties, MeterRegistry meterRegistry) {
     this.clock = clock;
     this.maxFailuresPerAccount = properties.maxFailuresPerAccount();
     this.maxFailuresPerIp = properties.maxFailuresPerIp();
@@ -73,6 +87,28 @@ public class LoginAttemptLimiter {
     // 清理阈值跟着上限走：上限被设得很小（测试、或极端收紧的配置）时，若仍要等 1024 条才清理，
     // 就等于「上限先到、清理永不发生」——条目会一直占到上限才停，白留一批过期数据。
     this.pruneThreshold = Math.min(PRUNE_THRESHOLD, this.maxEntries);
+    // 指标注册就写在构造器里（而不是抽成一个私有方法）：三个 Counter 都是 final 字段，而 Java 只允许
+    // 在构造器中给 final 字段赋值——抽出去就只能改成非 final，或者多绕一个持有类。
+    // 注册 Gauge 时传 this：Micrometer 只是保存引用，取值发生在抓取时，不会在构造期间回调本类。
+    //
+    // **为什么不加标签**：账号名与来源 IP 都不能做标签。① 攻击者可以灌入海量随机账号，标签组合数随之
+    // 爆炸（基数是监控侧的硬约束，等于让被攻击者把监控也拖垮）；② 把「哪个账号正在被爆破」写进监控
+    // 系统本身就是又一次信息扩散。要定位具体账号请查 `audit_log`——那里本来就有留痕。
+    Gauge.builder(METRIC_PREFIX + "tracked.keys", this, LoginAttemptLimiter::trackedKeys)
+        .description("当前记账条目数（账号维度 + IP 维度的 key 总数）；持续增长说明有账号名灌注")
+        .register(meterRegistry);
+    this.failures =
+        Counter.builder(METRIC_PREFIX + "failures")
+            .description("登录失败次数（账号不存在 / 口令错误 / 账号已停用，三者同码不区分）")
+            .register(meterRegistry);
+    this.blocked =
+        Counter.builder(METRIC_PREFIX + "blocked")
+            .description("因达到阈值而进入锁定的次数")
+            .register(meterRegistry);
+    this.rejected =
+        Counter.builder(METRIC_PREFIX + "rejected")
+            .description("锁定期内被直接拒绝的次数（按设计不写审计，故只能从这里看）")
+            .register(meterRegistry);
   }
 
   /** 该次登录是否处于锁定期（账号维度或 IP 维度任一超限即锁）。 */
@@ -95,7 +131,21 @@ public class LoginAttemptLimiter {
     }
     bump(ACCOUNT_PREFIX + nullSafe(username), now);
     bump(IP_PREFIX + nullSafe(clientIp), now);
-    return isLocked(username, clientIp);
+    failures.increment();
+
+    boolean locked = isLocked(username, clientIp);
+    if (locked) {
+      blocked.increment();
+    }
+    return locked;
+  }
+
+  /**
+   * 记一次「锁定期内被拒绝」。单独一个方法而不是塞进 {@link #isLocked}：判断是幂等查询、计数是副作用，
+   * 混在一起会让「谁调用了判断」变成隐式的计数来源——而只有真正要拒绝的那一次才算被拒。
+   */
+  public void recordRejection() {
+    rejected.increment();
   }
 
   /** 登录成功：清掉该账号与来源 IP 两个维度的计数。 */
@@ -104,8 +154,8 @@ public class LoginAttemptLimiter {
     attempts.remove(IP_PREFIX + nullSafe(clientIp));
   }
 
-  /** 当前条目数，仅供测试与观测（可用于暴露为指标）。 */
-  int trackedKeys() {
+  /** 当前条目数：Gauge 的数据来源（可直接观测封顶与摊还清理是否在工作）。 */
+  public int trackedKeys() {
     return attempts.size();
   }
 

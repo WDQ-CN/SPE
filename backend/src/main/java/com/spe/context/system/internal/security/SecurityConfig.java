@@ -79,8 +79,16 @@ public class SecurityConfig {
             requests ->
                 requests
                     // 登录必须免认证：否则「未认证 → 401」会先于 AuthController 生效，永远登不进来
-                    .requestMatchers("/api/ping", "/api/auth/login", "/actuator/health")
+                    .requestMatchers("/api/ping", "/api/auth/login")
                     .permitAll()
+                    // 健康检查免认证：容器 healthcheck 用它，且不展示组件细节（show-details=never）
+                    .requestMatchers("/actuator/health")
+                    .permitAll()
+                    // 其余 actuator 端点收紧到 ADMIN：指标含 JVM/HTTP/DB 信息，没必要让普通登录用户看到。
+                    // 这也是**纵深防御**——将来若有人误把 exposure 放宽成 "*"，这一层仍挡得住
+                    // （actuator 的 env/configprops 会打印 JWT_SECRET，那是不能公开的东西，见 03 §19）。
+                    .requestMatchers("/actuator/**")
+                    .hasRole("ADMIN")
                     .anyRequest()
                     .authenticated())
         .exceptionHandling(

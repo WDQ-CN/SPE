@@ -9,6 +9,7 @@ import com.spe.context.system.api.GradeThresholds;
 import com.spe.context.system.internal.setting.SettingService;
 import com.spe.context.system.internal.setting.SysSetting;
 import com.spe.context.system.internal.setting.SysSettingMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +40,15 @@ class ThresholdCacheIntegrationTest extends AbstractIntegrationTest {
 
   @Autowired private SettingService settingService;
   @Autowired private CacheManager cacheManager;
+  @Autowired private MeterRegistry meterRegistry;
+
+  /**
+   * `/actuator/metrics` 上的「因未命中而查库」次数（03 §19）。它和上面 `verify(mapper)` 的 mock 计数
+   * 是同一件事的两个视角：一个是被测行为，一个是外部可观测口径——两者一起断言，才说明"接上指标"没接歪。
+   */
+  private double loads() {
+    return meterRegistry.get("spe.settings.thresholds.loads").counter().count();
+  }
 
   /** 缓存是进程内单例、**不随测试事务回滚**，每个用例从干净缓存开始，否则计数断言会互相干扰。 */
   @BeforeEach
@@ -66,10 +76,14 @@ class ThresholdCacheIntegrationTest extends AbstractIntegrationTest {
   void secondReadIsServedFromCache() {
     when(sysSettingMapper.findByKey(KEY)).thenReturn(Optional.empty());
 
+    double before = loads();
+
     assertThat(settingService.gradeThresholds().a()).isEqualByComparingTo("90");
     assertThat(settingService.gradeThresholds().a()).isEqualByComparingTo("90");
 
     verify(sysSettingMapper, times(1)).findByKey(KEY);
+    // 用**增量**而不是绝对值：Counter 是进程内单例，会跨用例累积
+    assertThat(loads() - before).as("两次读只查一次库 → 未命中计数只 +1").isEqualTo(1.0);
   }
 
   @Test
@@ -83,6 +97,8 @@ class ThresholdCacheIntegrationTest extends AbstractIntegrationTest {
         // 3) 更新之后的那次读：必须重新查库并拿到新值
         .thenReturn(Optional.of(setting("{\"a\":91,\"b\":81,\"c\":71,\"d\":0}")));
 
+    double before = loads();
+
     assertThat(settingService.gradeThresholds().a()).isEqualByComparingTo("90");
 
     settingService.updateGradeThresholds(thresholds("91", "81", "71", "0"));
@@ -90,5 +106,10 @@ class ThresholdCacheIntegrationTest extends AbstractIntegrationTest {
     assertThat(settingService.gradeThresholds().a())
         .as("更新后必须重新查库，否则会一直用旧阈值算分")
         .isEqualByComparingTo("91");
+    assertThat(loads() - before)
+        .as(
+            "一共查库 3 次：首次读 + updateGradeThresholds 内部的 before 读（自调用不走缓存代理，"
+                + "所以它也是一次真实查库）+ 缓存被清后的再读")
+        .isEqualTo(3.0);
   }
 }

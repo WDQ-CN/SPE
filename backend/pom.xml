@@ -41,6 +41,13 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
+    <!-- 指标暴露格式（03 §19）：actuator 自带 micrometer-core + SimpleMeterRegistry，
+         但 Prometheus 抓取需要这个 registry 才有多文本格式的 /actuator/prometheus。
+         版本随 Boot BOM，不手写（06 §8 第 20 条）。 -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-registry-prometheus</artifactId>
+    </dependency>
 
     <!-- 持久层：MyBatis-Plus（Boot 3 starter）+ MySQL 8.4 + Flyway -->
     <dependency>

@@ -61,6 +61,8 @@ public class AuthService {
     if (loginAttemptLimiter.isLocked(username, clientIp)) {
       // 锁定期内不再写库：否则攻击者持续请求会把 audit_log 撑大。
       // 「进入锁定」的那一次已在 recordFailureAndMaybeLock 里留痕，这里只落 DEBUG。
+      // 但**计数**要有：这是唯一能看到「有多少登录请求被限流挡在门外」的地方（03 §19 的 rejected 指标）。
+      loginAttemptLimiter.recordRejection();
       log.debug("登录被限流（锁定期内）：账号={} ip={}", username, clientIp);
       throw new BizException(ErrorCode.LOGIN_TOO_MANY_ATTEMPTS);
     }

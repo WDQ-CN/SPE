@@ -8,6 +8,7 @@ import com.spe.context.system.api.AuditAction;
 import com.spe.context.system.api.AuditFacade;
 import com.spe.context.system.api.AuditTargetType;
 import com.spe.context.system.api.GradeThresholds;
+import io.micrometer.core.instrument.Counter;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +42,8 @@ public class SettingService {
   private final SysSettingMapper sysSettingMapper;
   private final ObjectMapper objectMapper;
   private final AuditFacade auditFacade;
+  /** 缓存未命中而查库的次数（03 §19）；在 {@link SettingCacheConfig} 里注册。 */
+  private final Counter thresholdsLoads;
 
   /**
    * 读阈值：缺失或存量值已损坏时回落到代码默认值，保证调用方总能拿到可用阈值。
@@ -51,6 +54,9 @@ public class SettingService {
   @Cacheable(cacheNames = GRADE_THRESHOLDS_CACHE)
   @Transactional(readOnly = true)
   public GradeThresholds gradeThresholds() {
+    // 计数点必须在方法体内：`@Cacheable` 命中时**不会执行方法体**，所以这一句正好只在真正查库时执行——
+    // 它就是「缓存未命中次数」，与命中次数互补（命中在代理层，业务代码看不到，理由见 SettingCacheConfig）。
+    thresholdsLoads.increment();
     return sysSettingMapper
         .findByKey(GRADE_THRESHOLDS_KEY)
         .map(SysSetting::getSettingValue)
