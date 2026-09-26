@@ -2,13 +2,17 @@ package com.spe.architecture;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.fields;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noMethods;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
 import com.spe.common.event.DomainEvent;
+import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaMethod;
+import com.tngtech.archunit.core.domain.JavaParameter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
@@ -16,10 +20,14 @@ import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
+import jakarta.validation.Valid;
+import java.util.Set;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Update;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -101,6 +109,60 @@ class ArchitectureTest {
       noClasses().that().resideInAPackage("com.spe.common..")
           .should().dependOnClassesThat().resideInAPackage("com.spe.context..")
           .because("共享内核不依赖业务上下文（05 §12 R-F）");
+
+  /**
+   * R-H 默认拒绝：所有 Controller 必须有**类级** `@PreAuthorize`（免鉴权端点显式列入白名单）。
+   *
+   * <p>为什么需要机械化保证：安全链只要求「已认证」，细粒度权限全靠方法上的 `@PreAuthorize`。
+   * 新增一个 Controller 时忘了写它**不会有任何报错**——只是任何已登录用户都能访问：越权静默发生，
+   * 前端隐藏菜单与路由守卫都拦不住直接调接口。把「默认拒绝」变成规则，漏写即测试变红（03 §18）。
+   */
+  @ArchTest
+  static final ArchRule controllersDeclareClassLevelAuthorization =
+      classes().that().haveSimpleNameEndingWith("Controller")
+          .and(notPublicEndpoint())
+          .should().beAnnotatedWith(PreAuthorize.class)
+          .because("端点默认拒绝：漏一个 @PreAuthorize 就是一处越权（06 §8 第 10 条）");
+
+  /** 免鉴权端点白名单：登录接口本身必须放行（否则永远登不进来），ping 是健康探针。 */
+  private static final Set<String> PUBLIC_CONTROLLERS = Set.of("AuthController", "PingController");
+
+  private static DescribedPredicate<JavaClass> notPublicEndpoint() {
+    return new DescribedPredicate<>("不是免鉴权的公开端点") {
+      @Override
+      public boolean test(JavaClass javaClass) {
+        return !PUBLIC_CONTROLLERS.contains(javaClass.getSimpleName());
+      }
+    };
+  }
+
+  /**
+   * R-H（续）入参校验不靠自觉：Controller 的 `@RequestBody` 参数必须带 `@Valid`。
+   *
+   * <p>漏了它不会报错，只是该端点的 JSR-303 注解全部失效——超长字符串会一路走到 INSERT，
+   * 最后漏成 5xxx（06 §2.6 的红线：入口不拦，错误码就跑偏）。
+   */
+  @ArchTest
+  static final ArchRule requestBodyParametersAreValidated =
+      methods().that().areDeclaredInClassesThat().haveSimpleNameEndingWith("Controller")
+          .and().arePublic()
+          .should(validateRequestBodyParameters())
+          .because("外部输入必须过校验（06 §8 第 11 条）");
+
+  private static ArchCondition<JavaMethod> validateRequestBodyParameters() {
+    return new ArchCondition<>("对所有 @RequestBody 参数使用 @Valid") {
+      @Override
+      public void check(JavaMethod method, ConditionEvents events) {
+        for (JavaParameter parameter : method.getParameters()) {
+          if (parameter.isAnnotatedWith(RequestBody.class) && !parameter.isAnnotatedWith(Valid.class)) {
+            events.add(
+                SimpleConditionEvent.violated(
+                    method, method.getFullName() + " 的 @RequestBody 参数缺少 @Valid"));
+          }
+        }
+      }
+    };
+  }
 
   /** R-G 依赖无环：上下文之间不得出现循环依赖（05 §5.1）。 */
   @ArchTest

@@ -34,7 +34,10 @@ class ArchUnitRulesAreEffectiveTest {
               "com.spe.context.alert.fixture",
               "com.spe.context.analytics.fixture",
               "com.spe.context.evaluation.fixture",
-              "com.spe.context.evaluation.internal.scoring.fixture");
+              "com.spe.context.evaluation.internal.scoring.fixture",
+              // R-H 的两条规则针对 Controller 命名，夹具单独放在这里（不属任何上下文，
+              // 因此不会被 R-A/R-E/R-F/R-G 命中，一个夹具只违反自己那一条）
+              "com.spe.architecture.fixture");
 
   /** 断言规则在夹具集上报出违规，且失败报告点名了预期的夹具类。 */
   private static void assertCatches(ArchRule rule, String expectedFixture) {
@@ -106,5 +109,19 @@ class ArchUnitRulesAreEffectiveTest {
   @DisplayName("R-G 能捕获上下文之间的循环依赖")
   void rGCatchesContextCycles() {
     assertCatches(ArchitectureTest.contextsAreFreeOfCycles, "CycleStarter");
+  }
+
+  @Test
+  @DisplayName("R-H 能捕获漏写类级 @PreAuthorize 的 Controller（默认拒绝）")
+  void rHCatchesControllerWithoutClassLevelAuthorization() {
+    assertCatches(
+        ArchitectureTest.controllersDeclareClassLevelAuthorization, "AuthorizationMissingController");
+  }
+
+  @Test
+  @DisplayName("R-H 能捕获用了 @RequestBody 但没带 @Valid 的参数")
+  void rHCatchesUnvalidatedRequestBody() {
+    assertCatches(
+        ArchitectureTest.requestBodyParametersAreValidated, "UnvalidatedRequestBodyController");
   }
 }
