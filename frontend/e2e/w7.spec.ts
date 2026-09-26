@@ -188,10 +188,19 @@ test('W4 判据：ADMIN 改已发布版本 → 自动复制出新草稿 → 再�
     expect(v1Body.data.dimensions[0].weight, 'v1 的权重不该被改动').toBe(100)
 
     // 4) 把权重改回 100 → 发布闸门解锁 → 发布，于是又多一个已发布版本
+    //
+    // ⚠️ 这一步同时是 12 §6 风险表 C 级要求的那条：**继续改仍落在同一份新草稿上**。
+    // 若前端没把响应的 effectiveVersion 写回手里那份树，这次的守卫 UPDATE 就会因为 version
+    // 不匹配而 3001；更糟的是若被当成"又要复制"，就会**再换一个版本 id**、把后续编辑分到第三份草稿里。
+    // 所以先记下当前 id，改完必须还是它。
+    const draftIdBeforeSecondEdit = versionIdOf(page)
     await quality.getByRole('button', { name: '改维度' }).click()
     await setWeight(page, '100')
     await page.locator('.el-dialog:visible').getByRole('button', { name: '保存' }).click()
     await expect(page.getByText('权重合计正确，可以发布')).toBeVisible()
+    expect(versionIdOf(page), '第二次改应当仍在同一新草稿上，不该再复制一次').toBe(
+      draftIdBeforeSecondEdit,
+    )
     await page.getByRole('button', { name: /^发布 v/ }).click()
     await page.locator('.el-message-box').getByRole('button', { name: '确定' }).click()
     await expect(page.locator('.editor__status')).toContainText('已发布')
