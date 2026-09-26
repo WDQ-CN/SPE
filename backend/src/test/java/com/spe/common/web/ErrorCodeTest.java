@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -21,15 +22,21 @@ class ErrorCodeTest {
   }
 
   @Test
-  @DisplayName("每个错误码都携带与其分段匹配的 HTTP 状态")
+  @DisplayName("每个错误码都携带与其分段匹配的 HTTP 状态（1xxx 允许 401 与 429）")
   void everyCodeCarriesMatchingHttpStatus() {
-    Map<Integer, Integer> statusBySegment =
-        Map.of(1, 401, 2, 400, 3, 409, 4, 403, 5, 500);
+    // 1xxx 有两个合法状态：凭据类错误 401；登录限流 429（03 §16 的 SEC-5，语义是「稍后再试」而非「凭据错误」）
+    Map<Integer, Set<Integer>> allowedBySegment =
+        Map.of(
+            1, Set.of(401, 429),
+            2, Set.of(400),
+            3, Set.of(409),
+            4, Set.of(403),
+            5, Set.of(500));
 
     for (ErrorCode errorCode : ErrorCode.values()) {
-      assertThat(errorCode.httpStatus().value())
+      assertThat(allowedBySegment.get(errorCode.code() / 1000))
           .as("错误码 %s（%d）的 HTTP 状态", errorCode, errorCode.code())
-          .isEqualTo(statusBySegment.get(errorCode.code() / 1000));
+          .contains(errorCode.httpStatus().value());
     }
   }
 

@@ -2,8 +2,11 @@ package com.spe.context.system.internal.security;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authorization.AuthorizationEventPublisher;
+import org.springframework.security.authorization.SpringAuthorizationEventPublisher;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -13,10 +16,10 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * 安全链形态（09 D6）：无状态 JWT，{@code /api/ping} 与 {@code /actuator/health} 放行，
- * 其余（含全部 {@code /api/**}）需认证；401/403 由处理器输出 Result。
+ * 安全链形态（09 D6）：无状态 JWT，{@code /api/ping}、{@code /api/auth/login} 与
+ * {@code /actuator/health} 放行，其余（含全部 {@code /api/**}）需认证；401/403 由处理器输出 Result。
  *
- * <p>P0 无真实登录入口，令牌由 P1 的 system 上下文签发。CORS 不需要配置：
+ * <p>P0 无真实登录入口，令牌由 P1 的 system 上下文签发（`AuthService`）。CORS 不需要配置：
  * 开发期走 Vite 代理、生产由 Nginx 同源反代（05 §4.2）。
  *
  * <p>过滤器与处理器经 {@code @Bean} 方法参数注入而非构造器字段：{@link JwtAuthenticationFilter}
@@ -32,6 +35,19 @@ public class SecurityConfig {
   @Bean
   public JwtService jwtService(JwtProperties jwtProperties) {
     return new JwtService(jwtProperties);
+  }
+
+  /**
+   * 让方法级鉴权（`@PreAuthorize`）在被拒时发出 {@code AuthorizationDeniedEvent}（10 §E15）。
+   *
+   * <p>**必须显式注册**：Spring Security 6.5 的方法拦截器默认用 `NoOpAuthorizationEventPublisher`，
+   * 不注册这个 Bean 时越权静默发生——403 照常返回，只是没有任何事件可监听，`ACCESS_DENIED`
+   * 审计会「看起来实现了但一条都不落」。实测依据：不注册时集成测试的 ACCESS_DENIED 行为空。
+   * `PrePostMethodSecurityConfiguration` 会按类型注入它。
+   */
+  @Bean
+  public AuthorizationEventPublisher authorizationEventPublisher(ApplicationEventPublisher eventPublisher) {
+    return new SpringAuthorizationEventPublisher(eventPublisher);
   }
 
   /**
@@ -60,8 +76,13 @@ public class SecurityConfig {
         .logout(AbstractHttpConfigurer::disable)
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
-            requests -> requests.requestMatchers("/api/ping", "/actuator/health").permitAll()
-                .anyRequest().authenticated())
+            requests ->
+                requests
+                    // 登录必须免认证：否则「未认证 → 401」会先于 AuthController 生效，永远登不进来
+                    .requestMatchers("/api/ping", "/api/auth/login", "/actuator/health")
+                    .permitAll()
+                    .anyRequest()
+                    .authenticated())
         .exceptionHandling(
             handling -> handling.authenticationEntryPoint(authenticationEntryPoint)
                 .accessDeniedHandler(accessDeniedHandler))

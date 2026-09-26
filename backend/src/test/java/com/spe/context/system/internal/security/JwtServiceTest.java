@@ -78,12 +78,16 @@ class JwtServiceTest {
   }
 
   @Test
-  @DisplayName("篡改令牌被拒绝")
+  @DisplayName("篡改令牌被拒绝（改签名段首个字符，不能用末位字符）")
   void tamperedTokenIsRejected() {
     JwtService jwtService = service(TTL);
     String token = jwtService.issue(payload(), Instant.now());
-    char last = token.charAt(token.length() - 1);
-    String tampered = token.substring(0, token.length() - 1) + (last == 'A' ? 'B' : 'A');
+
+    // ⚠ 不能改最后一个字符：base64url 编码 32 字节得 43 个字符（258 位），末位字符只有高 4 位有效、
+    // 低 2 位被解码器忽略——若替换后高 4 位相同，解码出的签名字节完全一致，断言会随机不触发（04-034）。
+    String[] parts = token.split("\\.");
+    char flipped = parts[2].charAt(0) == 'A' ? 'B' : 'A';
+    String tampered = parts[0] + "." + parts[1] + "." + flipped + parts[2].substring(1);
 
     assertThatThrownBy(() -> jwtService.parse(tampered)).isInstanceOf(JwtException.class);
   }
