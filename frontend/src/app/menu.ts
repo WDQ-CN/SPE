@@ -22,6 +22,8 @@ const MENUS: MenuItem[] = [
   { path: '/', title: '首页', roles: [] },
   // 01 §7：供应商维护 = ADMIN / MANAGER
   { path: '/suppliers', title: '供应商', roles: ['ADMIN', 'MANAGER'] },
+  // 01 §7：评估模板管理 = ADMIN（写）/ MANAGER（查看），即两者都可见这个入口
+  { path: '/templates', title: '评估模板', roles: ['ADMIN', 'MANAGER'] },
   // 01 §7：用户、系统设置 = 仅 ADMIN
   { path: '/users', title: '用户管理', roles: ['ADMIN'] },
   { path: '/settings', title: '系统设置', roles: ['ADMIN'] },

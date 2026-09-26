@@ -1,4 +1,12 @@
-import type { Department, Role, SupplierStatus, UserStatus } from './types/enums'
+import type {
+  Department,
+  IndicatorType,
+  Role,
+  ScoreMode,
+  SupplierStatus,
+  TemplateVersionStatus,
+  UserStatus,
+} from './types/enums'
 
 /**
  * 枚举的界面文案与下拉选项——**中文标签的唯一来源**（01 §2 的角色表与部门口径）。
@@ -35,6 +43,25 @@ export const SUPPLIER_STATUS_LABEL: Record<SupplierStatus, string> = {
   DISABLED: '停用',
 }
 
+export const TEMPLATE_VERSION_STATUS_LABEL: Record<TemplateVersionStatus, string> = {
+  DRAFT: '草稿',
+  PUBLISHED: '已发布',
+  // P2 没有进入该状态的入口（V7 的注释与 12 §E10）；列出来只为将来真用上时不显示空白
+  ARCHIVED: '已归档',
+}
+
+export const INDICATOR_TYPE_LABEL: Record<IndicatorType, string> = {
+  QUANT: '定量',
+  QUAL: '定性',
+}
+
+/** 三种计分方式（01 §6.1）；仅定量指标有值 */
+export const SCORE_MODE_LABEL: Record<ScoreMode, string> = {
+  DIRECT: '直接打分',
+  RATIO: '比率',
+  TARGET: '目标达成率',
+}
+
 /** 下拉选项：`value` 用 code（与后端枚举取值一致），`label` 取自上面的文案表 */
 export interface SelectOption<T extends string> {
   value: T
@@ -48,3 +75,5 @@ function toOptions<T extends string>(labelOf: Record<T, string>): SelectOption<T
 
 export const ROLE_OPTIONS: SelectOption<Role>[] = toOptions(ROLE_LABEL)
 export const DEPARTMENT_OPTIONS: SelectOption<Department>[] = toOptions(DEPARTMENT_LABEL)
+export const INDICATOR_TYPE_OPTIONS: SelectOption<IndicatorType>[] = toOptions(INDICATOR_TYPE_LABEL)
+export const SCORE_MODE_OPTIONS: SelectOption<ScoreMode>[] = toOptions(SCORE_MODE_LABEL)

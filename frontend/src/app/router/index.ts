@@ -31,6 +31,22 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/features/supplier/views/SupplierListView.vue'),
         meta: { title: '供应商' },
       },
+      // 编辑器的路径挂在 /templates 下，靠 menu.ts 的**前缀匹配**继承入口级权限
+      // （`/templates/12` → `/templates` → ADMIN/MANAGER）；直接输 URL 也拦得住。
+      // 路径里的参数是**版本** id 而不是模板 id —— 编辑器编辑的是某个版本，
+      // 模板名从版本树里取（后端 TemplateVersionTree 带 templateName）。
+      {
+        path: 'templates',
+        name: 'templates',
+        component: () => import('@/features/template/views/TemplateListView.vue'),
+        meta: { title: '评估模板' },
+      },
+      {
+        path: 'templates/:versionId',
+        name: 'template-editor',
+        component: () => import('@/features/template/views/TemplateEditorView.vue'),
+        meta: { title: '模板编辑器' },
+      },
       {
         path: 'users',
         name: 'users',

@@ -21,3 +21,18 @@ export type UserStatus = 'ENABLED' | 'DISABLED'
 
 /** 供应商档案状态（`V3__supplier.sql` 的 status 列，两态机） */
 export type SupplierStatus = 'ENABLED' | 'DISABLED'
+
+/**
+ * 模板版本状态（`V7__template.sql` 的 status 列）。
+ *
+ * P2 只实现 **DRAFT → PUBLISHED** 一条迁移；`ARCHIVED` 是**枚举值预留、没有入口能进入**该状态
+ * （02 §3 未规定"废弃"的进入条件，12 §E10）——与 07 §4 对任务/评分单「枚举值预留、入口后置」
+ * 的既有做法一致。前端把它列出来是为了后端将来真用上时不至于显示成空白，**不表示现在可选**。
+ */
+export type TemplateVersionStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
+
+/** 指标类型（12 §E2）：`QUAL`（定性）时 `scoreMode` 为 `null`，计分策略由它决定 */
+export type IndicatorType = 'QUANT' | 'QUAL'
+
+/** 计分方式（01 §6.1 / 12 §E2）：仅定量指标有值 */
+export type ScoreMode = 'DIRECT' | 'RATIO' | 'TARGET'
