@@ -51,10 +51,16 @@ class LoginRateLimitIntegrationTest extends AbstractIntegrationTest {
         .andExpect(status().isTooManyRequests())
         .andExpect(jsonPath("$.code").value(1003));
 
-    // 断言到具体那一行：只判非空的话，这条审计记到别的账号头上也一样通过
-    List<Map<String, Object>> blocked = auditRows("AUTH_LOGIN_BLOCKED");
+    // 断言到具体那一行：只判非空的话，这条审计记到别的账号头上也一样通过。
+    // 按 operator_name 过滤、而不是对全表 hasSize(1)：audit_log 是**整个测试 JVM 共享**的，
+    // 别的用例（如留痕验收）也会制造自己的锁定记录（04-041）；而且登录审计是独立提交的，
+    // 即使本类带 @Transactional 也回滚不掉它。
+    List<Map<String, Object>> blocked =
+        jdbcTemplate.queryForList(
+            "SELECT operator_id, operator_name, detail FROM audit_log"
+                + " WHERE action = 'AUTH_LOGIN_BLOCKED' AND operator_name = ? ORDER BY id DESC",
+            PROBE_ACCOUNT);
     assertThat(blocked).as("只为「进入锁定」那一刻留一条，锁定期内的后续拒绝不再写库").hasSize(1);
-    assertThat(blocked.get(0).get("operator_name")).isEqualTo(PROBE_ACCOUNT);
     assertThat(blocked.get(0).get("operator_id")).as("锁定发生在认证之前，没有可信的 uid").isNull();
   }
 }

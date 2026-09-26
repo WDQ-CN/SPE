@@ -224,6 +224,10 @@ class SystemApiIntegrationTest extends AbstractIntegrationTest {
   void gradeThresholdsDefaultIsNotPersistedUntilSaved() throws Exception {
     String adminToken = login(ADMIN_USERNAME, ADMIN_PASSWORD);
 
+    // 先清掉这一行，回到「缺失」这个前置：sys_setting 是整个测试 JVM 共享的，
+    // 别的用例（如留痕验收）可能已经保存过阈值，那时下面的默认值断言会读到别人写的值（04-041）。
+    // 本类带 @Transactional，这个 DELETE 与后续断言在同一事务内，不会影响其它用例。
+    jdbcTemplate.update("DELETE FROM sys_setting WHERE setting_key = 'grade.thresholds'");
     assertThat(countSettings()).isZero();
     mockMvc
         .perform(authed(get("/api/settings/grade-thresholds"), adminToken))
