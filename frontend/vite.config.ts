@@ -4,7 +4,10 @@ import vue from '@vitejs/plugin-vue'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
-import { defineConfig, loadEnv } from 'vite'
+import { loadEnv } from 'vite'
+// vitest/config 的 defineConfig 是 vite 的扩展：同一份配置里既能写构建，也能写测试，
+// 避免再维护一个 vitest.config.ts 与它重复声明 alias / 插件（两份配置必然漂移）
+import { defineConfig } from 'vitest/config'
 
 export default defineConfig(({ mode }) => {
   // 必须显式 loadEnv：Vite 把 .env 的解析结果作为返回值给出（只回写 NODE_ENV），
@@ -30,6 +33,16 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
         },
       },
+    },
+    test: {
+      // happy-dom 比 jsdom 轻，够用：这些用例只碰 DOM 与事件，不碰布局计算
+      environment: 'happy-dom',
+      include: ['src/**/*.spec.ts'],
+      // 不开 globals：从 'vitest' 显式导入 describe/it/expect，读代码时不必猜哪些是全局注入的
+      globals: false,
+      // element-plus 的入口会 import 自己的 CSS。node_modules 默认被 externalize（不走 Vite 管线），
+      // Node 直接解析 .css 会报「Unknown file extension ".css"」；inline 进来后 CSS 会被正常 stub。
+      server: { deps: { inline: ['element-plus'] } },
     },
   }
 })
