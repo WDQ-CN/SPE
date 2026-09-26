@@ -5,7 +5,7 @@ import axios, {
 } from 'axios'
 
 import { refreshCurrentView } from '@/app/view-state'
-import { BizError, LOGIN_FAILED, segmentOf, type ErrorSegment } from '@/shared/error-code'
+import { BizError, isLoginFormCode, segmentOf, type ErrorSegment } from '@/shared/error-code'
 import type { Result } from '@/shared/types/result'
 import { navigateTo } from './navigation'
 import { clearToken, getToken } from './token'
@@ -38,9 +38,10 @@ function failWith(result: Result<unknown>): never {
   const segment = segmentOf(result.code)
   const message = result.message || DEFAULT_MESSAGE[segment]
 
-  // 登录失败与 2xxx 同等待遇（10 §E2）：不清 token、不跳登录、不弹全局提示，只抛给表单回显。
-  // 若按 1xxx 段处理，用户输错密码会看到「会话已失效」并被跳一次登录页。
-  if (result.code === LOGIN_FAILED) {
+  // 登录失败（1002）与登录被限流（1003）与 2xxx 同等待遇（10 §E2 / 03 §16 SEC-5）：
+  // 不清 token、不跳登录、不弹全局提示，只抛给表单回显。
+  // 若按 1xxx 段处理，用户输错密码或短时间内重试会看到「会话已失效」并被跳一次登录页。
+  if (isLoginFormCode(result.code)) {
     throw new BizError(result.code, message)
   }
 

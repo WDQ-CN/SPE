@@ -22,6 +22,16 @@ export function segmentOf(code: number): ErrorSegment {
  */
 export const LOGIN_FAILED = 1002
 
+/** 登录失败次数超限、被临时锁定（03 §16 的 SEC-5）：同样是「登录页表单级」错误，不该跳转。 */
+export const LOGIN_RATE_LIMITED = 1003
+
+/** 属于「登录页表单级」的码：拦截器对它们只抛给表单回显，不清 token、不跳登录、不弹全局提示。 */
+const LOGIN_FORM_CODES: readonly number[] = [LOGIN_FAILED, LOGIN_RATE_LIMITED]
+
+export function isLoginFormCode(code: number): boolean {
+  return LOGIN_FORM_CODES.includes(code)
+}
+
 /** 业务异常：拦截器按分段提示后仍抛出，调用方据此决定是否回显到表单 */
 export class BizError extends Error {
   readonly code: number
