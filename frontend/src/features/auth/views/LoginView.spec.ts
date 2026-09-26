@@ -27,9 +27,21 @@ import LoginView from './LoginView.vue'
  * <p>这几条都在「浏览器里点一遍」的范围内，但自动化后能防住的是**回归**——
  * 例如有人把 `safeRedirect` 去掉、或把失败分支改成 `ElMessage.error` 后仍然跳转。
  */
+/**
+ * 种子管理员账号：定义一次，别处引用（口令写两份必然漂移，03 §26.5）。
+ *
+ * ⚠️ 这里**不能**用 `as const`：那会把 `password` 收窄成字面量类型 `'Admin@12345'`，而它被用作
+ * `mountAndFill` 的**默认参数**，于是调用方传 `'wrong-password'`（弱口令分支）会直接类型报错。
+ * 显式标注为 `string`。这条是 `pnpm build`（vue-tsc）抓到的，`vitest` 自己不会报（它不做严格类型检查）。
+ */
+const SEED_ADMIN: { username: string; password: string } = {
+  username: 'admin',
+  password: 'Admin@12345',
+}
+
 async function mountAndFill(
-  username = 'admin',
-  password = 'Admin@12345',
+  username = SEED_ADMIN.username,
+  password = SEED_ADMIN.password,
 ): Promise<VueWrapper> {
   const wrapper = mount(LoginView, { global: { plugins: [ElementPlus, createPinia()] } })
   const inputs = wrapper.findAll('input')
@@ -64,7 +76,7 @@ describe('登录页', () => {
 
     await clickSubmit(await mountAndFill())
 
-    expect(mocks.login).toHaveBeenCalledWith({ username: 'admin', password: 'Admin@12345' })
+    expect(mocks.login).toHaveBeenCalledWith({ username: SEED_ADMIN.username, password: SEED_ADMIN.password })
     expect(getToken()).toBe('token-login-1')
     expect(mocks.replace).toHaveBeenCalledWith('/suppliers')
   })

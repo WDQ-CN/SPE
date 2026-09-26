@@ -164,12 +164,17 @@ class AuthServiceTest {
   }
 
   @Test
-  @DisplayName("改口令：新口令过短 → 2003，原口令不校验、不写库")
+  @DisplayName("改口令：新口令过短 → 2003，且**不查用户**、不写库（强度校验必须在最前）")
   void changePasswordRejectsWeakNewPassword() {
+    // 这条此前只断言「抛 2003」——但没 stub findByUsernameForAuth，它返回 empty 时抛的**也是** 2003，
+    // 于是「强度校验根本不存在、直接因找不到用户而失败」这种情况也能绿（03 §26.5）。
+    // 加上「没查过用户」的验证，才把它与「用户不存在」区分开：过短必须在查库之前被拦下
+    // （《@DisplayName》里"原口令不校验"那句话，只有这条 verify 在守）。
     assertThatThrownBy(() -> authService.changeOwnPassword("admin", RAW_PASSWORD, "short"))
         .isInstanceOf(BizException.class)
         .extracting(ex -> ((BizException) ex).errorCode())
         .isEqualTo(ErrorCode.PASSWORD_TOO_WEAK);
+    verify(sysUserMapper, never()).findByUsernameForAuth(any());
     verify(sysUserMapper, never()).changePassword(org.mockito.ArgumentMatchers.anyLong(), any(), any());
   }
 

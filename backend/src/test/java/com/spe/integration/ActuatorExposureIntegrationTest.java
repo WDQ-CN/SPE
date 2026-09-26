@@ -120,13 +120,28 @@ class ActuatorExposureIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("未暴露的端点即使以管理员访问也是 404（不是「仅需认证」）")
+  @DisplayName("未暴露的端点即使以管理员访问也是 404，且响应体不含任何配置值（不是「仅需认证」）")
   void unexposedEndpointsAreNotFound() throws Exception {
     String adminToken = login(ADMIN_USERNAME, ADMIN_PASSWORD);
 
-    mockMvc.perform(authed(get("/actuator/env"), adminToken)).andExpect(status().isNotFound());
-    mockMvc
-        .perform(authed(get("/actuator/configprops"), adminToken))
-        .andExpect(status().isNotFound());
+    // 404 是「端点不存在」，但真正要防的是「配置值被打印出来」——`/actuator/env` 会把
+    // `JWT_SECRET` 原样吐出来（03 §19 的红线）。所以除了状态码，还要断言**运行态的响应体**里
+    // 没有密钥痕迹：这样即便将来有人放开暴露面又被别的过滤器兜住，这条也会红
+    // （06 §8 第 22 条：判据要落在运行结果上，不是「配置对象里没写」）。
+    for (String path : new String[] {"/actuator/env", "/actuator/configprops"}) {
+      String body =
+          mockMvc
+              .perform(authed(get(path), adminToken))
+              .andExpect(status().isNotFound())
+              .andReturn()
+              .getResponse()
+              .getContentAsString()
+              .toLowerCase();
+      assertThat(body)
+          .as("%s 的响应体不得含配置值痕迹", path)
+          .doesNotContain("jwt")
+          .doesNotContain("secret")
+          .doesNotContain("password");
+    }
   }
 }

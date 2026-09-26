@@ -21,20 +21,41 @@ export const ADMIN = { username: 'admin', password: 'Admin@12345' } as const
 export const FAILURE_PROBE = 'e2e-w4-unknown-account'
 
 /**
- * 收集控制台问题。两类要盯，一类要豁免：
+ * 收集控制台问题。三类要盯，一类要豁免：
  *
  * - **JS 异常**（pageerror）与 **CSP 违规**：没有豁免，出现即失败；
- * - 浏览器为任何非 2xx 响应自动打的 `Failed to load resource`：**必须豁免**。401/403 在本项目是
- *   预期结果（登录失败 401、越权 403），把它当缺陷会让用例在**正确行为**下变红。
+ * - **非 2xx 的资源响应**：只豁免 **401/403**（本项目里它们是预期结果——登录失败 401、越权 403），
+ *   其余（404/500…）一律记为问题。
+ *
+ * ⚠️ 这里**不再**靠 console 里那句 `Failed to load resource` 做判断，而是直接听 `response` 事件按
+ * **状态码**判定。原因：console 与 response 两个事件的到达顺序没有保证，用 console 文本去查
+ * response 记录会**时序性漏判**；而那句话本身又分不出 401 与 404——无差别豁免等于把"漏了一个
+ * chunk、静态资源路径写错"这类真问题**永久静音**（03 §26.5）。
  */
 export function watchConsole(page: Page): { all: string[]; csp: string[] } {
   const all: string[] = []
   const csp: string[] = []
+
+  // 401/403 是业务上的预期结果；favicon 允许缺失（未提供图标不算缺陷）
+  const EXPECTED_STATUS = new Set([401, 403])
+  page.on('response', (response) => {
+    const status = response.status()
+    if (status < 400 || EXPECTED_STATUS.has(status)) {
+      return
+    }
+    const url = response.url()
+    if (/\/(favicon\.ico|favicon\.svg)$/.test(url)) {
+      return
+    }
+    all.push(`资源加载失败：HTTP ${status} ${url}`)
+  })
+
   page.on('console', (message) => {
     if (message.type() !== 'error') {
       return
     }
     const text = message.text()
+    // 浏览器为任何非 2xx 自动打的那句由上面的 response 监听负责，这里跳过以免重复计数
     if (/Failed to load resource/i.test(text)) {
       return
     }

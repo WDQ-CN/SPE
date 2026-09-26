@@ -1,4 +1,5 @@
 import { expect, request, test, type Page } from '@playwright/test'
+import { ADMIN } from './support'
 
 /**
  * P1-W5 的 M1 验收用例：**四角色真实登录 + 菜单按 01 §7 渲染**。
@@ -14,7 +15,6 @@ import { expect, request, test, type Page } from '@playwright/test'
  */
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:18081'
-const ADMIN = { username: 'admin', password: 'Admin@12345' }
 const PROBE_PASSWORD = 'E2eTest@12345'
 
 /** 01 §7 权限矩阵在 P1 范围内的映射：供应商 = ADMIN/MANAGER；用户与系统设置 = 仅 ADMIN */

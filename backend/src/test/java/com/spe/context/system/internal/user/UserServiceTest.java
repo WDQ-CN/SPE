@@ -145,7 +145,11 @@ class UserServiceTest {
     @SuppressWarnings("unchecked")
     ArgumentCaptor<Map<String, Object>> detail = ArgumentCaptor.forClass(Map.class);
     verify(auditFacade).record(eq(AuditAction.USER_CREATE), any(), eq(9L), detail.capture());
-    assertThat(detail.getValue()).doesNotContainKey("password");
+    // 用 containsOnlyKeys 而不是 doesNotContainKey("password")：后者在 detail **为空 map** 时会
+    // 空洞地通过（"不含 password"对空 map 也成立），于是删光审计内容也照样绿。
+    // 同一仓库的 SupplierServiceTest 用的是严格写法，这里统一（03 §26.5）。
+    assertThat(detail.getValue())
+        .containsOnlyKeys("username", "name", "role", "department");
   }
 
   @Test

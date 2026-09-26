@@ -38,7 +38,14 @@ class ErrorCodeTest {
             5, Set.of(500));
 
     for (ErrorCode errorCode : ErrorCode.values()) {
-      assertThat(allowedBySegment.get(errorCode.code() / 1000))
+      int segment = errorCode.code() / 1000;
+      // 先断言「这个分段被登记过」再取它：否则未登记的分段（例如新加的 6xxx）会让下面的
+      // `contains(...)` 抛 NullPointerException——报错指向"集合是 null"，而不是"这个码不属于任何分段"，
+      // 新手看到 NPE 只会一头雾水。可诊断性也是测试质量的一部分（03 §26.5）。
+      assertThat(allowedBySegment)
+          .as("错误码 %s（%d）的分段 %d 未在任何已登记分段中", errorCode, errorCode.code(), segment)
+          .containsKey(segment);
+      assertThat(allowedBySegment.get(segment))
           .as("错误码 %s（%d）的 HTTP 状态", errorCode, errorCode.code())
           .contains(errorCode.httpStatus().value());
     }
