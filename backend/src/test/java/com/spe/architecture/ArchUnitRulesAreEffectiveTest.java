@@ -1,10 +1,10 @@
 package com.spe.architecture;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
+import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.EvaluationResult;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,8 +17,12 @@ import org.junit.jupiter.api.Test;
  * 真实的规则对象拿来跑，断言它们确实失败。正式的 {@code @AnalyzeClasses} 用 DoNotIncludeTests
  * 排除测试类，因此夹具不会被真实校验看到。
  *
- * <p>七条规则（R-A~R-G）全部纳入验证：R-B/R-C/R-D 的夹具在 P1 补入前只靠 {@code allowEmptyShould}
- * 声明空转，本身没有任何「规则会失败」的证据。
+ * <p><b>为什么断言「失败报告里点名了哪个夹具类」而不是「抛了 AssertionError」</b>：
+ * 夹具是**一次性全量导入**的，同一条规则只要命中任何一个夹具就会失败。R-A 就有两个违规夹具——
+ * {@code SupplierLeaksOtherContextInternal}（依赖对方 internal）与
+ * {@code SupplierDependsOnOtherContextWebPackage}（依赖对方 web 包）。若只断言「抛异常」，
+ * 规则即使不再拦 internal 依赖也照样绿，而用例名字还写着「能捕获 internal 依赖」。
+ * 点名类名之后，每个用例只为自己那一条违规负责（这一处加强由测试体系审查发现）。
  */
 class ArchUnitRulesAreEffectiveTest {
 
@@ -32,32 +36,21 @@ class ArchUnitRulesAreEffectiveTest {
               "com.spe.context.evaluation.fixture",
               "com.spe.context.evaluation.internal.scoring.fixture");
 
+  /** 断言规则在夹具集上报出违规，且失败报告点名了预期的夹具类。 */
+  private static void assertCatches(ArchRule rule, String expectedFixture) {
+    EvaluationResult result = rule.evaluate(VIOLATING_FIXTURES);
+
+    assertThat(result.hasViolation()).as("规则应当报出违规").isTrue();
+    assertThat(result.getFailureReport().toString())
+        .as("失败报告应点名 %s，否则可能是被同批夹具里的其它违规带红的", expectedFixture)
+        .contains(expectedFixture);
+  }
+
   @Test
   @DisplayName("R-A 能捕获跨上下文依赖对方 internal")
   void rACatchesCrossContextInternalDependency() {
-    assertThatThrownBy(() -> ArchitectureTest.crossContextDependencyOnlyViaApi.check(VIOLATING_FIXTURES))
-        .isInstanceOf(AssertionError.class);
-  }
-
-  @Test
-  @DisplayName("R-E 能捕获不在 web 子包里的 Controller")
-  void rECatchesMisplacedController() {
-    assertThatThrownBy(() -> ArchitectureTest.controllersResideInWebPackage.check(VIOLATING_FIXTURES))
-        .isInstanceOf(AssertionError.class);
-  }
-
-  @Test
-  @DisplayName("R-F 能捕获 common 依赖业务上下文")
-  void rFCatchesCommonDependingOnContext() {
-    assertThatThrownBy(() -> ArchitectureTest.commonDoesNotDependOnContexts.check(VIOLATING_FIXTURES))
-        .isInstanceOf(AssertionError.class);
-  }
-
-  @Test
-  @DisplayName("R-G 能捕获上下文之间的循环依赖")
-  void rGCatchesContextCycles() {
-    assertThatThrownBy(() -> ArchitectureTest.contextsAreFreeOfCycles.check(VIOLATING_FIXTURES))
-        .isInstanceOf(AssertionError.class);
+    assertCatches(
+        ArchitectureTest.crossContextDependencyOnlyViaApi, "SupplierLeaksOtherContextInternal");
   }
 
   @Test
@@ -76,31 +69,42 @@ class ArchUnitRulesAreEffectiveTest {
   @Test
   @DisplayName("R-B 能捕获出现在只读上下文之外的 QueryMapper")
   void rBCatchesQueryMapperOutsideReadOnlyContexts() {
-    assertThatThrownBy(
-            () -> ArchitectureTest.queryMapperOnlyInReadOnlyContexts.check(VIOLATING_FIXTURES))
-        .isInstanceOf(AssertionError.class);
+    assertCatches(ArchitectureTest.queryMapperOnlyInReadOnlyContexts, "LeakyQueryMapper");
   }
 
   @Test
   @DisplayName("R-B 能捕获带写注解的 QueryMapper")
   void rBCatchesQueryMapperWithWriteAnnotation() {
-    assertThatThrownBy(
-            () -> ArchitectureTest.queryMapperHasNoWriteAnnotations.check(VIOLATING_FIXTURES))
-        .isInstanceOf(AssertionError.class);
+    assertCatches(ArchitectureTest.queryMapperHasNoWriteAnnotations, "LeakyQueryMapper");
   }
 
   @Test
   @DisplayName("R-C 能捕获计分器包依赖 Spring")
   void rCCatchesFrameworkDependencyInScoringPackage() {
-    assertThatThrownBy(
-            () -> ArchitectureTest.scoreCalculatorStaysFrameworkFree.check(VIOLATING_FIXTURES))
-        .isInstanceOf(AssertionError.class);
+    assertCatches(ArchitectureTest.scoreCalculatorStaysFrameworkFree, "FrameworkDependentCalculator");
   }
 
   @Test
   @DisplayName("R-D 能捕获非 final 的事件载荷字段")
   void rDCatchesMutableEventFields() {
-    assertThatThrownBy(() -> ArchitectureTest.domainEventFieldsAreFinal.check(VIOLATING_FIXTURES))
-        .isInstanceOf(AssertionError.class);
+    assertCatches(ArchitectureTest.domainEventFieldsAreFinal, "MutableEvent");
+  }
+
+  @Test
+  @DisplayName("R-E 能捕获不在 web 子包里的 Controller")
+  void rECatchesMisplacedController() {
+    assertCatches(ArchitectureTest.controllersResideInWebPackage, "ControllerOutsideWebPackage");
+  }
+
+  @Test
+  @DisplayName("R-F 能捕获 common 依赖业务上下文")
+  void rFCatchesCommonDependingOnContext() {
+    assertCatches(ArchitectureTest.commonDoesNotDependOnContexts, "CommonDependingOnContext");
+  }
+
+  @Test
+  @DisplayName("R-G 能捕获上下文之间的循环依赖")
+  void rGCatchesContextCycles() {
+    assertCatches(ArchitectureTest.contextsAreFreeOfCycles, "CycleStarter");
   }
 }

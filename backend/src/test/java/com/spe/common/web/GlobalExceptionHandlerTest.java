@@ -2,19 +2,18 @@ package com.spe.common.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import jakarta.validation.ConstraintViolation;
-import jakarta.validation.ConstraintViolationException;
-import jakarta.validation.Validation;
-import jakarta.validation.constraints.NotBlank;
-import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.access.AccessDeniedException;
 
 /**
- * 全局异常处理器的可判定分支（09 D8）。校验失败分支需要 {@code MethodParameter} + {@code BindingResult}
- * 才构造得出，按 09 WP4 的安排在收口阶段用 standalone MockMvc 覆盖，此处不勉强。
+ * 全局异常处理器的可判定分支（09 D8）。
+ *
+ * <p>两条校验分支（请求体校验、方法级校验）由 {@link GlobalExceptionHandlerValidationTest} 用
+ * standalone MockMvc 覆盖——那里真的走了一遍参数绑定与 JSR-303，比在本类手工构造
+ * {@code ConstraintViolationException} 更贴近真实链路。本类原有一个手工构造的同类分支，
+ * 在测试体系审查时判为**重复覆盖**并删除（两者断言的 HTTP 状态、错误码、文案完全相同）。
  */
 class GlobalExceptionHandlerTest {
 
@@ -66,21 +65,4 @@ class GlobalExceptionHandlerTest {
     assertThat(response.getBody().message()).isEqualTo(ErrorCode.INTERNAL_ERROR.message());
     assertThat(response.getBody().message()).doesNotContain("内部敏感细节");
   }
-
-  @Test
-  @DisplayName("方法级校验失败：按 2xxx 返回，不落 5xxx 兜底")
-  void constraintViolationMapsToBadRequest() {
-    Set<ConstraintViolation<Sample>> violations =
-        Validation.buildDefaultValidatorFactory().getValidator().validate(new Sample(""));
-
-    var response = handler.handleConstraintViolation(new ConstraintViolationException(violations));
-
-    assertThat(response.getStatusCode()).isEqualTo(ErrorCode.BAD_REQUEST.httpStatus());
-    assertThat(response.getBody()).isNotNull();
-    assertThat(response.getBody().code()).isEqualTo(ErrorCode.BAD_REQUEST.code());
-    assertThat(response.getBody().message()).contains("不能为空");
-  }
-
-  /** 仅用于造出方法级校验违规的最小对象（类上 @Validated 的接口触发的是同一类异常）。 */
-  private record Sample(@NotBlank(message = "不能为空") String name) {}
 }

@@ -14,6 +14,10 @@ class ErrorCodeTest {
   @Test
   @DisplayName("基线码落在约定的千位分段：1xxx 认证 / 2xxx 参数 / 3xxx 冲突 / 4xxx 权限 / 5xxx 系统")
   void baselineCodesKeepTheirSegment() {
+    // 这条**不并进**下面的 everyCodeCarriesMatchingHttpStatus（测试体系审查时复核过）：
+    // 那条只校验「码与 HTTP 状态自洽」，把 UNAUTHORIZED 改成 2001 并同时把状态改成 400 它照样通过——
+    // 那正是语义漂移，而语义漂移会让前端的 1xxx 分流（清 token 跳登录）静默失效。
+    // 这里显式钉住五个基线码的段位，成本一行、防的是一类改动。
     assertThat(ErrorCode.UNAUTHORIZED.code() / 1000).isEqualTo(1);
     assertThat(ErrorCode.BAD_REQUEST.code() / 1000).isEqualTo(2);
     assertThat(ErrorCode.CONCURRENT_CONFLICT.code() / 1000).isEqualTo(3);

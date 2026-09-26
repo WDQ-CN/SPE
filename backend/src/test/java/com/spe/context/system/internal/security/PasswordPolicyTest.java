@@ -24,16 +24,24 @@ class PasswordPolicyTest {
   }
 
   @Test
-  @DisplayName("空口令按过短处理，不抛 NPE")
+  @DisplayName("空口令按过短处理，不抛 NPE，且复用同一个错误码 2003")
   void nullAndBlankAreRejected() {
-    assertThatThrownBy(() -> PasswordPolicy.validateOrThrow(null)).isInstanceOf(BizException.class);
-    assertThatThrownBy(() -> PasswordPolicy.validateOrThrow("")).isInstanceOf(BizException.class);
+    // 断言到错误码，而不是只断言「抛了 BizException」——后者在实现改成任何 2xxx 时都会通过
+    assertThatThrownBy(() -> PasswordPolicy.validateOrThrow(null))
+        .isInstanceOf(BizException.class)
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.PASSWORD_TOO_WEAK);
+    assertThatThrownBy(() -> PasswordPolicy.validateOrThrow(""))
+        .isInstanceOf(BizException.class)
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.PASSWORD_TOO_WEAK);
   }
 
   @Test
   @DisplayName("下限常量与 06 §2.6 的错误码文案一致（改一处时另一处会红）")
   void minLengthMatchesMessage() {
     assertThat(PasswordPolicy.MIN_LENGTH).isEqualTo(8);
-    assertThat(ErrorCode.PASSWORD_TOO_WEAK.message()).contains("8");
+    // 断言「8 位」而不是裸的 "8"：后者在文案里出现任何数字 8 都算通过，等于没锁住一致性
+    assertThat(ErrorCode.PASSWORD_TOO_WEAK.message()).contains("8 位");
   }
 }

@@ -70,15 +70,16 @@ class SystemApiIntegrationTest extends AbstractIntegrationTest {
   @Test
   @DisplayName("口令错误：401 + 1002，并留 operator_id 为空的 AUTH_LOGIN_FAILED（可溯源被尝试账号）")
   void wrongPasswordIsAuditedWithNullOperator() throws Exception {
-    mockMvc
-        .perform(json(post("/api/auth/login"), Map.of("username", ADMIN_USERNAME, "password", "wrong-password")))
+    // 用专用探针账号而不是 admin：登录失败会累计限流器计数（进程内、不随事务回滚），
+    // 拿 admin 反复制造失败会把种子账号锁死，让其它用例的前置登录莫名抛异常
+    failedLogin(FAILURE_PROBE_ACCOUNT, "wrong-password")
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value(1002));
 
     List<Map<String, Object>> rows = auditRows("AUTH_LOGIN_FAILED");
     assertThat(rows).isNotEmpty();
     assertThat(rows.get(0).get("operator_id")).isNull();
-    assertThat(rows.get(0).get("operator_name")).isEqualTo(ADMIN_USERNAME);
+    assertThat(rows.get(0).get("operator_name")).isEqualTo(FAILURE_PROBE_ACCOUNT);
     assertThat(rows.get(0).get("detail")).isNull();
   }
 
@@ -133,11 +134,17 @@ class SystemApiIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("用户列表：分页契约 page 从 1 开始、size 生效、total 为总数")
+  @DisplayName("用户列表：分页契约 page 从 1 开始、size 生效、total 为总数、按 id 升序")
   void userListKeepsPageResultContract() throws Exception {
     String adminToken = login(ADMIN_USERNAME, ADMIN_PASSWORD);
     createUser(adminToken, "paged_user_1", Role.VIEWER);
     createUser(adminToken, "paged_user_2", Role.VIEWER);
+
+    // total 与实际行数一致、首页第一条是最小 id 的账号：这两点才抓得住「分页算错」和「排序/偏移错位」，
+    // 只断言 total >= 3 的话，total 少算一行、或 list 返回了第二页的数据都照样绿
+    Long expectedTotal = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_user", Long.class);
+    String firstUsername =
+        jdbcTemplate.queryForObject("SELECT username FROM sys_user ORDER BY id ASC LIMIT 1", String.class);
 
     mockMvc
         .perform(authed(get("/api/users").param("page", "1").param("size", "2"), adminToken))
@@ -146,7 +153,8 @@ class SystemApiIntegrationTest extends AbstractIntegrationTest {
         .andExpect(jsonPath("$.data.page").value(1))
         .andExpect(jsonPath("$.data.size").value(2))
         .andExpect(jsonPath("$.data.list.length()").value(2))
-        .andExpect(jsonPath("$.data.total").value(org.hamcrest.Matchers.greaterThanOrEqualTo(3)));
+        .andExpect(jsonPath("$.data.total").value(expectedTotal))
+        .andExpect(jsonPath("$.data.list[0].username").value(firstUsername));
   }
 
   @Test
@@ -296,7 +304,8 @@ class SystemApiIntegrationTest extends AbstractIntegrationTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.code").value(0));
 
-    assertThat(auditRows("USER_PASSWORD_CHANGE")).isNotEmpty();
+    // 改的是自己的口令：这条审计没有目标对象（operator_id 即本人），故 targetId 传 null
+    assertUserAuditRow("USER_PASSWORD_CHANGE", null, userIdOf(ADMIN_USERNAME));
     // 事务内口令已换：旧口令失效、新口令可用
     mockMvc
         .perform(json(post("/api/auth/login"), Map.of("username", ADMIN_USERNAME, "password", "Rotated@2026")))
@@ -345,7 +354,13 @@ class SystemApiIntegrationTest extends AbstractIntegrationTest {
         .andExpect(jsonPath("$.data.role").value("MANAGER"))
         .andExpect(jsonPath("$.data.version").value(1));
 
-    assertThat(auditRows("USER_UPDATE")).isNotEmpty();
+    // DisplayName 说「列表可见」，就真的查一次列表——否则这条描述没有任何断言支撑
+    mockMvc
+        .perform(authed(get("/api/users").param("page", "1").param("size", "50"), adminToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.list[*].name", org.hamcrest.Matchers.hasItem("改名后")));
+
+    assertUserAuditRow("USER_UPDATE", id, userIdOf(ADMIN_USERNAME));
   }
 
   @Test
@@ -365,7 +380,34 @@ class SystemApiIntegrationTest extends AbstractIntegrationTest {
         .perform(
             json(post("/api/auth/login"), Map.of("username", "reset_target", "password", "ResetByAdmin1!")))
         .andExpect(status().isOk());
-    assertThat(auditRows("USER_PASSWORD_RESET")).isNotEmpty();
+    assertUserAuditRow("USER_PASSWORD_RESET", id, userIdOf(ADMIN_USERNAME));
+  }
+
+  /**
+   * 审计行必须记在**正确的对象与操作人**上。
+   *
+   * <p>只断言「这个 action 有记录」抓不到「记到了别的用户头上」——而那正是审计最容易出的偏差。
+   *
+   * @param targetId 目标对象 id；**改本人口令那条审计没有目标对象**（操作人自己就是目标），传 null
+   */
+  private void assertUserAuditRow(String action, Long targetId, long operatorId) {
+    Map<String, Object> row =
+        targetId == null
+            ? jdbcTemplate.queryForMap(
+                "SELECT operator_id, target_type, target_id FROM audit_log"
+                    + " WHERE action = ? AND operator_id = ? ORDER BY id DESC LIMIT 1",
+                action,
+                operatorId)
+            : jdbcTemplate.queryForMap(
+                "SELECT operator_id, target_type, target_id FROM audit_log"
+                    + " WHERE action = ? AND target_id = ? ORDER BY id DESC LIMIT 1",
+                action,
+                targetId);
+    assertThat(row.get("operator_id")).isEqualTo(operatorId);
+    if (targetId != null) {
+      assertThat(row.get("target_type")).isEqualTo("USER");
+      assertThat(row.get("target_id")).isEqualTo(targetId);
+    }
   }
 
   private long countAudit(String action) {

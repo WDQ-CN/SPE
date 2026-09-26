@@ -15,6 +15,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 /**
@@ -41,6 +42,18 @@ public abstract class AbstractIntegrationTest {
   protected static final String ADMIN_PASSWORD = "Admin@12345";
 
   protected static final String DEFAULT_PASSWORD = "Passw0rd!";
+
+  /**
+   * 「故意失败登录」专用的来源 IP。登录限流器（03 §16 的 SEC-5）按**账号**与**来源 IP**两个维度
+   * 独立计数，且它是进程内单例、不随测试事务回滚——多个用例在同一个 Spring 上下文里各自制造失败登录时，
+   * 计数会互相叠加：`admin` 被三处共用（账号维度阈值 5），再多一条就会把它锁死，使后续所有用例的前置
+   * 登录抛异常，表现为「改一个不相干的用例、另一个用例莫名变红」。统一用这个独立 IP，并要求调用方
+   * 使用**专用探针账号**（见 {@link #failedLogin}）。
+   */
+  protected static final String FAILURE_PROBE_IP = "198.18.0.99";
+
+  /** 失败登录专用账号名：库里不存在，因此审计的 operator_name 就是输入值、operator_id 为空。 */
+  protected static final String FAILURE_PROBE_ACCOUNT = "w4-probe-unknown-account";
 
   @Autowired protected MockMvc mockMvc;
 
@@ -77,6 +90,26 @@ public abstract class AbstractIntegrationTest {
       throw new IllegalStateException("登录失败，无法继续：status=" + result.getResponse().getStatus() + " body=" + body);
     }
     return token;
+  }
+
+  /**
+   * 制造一次**失败**的登录，返回 ResultActions 供调用方继续 andExpect（不在这里断言状态码，
+   * 因为「用哪个码失败」本身可能是被测行为）。
+   *
+   * <p>统一走这里而不是各自 {@code mockMvc.perform}，是为了让所有失败登录都带上独立来源 IP
+   * （{@link #FAILURE_PROBE_IP}）——否则它们会往限流器的 IP 维度计数里叠加，制造出跨用例的隐性顺序依赖。
+   * 账号请用 {@link #FAILURE_PROBE_ACCOUNT} 或本用例专属的名字，**不要用 admin**。
+   */
+  protected ResultActions failedLogin(String username, String password) throws Exception {
+    return mockMvc.perform(
+        json(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/auth/login"),
+                Map.of("username", username, "password", password))
+            .with(
+                request -> {
+                  request.setRemoteAddr(FAILURE_PROBE_IP);
+                  return request;
+                }));
   }
 
   protected long userIdOf(String username) {

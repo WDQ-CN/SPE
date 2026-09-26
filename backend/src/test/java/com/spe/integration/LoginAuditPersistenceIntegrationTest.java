@@ -25,9 +25,9 @@ class LoginAuditPersistenceIntegrationTest extends AbstractIntegrationTest {
   @Test
   @DisplayName("登录失败：1002 之外，AUTH_LOGIN_FAILED 审计真的落库（跨事务可见，即已提交）")
   void loginFailureAuditIsCommittedDespiteRollback() throws Exception {
-    mockMvc
-        .perform(
-            json(post("/api/auth/login"), Map.of("username", ADMIN_USERNAME, "password", "definitely-wrong")))
+    // 用基类的失败登录助手（独立来源 IP）+ 专用探针账号：拿 admin 制造失败会累计登录限流器的
+    // 账号维度计数（阈值 5、进程内共享），把种子账号锁死会让其它用例的前置登录莫名抛异常
+    failedLogin(FAILURE_PROBE_ACCOUNT, "definitely-wrong")
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value(1002));
 
@@ -35,15 +35,16 @@ class LoginAuditPersistenceIntegrationTest extends AbstractIntegrationTest {
         jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM audit_log WHERE action = 'AUTH_LOGIN_FAILED' AND operator_name = ?",
             Long.class,
-            ADMIN_USERNAME);
-    assertThat(committed).as("失败审计必须提交，否则回滚会把它一起抹掉").isNotNull().isPositive();
+            FAILURE_PROBE_ACCOUNT);
+    // COUNT(*) 永不返回 NULL，所以只断言正数——原来那句 isNotNull() 是恒真的空断言
+    assertThat(committed).as("失败审计必须提交，否则回滚会把它一起抹掉").isPositive();
     assertThat(
             jdbcTemplate.queryForObject(
                 "SELECT operator_id FROM audit_log WHERE action = 'AUTH_LOGIN_FAILED' AND operator_name = ?"
                     + " ORDER BY id DESC LIMIT 1",
                 Long.class,
-                ADMIN_USERNAME))
-        .as("登录失败时账号可能根本不存在，操作人 id 应为空")
+                FAILURE_PROBE_ACCOUNT))
+        .as("被尝试的账号在库里并不存在，操作人 id 应为空")
         .isNull();
   }
 
@@ -52,8 +53,7 @@ class LoginAuditPersistenceIntegrationTest extends AbstractIntegrationTest {
   void unknownAccountAttemptIsAudited() throws Exception {
     String attempted = "no-such-account-e2e";
 
-    mockMvc
-        .perform(json(post("/api/auth/login"), Map.of("username", attempted, "password", "whatever")))
+    failedLogin(attempted, "whatever")
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value(1002));
 

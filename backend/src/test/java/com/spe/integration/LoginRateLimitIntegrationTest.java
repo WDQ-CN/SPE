@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,8 +51,10 @@ class LoginRateLimitIntegrationTest extends AbstractIntegrationTest {
         .andExpect(status().isTooManyRequests())
         .andExpect(jsonPath("$.code").value(1003));
 
-    assertThat(auditRows("AUTH_LOGIN_BLOCKED"))
-        .as("进入锁定的那一刻应留下一条审计")
-        .isNotEmpty();
+    // 断言到具体那一行：只判非空的话，这条审计记到别的账号头上也一样通过
+    List<Map<String, Object>> blocked = auditRows("AUTH_LOGIN_BLOCKED");
+    assertThat(blocked).as("只为「进入锁定」那一刻留一条，锁定期内的后续拒绝不再写库").hasSize(1);
+    assertThat(blocked.get(0).get("operator_name")).isEqualTo(PROBE_ACCOUNT);
+    assertThat(blocked.get(0).get("operator_id")).as("锁定发生在认证之前，没有可信的 uid").isNull();
   }
 }

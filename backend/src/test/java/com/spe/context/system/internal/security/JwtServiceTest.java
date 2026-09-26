@@ -54,8 +54,11 @@ class JwtServiceTest {
   }
 
   @Test
-  @DisplayName("过期但在 60s 时钟容差内的令牌仍被接受")
+  @DisplayName("过期但在 60s 时钟容差内的令牌仍被接受（与上一条配对，证明容差存在且有界）")
   void tokenExpiredWithinClockSkewIsAccepted() {
+    // 与「超出容差被拒」配对：只测拒绝的话，容差被误删也看不出来。
+    // 本用例用真实时间，但余量是 30 秒（issue→parse 之间要停顿 30 秒才会误报），实践中不会 flaky；
+    // 若将来给 JwtService 引入可注入时钟，这里应改成固定时刻、把余量写成显式常量。
     JwtService jwtService = service(Duration.ofSeconds(-30));
     String token = jwtService.issue(payload(), Instant.now());
 

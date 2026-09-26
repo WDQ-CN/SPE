@@ -28,6 +28,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -194,13 +195,23 @@ class AuthServiceTest {
   }
 
   @Test
-  @DisplayName("改口令成功：新口令可校验通过、审计留痕")
+  @DisplayName("改口令成功：新口令经 BCrypt 编码后写库（旧口令失效）、审计留痕")
   void changePasswordSucceeds() {
     SysUser current = user(UserStatus.ENABLED);
     when(sysUserMapper.findByUsernameForAuth("admin")).thenReturn(Optional.of(current));
     when(sysUserMapper.changePassword(eq(1L), any(), eq(current.getPasswordHash()))).thenReturn(1);
 
     authService.changeOwnPassword("admin", RAW_PASSWORD, "NewPassw0rd!");
+
+    // 抓住真正写进库的那串哈希：只 verify 审计的话，实现改成存明文（或存错口令的哈希）也照样绿
+    ArgumentCaptor<String> writtenHash = ArgumentCaptor.forClass(String.class);
+    verify(sysUserMapper).changePassword(eq(1L), writtenHash.capture(), eq(current.getPasswordHash()));
+    assertThat(passwordEncoder.matches("NewPassw0rd!", writtenHash.getValue()))
+        .as("写库的哈希必须能校验新口令")
+        .isTrue();
+    assertThat(passwordEncoder.matches(RAW_PASSWORD, writtenHash.getValue()))
+        .as("旧口令不应再能通过")
+        .isFalse();
 
     verify(auditFacade).record(eq(AuditAction.USER_PASSWORD_CHANGE), isNull(), isNull(), isNull());
   }

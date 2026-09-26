@@ -137,7 +137,12 @@ class ArchitectureTest {
           }
           // 白名单判定：目标必须落在对方的 api 包里（05 §12 R-A 的原文是「跨上下文仅允许依赖 ..api..」）。
           // 只拦 internal/query 的黑名单写法会漏掉对方其它包，例如误放进 ..web.. 的类。
-          boolean targetIsApi = target.getPackageName().contains(".api");
+          // 用「等于 api 包或以 api. 开头」而不是 contains(".api")：后者是过宽的字符串包含，
+          // `...context.system.internal.apix` 之类也会被判成合法 api 包（测试体系审查发现）。
+          String targetApiPackage = CONTEXT_PREFIX + targetContext + ".api";
+          boolean targetIsApi =
+              target.getPackageName().equals(targetApiPackage)
+                  || target.getPackageName().startsWith(targetApiPackage + ".");
           if (wholeContext || !targetIsApi) {
             events.add(SimpleConditionEvent.violated(item, dependency.getDescription()));
           }

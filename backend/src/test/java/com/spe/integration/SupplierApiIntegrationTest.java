@@ -274,12 +274,16 @@ class SupplierApiIntegrationTest extends AbstractIntegrationTest {
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value(4001));
 
-    // 越权留痕：已登录但被拒（10 §E15）
-    List<Map<String, Object>> denied =
+    // 越权留痕：两条请求各自留一条，分别对应两个操作人。
+    // 不用 isIn(...) 做集合断言——那会让「只剩一条留痕」也通过，而少留一条正是要防的缺陷
+    List<Long> deniedBy =
         jdbcTemplate.queryForList(
-            "SELECT operator_id, detail FROM audit_log WHERE action = 'ACCESS_DENIED' ORDER BY id DESC");
-    assertThat(denied).isNotEmpty();
-    assertThat(denied.get(0).get("operator_id")).isIn(evaluatorId, userIdOf("w3t_viewer"));
+            "SELECT operator_id FROM audit_log WHERE action = 'ACCESS_DENIED'"
+                + " AND operator_id IN (?, ?) ORDER BY id DESC",
+            Long.class,
+            evaluatorId,
+            userIdOf("w3t_viewer"));
+    assertThat(deniedBy).containsExactlyInAnyOrder(evaluatorId, userIdOf("w3t_viewer"));
 
     mockMvc
         .perform(get("/api/suppliers"))

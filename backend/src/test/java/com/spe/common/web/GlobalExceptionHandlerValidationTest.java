@@ -35,23 +35,20 @@ class GlobalExceptionHandlerValidationTest {
           .build();
 
   @Test
-  @DisplayName("请求体校验失败：400 + Result(2001)，message 带字段名供表单回显")
+  @DisplayName("同一个端点：合法载荷正常通过，非法载荷 400 + Result(2001)（对照才看得出 advice 没误伤）")
   void validationFailureBecomesBadRequestResult() throws Exception {
+    // 先走一遍合法载荷：只测失败分支的话，「处理器把正常请求也拦下来了」这种缺陷不会被发现
+    mockMvc
+        .perform(post("/probe").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"ok\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(Result.SUCCESS_CODE));
+
     mockMvc
         .perform(post("/probe").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"\"}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value(ErrorCode.BAD_REQUEST.code()))
         .andExpect(jsonPath("$.data").doesNotExist())
         .andExpect(jsonPath("$.message").value(containsString("name")));
-  }
-
-  @Test
-  @DisplayName("校验通过：正常走到 Controller 并返回 Result(code=0)")
-  void validRequestReachesController() throws Exception {
-    mockMvc
-        .perform(post("/probe").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"ok\"}"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.code").value(Result.SUCCESS_CODE));
   }
 
   @Test
