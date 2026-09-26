@@ -303,6 +303,25 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
     assertThat(indicatorCountOnTarget).isEqualTo(expectedCount);
   }
 
+  @Test
+  @DisplayName("发布：对已发布版本再发布一次 → 3001（守卫 SQL 真的返回 0 行，不只是代码里有判断）")
+  void publishOfAlreadyPublishedVersionConflicts() {
+    long draftId = templateService.ensureEditable(publishedDefaultVersionId()).versionId();
+
+    // 第一次发布：复制出来的草稿继承完整树，权重合计仍是 100，所以能过校验
+    templateService.publish(draftId, requireVersion(draftId).getVersion());
+    assertThat(versionStatus(draftId)).isEqualTo(TemplateVersionStatus.PUBLISHED);
+
+    // 第二次：**用发布后的新 version**（发布时 version+1），于是 version 匹配、只有 status 不匹配——
+    // 这样测的才是守卫里的 `status = 'DRAFT'` 那一段，而不是 version 不匹配。
+    // 这条 SQL 的语义只有真实库能证明：mock 版 publishConflictOnGuardMiss 只能证明「代码里有这个判断」。
+    int currentVersion = requireVersion(draftId).getVersion();
+    assertThatThrownBy(() -> templateService.publish(draftId, currentVersion))
+        .isInstanceOf(BizException.class)
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.CONCURRENT_CONFLICT);
+  }
+
   // ---------------------------------------------------------------- 辅助
 
   private long publishedDefaultVersionId() {

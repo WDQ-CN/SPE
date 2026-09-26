@@ -17,11 +17,13 @@ import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
 import com.spe.context.system.api.AuditAction;
 import com.spe.context.system.api.AuditFacade;
+import com.spe.context.system.api.AuditTargetType;
 import com.spe.context.template.api.IndicatorType;
 import com.spe.context.template.api.ScoreMode;
 import com.spe.context.template.api.TemplateVersionStatus;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
@@ -415,6 +417,58 @@ class TemplateServiceTest {
         .isEqualTo(ErrorCode.CONCURRENT_CONFLICT);
   }
 
+  @Test
+  @DisplayName("addIndicator：唯一键冲突 → 2014（前置查重说'没有'时，唯一键就是最后一道防线，不能漏成 5001）")
+  void addIndicatorTranslatesUniqueKeyConflict() {
+    when(dimensionMapper.findById(10L)).thenReturn(Optional.of(dimension(10L, 1L)));
+    when(templateVersionMapper.findByIdForUpdate(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
+    // 关键：前置查重返回「没有这个编码」——并发下它读的是旧快照，正是 04-057 那个根因；
+    // 此时真正的判定落在唯一键上，不翻译就会经兜底变成 5001（04-030 的形态）。
+    when(indicatorMapper.countByCode(1L, "IQC_PASS_RATE", null)).thenReturn(0L);
+    when(indicatorMapper.insert(any(Indicator.class)))
+        .thenThrow(new DuplicateKeyException("uk_indicator_version_code"));
+
+    assertThatThrownBy(
+            () ->
+                service.addIndicator(
+                    10L, "来料批次合格率", "IQC_PASS_RATE", new BigDecimal("100.00"),
+                    IndicatorType.QUANT, ScoreMode.RATIO, "%", null, null, 1))
+        .isInstanceOf(BizException.class)
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.TEMPLATE_INDICATOR_CODE_DUPLICATE);
+  }
+
+  @Test
+  @DisplayName("rename：改名字写 TEMPLATE_UPDATE 审计，detail 按 {before, after} 记真正变化的名字")
+  void renameWritesAudit() {
+    when(templateMapper.findById(5L)).thenReturn(Optional.of(template(5L, "旧名")));
+
+    service.rename(5L, "新名");
+
+    verify(templateMapper).updateName(5L, "新名");
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, Object>> detail = ArgumentCaptor.forClass(Map.class);
+    verify(auditFacade)
+        .record(
+            eq(AuditAction.TEMPLATE_UPDATE),
+            eq(AuditTargetType.TEMPLATE),
+            eq(5L),
+            detail.capture());
+    assertThat(detail.getValue())
+        .containsEntry("name", Map.of("before", "旧名", "after", "新名"));
+  }
+
+  @Test
+  @DisplayName("rename：名字没变 → 既不写库也不写审计（只记真正变化，与 AuditDetails 同口径）")
+  void renameWithoutChangeWritesNothing() {
+    when(templateMapper.findById(5L)).thenReturn(Optional.of(template(5L, "同名")));
+
+    service.rename(5L, "同名");
+
+    verify(templateMapper, never()).updateName(anyLong(), any());
+    verifyNoInteractions(auditFacade);
+  }
+
   // ---------------------------------------------------------------- 辅助
 
   /**
@@ -449,6 +503,13 @@ class TemplateServiceTest {
             })
         .when(indicatorMapper)
         .insert(any(Indicator.class));
+  }
+
+  private static Template template(long id, String name) {
+    Template t = new Template();
+    t.setId(id);
+    t.setName(name);
+    return t;
   }
 
   private static TemplateVersion draft(long id, int versionNo, int version) {

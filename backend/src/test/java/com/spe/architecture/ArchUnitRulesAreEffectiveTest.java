@@ -100,6 +100,21 @@ class ArchUnitRulesAreEffectiveTest {
   }
 
   @Test
+  @DisplayName("R-E 能捕获依赖其他上下文的 Controller（不含 internal 的整上下文禁止）")
+  void rECatchesControllerDependingOnOtherContext() {
+    // 单独导入这个夹具：它是 @RestController 且依赖对方 internal，会同时被 R-A 命中，
+    // 混进共享夹具集会让别的用例的失败报告不干净
+    JavaClasses fixtures =
+        new ClassFileImporter().importPackages("com.spe.context.supplier.web.fixture");
+
+    EvaluationResult result = ArchitectureTest.controllersStayInOwnContext.evaluate(fixtures);
+
+    assertThat(result.hasViolation()).isTrue();
+    assertThat(result.getFailureReport().toString())
+        .contains("SupplierWebControllerWithForeignContextDependency");
+  }
+
+  @Test
   @DisplayName("R-F 能捕获 common 依赖业务上下文")
   void rFCatchesCommonDependingOnContext() {
     assertCatches(ArchitectureTest.commonDoesNotDependOnContexts, "CommonDependingOnContext");

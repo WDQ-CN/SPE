@@ -6,10 +6,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.spe.context.template.api.IndicatorType;
+import com.spe.context.template.api.ScoreMode;
+import com.spe.context.template.internal.EffectiveVersion;
+import com.spe.context.template.internal.TemplateService;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * M1 验收：审计留痕项核对（08 的 P1 验收「第一个 AuditFacade 留痕项核对」）。
@@ -43,6 +49,22 @@ class AuditTrailAcceptanceTest extends AbstractIntegrationTest {
 
   /** 限流探针：连续失败到阈值会锁 15 分钟，用它而不是 admin（03 §17 的教训）。 */
   private static final String LIMIT_PROBE = "audit-trail-limit-probe";
+
+  /** 06 §2.8 在 P2 范围内登记的全部模板动作（10 个，12 §E8 要求扩展本清单）。 */
+  private static final List<String> TEMPLATE_AUDIT_ACTIONS =
+      List.of(
+          "TEMPLATE_CREATE",
+          "TEMPLATE_UPDATE",
+          "TEMPLATE_VERSION_PUBLISH",
+          "TEMPLATE_VERSION_AUTO_COPY",
+          "DIMENSION_CREATE",
+          "DIMENSION_UPDATE",
+          "DIMENSION_DELETE",
+          "INDICATOR_CREATE",
+          "INDICATOR_UPDATE",
+          "INDICATOR_DELETE");
+
+  @Autowired private TemplateService templateService;
 
   @Test
   @DisplayName("P1 的每条写路径都留痕：13 个动作齐备、内容正确、detail 无口令与令牌")
@@ -171,6 +193,112 @@ class AuditTrailAcceptanceTest extends AbstractIntegrationTest {
                 + " REGEXP 'password|passwd|pwd|token|secret|bearer|admin@12345'",
             Long.class);
     assertThat(leaked).as("审计 detail 不得含口令/令牌（06 §8 第 11 条）").isZero();
+  }
+
+  @Test
+  @DisplayName("P2 模板的每条写路径都留痕：10 个动作齐备且 target_type 一致（12 §E8 要求的清单扩展）")
+  void templateWritePathsLeaveAuditRows() {
+    // ⚠️ 这里直接调 Service 而不是走 MockMvc：模板的 Controller 要到 W3 才存在。
+    // W3 完成后应改成与上半部分一致的 HTTP 调用，并清掉这里的注入与辅助方法 —— 否则这条验收
+    // 会一直绕开 Controller 层（那就测不到 @PreAuthorize 与 DTO 校验了）。
+    long templateId = templateService.create("审计验收模板").id();
+    long v1 = latestVersionIdOf(templateId);
+    templateService.rename(templateId, "审计验收模板-改名");
+
+    templateService.addDimension(v1, "质量", new BigDecimal("100.00"), 1, "质量", false);
+    long v1Dimension = idOfDimension(v1, "质量");
+    templateService.addIndicator(
+        v1Dimension, "验收指标甲", "AUDIT_TMP_1", new BigDecimal("100.00"), IndicatorType.QUANT,
+        ScoreMode.RATIO, "%", null, null, 1);
+    long v1Indicator = idOfIndicator(v1, "AUDIT_TMP_1");
+
+    templateService.publish(v1, versionOfVersion(v1));
+
+    // 改已发布版本 → 自动复制出新草稿：这是 TEMPLATE_VERSION_AUTO_COPY 的唯一触发点，
+    // 而它带回的行 id 映射是后续几步能接着改的前提（04-057 修的就是这条路径漏用映射）
+    EffectiveVersion copied =
+        templateService.updateDimension(
+            v1Dimension, "质量", new BigDecimal("100.00"), 1, "质量", false,
+            versionOfDimension(v1Dimension));
+    long v2 = copied.versionId();
+    long v2Dimension = copied.requireDimensionId(v1Dimension, v1);
+    long v2Indicator = copied.requireIndicatorId(v1Indicator, v1);
+
+    templateService.updateIndicator(
+        v2Indicator, "验收指标甲-改", "AUDIT_TMP_1", new BigDecimal("60.00"), IndicatorType.QUANT,
+        ScoreMode.RATIO, "%", null, null, 1, versionOfIndicator(v2Indicator));
+    templateService.addIndicator(
+        v2Dimension, "验收指标乙", "AUDIT_TMP_2", new BigDecimal("40.00"), IndicatorType.QUANT,
+        ScoreMode.RATIO, "%", null, null, 2);
+    long v2IndicatorB = idOfIndicator(v2, "AUDIT_TMP_2");
+    templateService.deleteIndicator(v2IndicatorB, versionOfIndicator(v2IndicatorB));
+    templateService.deleteDimension(v2Dimension, versionOfDimension(v2Dimension));
+
+    for (String action : TEMPLATE_AUDIT_ACTIONS) {
+      assertThat(auditRows(action)).as("动作 %s 应当留痕", action).isNotEmpty();
+    }
+
+    // 四类对象共用 target_type=TEMPLATE，具体对象由 action 区分（06 §2.8）——
+    // 但一旦某条路径传错枚举值，全部模板审计的 target_type 都会错，所以这里统一断言一次
+    assertThat(
+            jdbcTemplate.queryForList(
+                "SELECT DISTINCT target_type FROM audit_log"
+                    + " WHERE action LIKE 'TEMPLATE%' OR action LIKE 'DIMENSION%'"
+                    + " OR action LIKE 'INDICATOR%'",
+                String.class))
+        .containsExactly("TEMPLATE");
+  }
+
+  // ---- 模板用例的查库辅助（现查而不是推算乐观锁版本，理由同 userVersion）----
+
+  private long latestVersionIdOf(long templateId) {
+    Long id =
+        jdbcTemplate.queryForObject(
+            "SELECT id FROM template_version WHERE template_id = ? ORDER BY version_no DESC LIMIT 1",
+            Long.class,
+            templateId);
+    return id == null ? 0L : id;
+  }
+
+  private long idOfDimension(long versionId, String name) {
+    Long id =
+        jdbcTemplate.queryForObject(
+            "SELECT id FROM dimension WHERE template_version_id = ? AND name = ? LIMIT 1",
+            Long.class,
+            versionId,
+            name);
+    return id == null ? 0L : id;
+  }
+
+  private long idOfIndicator(long versionId, String code) {
+    Long id =
+        jdbcTemplate.queryForObject(
+            "SELECT id FROM indicator WHERE template_version_id = ? AND code = ? LIMIT 1",
+            Long.class,
+            versionId,
+            code);
+    return id == null ? 0L : id;
+  }
+
+  private int versionOfVersion(long versionId) {
+    Integer v =
+        jdbcTemplate.queryForObject(
+            "SELECT version FROM template_version WHERE id = ?", Integer.class, versionId);
+    return v == null ? 0 : v;
+  }
+
+  private int versionOfDimension(long dimensionId) {
+    Integer v =
+        jdbcTemplate.queryForObject(
+            "SELECT version FROM dimension WHERE id = ?", Integer.class, dimensionId);
+    return v == null ? 0 : v;
+  }
+
+  private int versionOfIndicator(long indicatorId) {
+    Integer v =
+        jdbcTemplate.queryForObject(
+            "SELECT version FROM indicator WHERE id = ?", Integer.class, indicatorId);
+    return v == null ? 0 : v;
   }
 
   /**

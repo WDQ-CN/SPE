@@ -103,25 +103,39 @@ class TemplateConcurrencyIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("并发：版本内重复编码 → 2014（唯一键冲突必须被翻译，不能漏成 5xxx）")
-  void duplicateIndicatorCodeIsTranslated() {
+  @DisplayName("并发：两个线程写同一个编码 → 恰好一个成功、另一个 2014（两道防线都不许漏成 5xxx）")
+  void concurrentSameCodeIsRejectedWith2014() throws Exception {
     long versionId = newDraftWithTwoDimensions();
     Dimension dimension = dimensionsOf(versionId).get(0);
-    templateService.addIndicator(
-        dimension.getId(), "指标一", "DUP_CODE", new BigDecimal("100.00"), IndicatorType.QUANT,
-        com.spe.context.template.api.ScoreMode.DIRECT, "%", null, null, 1);
 
-    Throwable thrown =
-        org.assertj.core.api.Assertions.catchThrowable(
-            () ->
-                templateService.addIndicator(
-                    dimension.getId(), "指标二", "dup_code", new BigDecimal("10.00"),
-                    IndicatorType.QUANT, com.spe.context.template.api.ScoreMode.DIRECT, "%", null, null, 2));
+    List<Object> results =
+        runConcurrently(
+            2,
+            List.of(
+                () -> addIndicatorWithCode(dimension.getId(), "指标甲", "SAME_CODE"),
+                () -> addIndicatorWithCode(dimension.getId(), "指标乙", "SAME_CODE")));
 
-    // 大小写不同但库 collation 视为冲突（12 §E11 沿用 supplier.code 的口径）
-    assertThat(thrown).isInstanceOf(BizException.class);
-    assertThat(((BizException) thrown).errorCode())
-        .isEqualTo(ErrorCode.TEMPLATE_INDICATOR_CODE_DUPLICATE);
+    long succeeded = results.stream().filter(r -> r instanceof EffectiveVersion).count();
+    List<Object> rejected =
+        results.stream()
+            .filter(
+                r ->
+                    r instanceof BizException e
+                        && e.errorCode() == ErrorCode.TEMPLATE_INDICATOR_CODE_DUPLICATE)
+            .toList();
+
+    // ⚠️ 这条用例**证明不了**「唯一键冲突被翻译」——2014 可能来自前置查重（抢到锁的那个先提交，
+    // 另一个的查重就读到了它）。它证明的是另一件事：**并发下不会漏出 5xxx，也不会两条都成功**。
+    // 「唯一键翻译」这条路径由 TemplateServiceTest.addIndicatorTranslatesUniqueKeyConflict 用 mock 钉住
+    // （那里让 countByCode 返回 0、insert 抛 DuplicateKeyException），两者分工不同，不能互相替代。
+    assertThat(succeeded).as("同一个编码只应有一个成功").isEqualTo(1L);
+    assertThat(rejected).as("另一个必须是 2014，而不是 5xxx").hasSize(1);
+  }
+
+  private EffectiveVersion addIndicatorWithCode(long dimensionId, String name, String code) {
+    return templateService.addIndicator(
+        dimensionId, name, code, new BigDecimal("50.00"), IndicatorType.QUANT,
+        com.spe.context.template.api.ScoreMode.RATIO, "%", null, null, 1);
   }
 
   @Test
