@@ -19,18 +19,20 @@ import { ADMIN, FAILURE_PROBE, login, loginAsAdmin, menuItem, watchConsole } fro
 
 // 探针账号约定、控制台监视、登录与菜单定位统一放在 ./support（w5/w6 也用），见那里的注释
 
-test('admin 登录后落首页：菜单四项、身份正确、控制台无错误', async ({ page }) => {
+test('admin 登录后落首页：菜单五项、身份正确、控制台无错误', async ({ page }) => {
   const console_ = watchConsole(page)
 
   await loginAsAdmin(page)
 
   await expect(page).toHaveURL(/localhost:18081\/$/)
   const items = page.locator('.el-menu-item')
-  await expect(items).toHaveCount(4)
+  // P2-W4 起多一个「评估模板」（01 §7：ADMIN 写 / MANAGER 查看，两者都可见入口）
+  await expect(items).toHaveCount(5)
   await expect(items.nth(0)).toContainText('首页')
   await expect(items.nth(1)).toContainText('供应商')
-  await expect(items.nth(2)).toContainText('用户管理')
-  await expect(items.nth(3)).toContainText('系统设置')
+  await expect(items.nth(2)).toContainText('评估模板')
+  await expect(items.nth(3)).toContainText('用户管理')
+  await expect(items.nth(4)).toContainText('系统设置')
 
   // 「系统管理员」在页头标签和首页信息卡里都会出现，getByText 会因命中多个而报 strict mode violation
   await expect(page.locator('.layout__user .el-tag')).toHaveText('系统管理员')
@@ -142,11 +144,12 @@ test('用户页：新增账号 → 列表可见 → 停用（覆盖对话框、�
   expect(console_.all, `控制台报错：\n${console_.all.join('\n')}`).toEqual([])
 })
 
-test('CSP 不拦自家资源：四个页面加载后无 CSP 违规（SEC-4 的运行时证据）', async ({ page }) => {
+test('CSP 不拦自家资源：五个页面加载后无 CSP 违规（SEC-4 的运行时证据）', async ({ page }) => {
   const console_ = watchConsole(page)
 
   await loginAsAdmin(page)
-  for (const name of ['供应商', '用户管理', '系统设置']) {
+  // P2-W4 的模板页也要纳入：它是唯一会渲染大量表格与对话框的页面
+  for (const name of ['供应商', '评估模板', '用户管理', '系统设置']) {
     await menuItem(page, name).click()
     await page.waitForLoadState('networkidle')
   }

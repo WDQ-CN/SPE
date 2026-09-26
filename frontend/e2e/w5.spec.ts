@@ -22,7 +22,8 @@ const ROLE_CASES = [
   {
     username: 'e2e-w5-manager',
     role: 'MANAGER',
-    menus: ['首页', '供应商'],
+    // P2-W4 起「评估模板」对 MANAGER 可见（01 §7 给 MANAGER 查看模板的口径，12 §E7）
+    menus: ['首页', '供应商', '评估模板'],
   },
   {
     username: 'e2e-w5-evaluator',
