@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -42,6 +43,26 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   public ResponseEntity<Result<Void>> handleAccessDenied(AccessDeniedException ex) {
     log.warn("越权访问：{}", ex.getMessage());
     return ResponseEntity.status(ErrorCode.FORBIDDEN.httpStatus()).body(Result.fail(ErrorCode.FORBIDDEN));
+  }
+
+  /**
+   * 请求体无法反序列化：**非法枚举值**（如 `"type":"XXX"`）、坏 JSON、类型不匹配。
+   *
+   * <p>不覆写时它由父类 {@code ResponseEntityExceptionHandler} 处理，返回 400 但**响应体是 Spring
+   * 默认结构**（不含 `Result` 的 `code`）——前端按 `code` 分流与表单回显都会失效，用户只看到"请求失败"。
+   * 随 DTO 引入枚举字段（`IndicatorType`/`ScoreMode`）后这条路径更容易被走到，故归入 2xxx。
+   *
+   * <p>刻意**不回显** `ex.getMessage()`：它含目标类名与 JSON 路径，属于内部结构。
+   */
+  @Override
+  protected ResponseEntity<Object> handleHttpMessageNotReadable(
+      HttpMessageNotReadableException ex,
+      HttpHeaders headers,
+      HttpStatusCode status,
+      WebRequest request) {
+    log.warn("请求体无法解析：{}", ex.getMessage());
+    return ResponseEntity.status(ErrorCode.BAD_REQUEST.httpStatus())
+        .body(Result.fail(ErrorCode.BAD_REQUEST.code(), "请求体格式不正确，或字段取值不在允许范围内"));
   }
 
   /** 兜底：5xxx，日志带堆栈（06 §2.8）。 */

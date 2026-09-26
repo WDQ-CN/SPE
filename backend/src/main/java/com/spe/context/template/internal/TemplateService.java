@@ -120,6 +120,7 @@ public class TemplateService {
    */
   @Transactional
   public TemplateSummary create(String name) {
+    requireText(name, 100, "模板名称");
     Template template = new Template();
     template.setName(name);
     templateMapper.insert(template);
@@ -147,6 +148,7 @@ public class TemplateService {
    */
   @Transactional
   public void rename(long templateId, String name) {
+    requireText(name, 100, "模板名称");
     Template current =
         templateMapper.findById(templateId)
             .orElseThrow(() -> new BizException(ErrorCode.TEMPLATE_NOT_FOUND));
@@ -167,6 +169,9 @@ public class TemplateService {
   public EffectiveVersion addDimension(
       long versionId, String name, BigDecimal weight, int sortNo, String suggestedDept, boolean isKey) {
     EffectiveVersion effective = ensureEditable(versionId);
+    requireText(name, 100, "维度名称");
+    requireWeightInRange(weight);
+    requireLength(suggestedDept, 50, "建议评估部门");
 
     Dimension dimension = new Dimension();
     dimension.setTemplateVersionId(effective.versionId());
@@ -198,6 +203,9 @@ public class TemplateService {
       int version) {
     Dimension current = requireDimension(dimensionId);
     EffectiveVersion effective = ensureEditable(current.getTemplateVersionId());
+    requireText(name, 100, "维度名称");
+    requireWeightInRange(weight);
+    requireLength(suggestedDept, 50, "建议评估部门");
 
     // 落到新草稿时，手里这一行已经是"旧版本的旧行"：用映射找到新草稿里的对应行。
     // 复用别人的草稿时映射为空——那一行确实不在生效版本里，报不存在让用户刷新后重做，而不是猜。
@@ -205,16 +213,18 @@ public class TemplateService {
     // 复制出来的行是全新的、version 必为 0，不能拿调用方手里那个（属于旧行的）版本号去守卫。
     int guardVersion = effective.copied() ? 0 : version;
 
+    // 审计记**决定计分口径的每一个字段**，不只是 name/weight：suggestedDept 是 P3 发布任务时自动指派的
+    // 依据（01 J2）、isKey 供预警规则用（01 W1②）。少记它们，审计答不了"这份发布的指派/预警口径为什么变了"
+    // （03 §26.5 的 P1-6）。用 putIfChanged 保证只记**真正变化**的字段。
     Map<String, Object> detail = new LinkedHashMap<>();
-    detail.put("before", describe(current));
+    AuditDetails.putIfChanged(detail, "name", current.getName(), name);
+    AuditDetails.putIfChanged(detail, "weight", current.getWeight(), weight);
+    AuditDetails.putIfChanged(detail, "sortNo", current.getSortNo(), sortNo);
+    AuditDetails.putIfChanged(detail, "suggestedDept", current.getSuggestedDept(), suggestedDept);
+    AuditDetails.putIfChanged(detail, "isKey", current.getIsKey(), isKey);
     if (dimensionMapper.update(targetId, name, weight, sortNo, suggestedDept, isKey, guardVersion) == 0) {
       throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
     }
-
-    Dimension after = new Dimension();
-    after.setName(name);
-    after.setWeight(weight);
-    detail.put("after", describe(after));
     auditFacade.record(AuditAction.DIMENSION_UPDATE, AuditTargetType.TEMPLATE, targetId, detail);
     log.info("改维度 id={}（生效版本 {}）", targetId, effective.versionId());
     return effective;
@@ -263,6 +273,11 @@ public class TemplateService {
       int sortNo) {
     Dimension dimension = requireDimension(dimensionId);
     EffectiveVersion effective = ensureEditable(dimension.getTemplateVersionId());
+    requireText(name, 100, "指标名称");
+    requireText(code, 50, "指标编码");
+    requireWeightInRange(weight);
+    requireLength(unit, 20, "单位");
+    requireLength(standard, 500, "评分标准");
     // 关键：落到新草稿时 dimension.getId() 属于**旧版本**，必须翻译成新草稿里的行 id。
     // 漏了这一步不会报错（表上无外键），但会写出一行"版本指向新草稿、维度指向旧版本"的脏指标：
     // 树上按 dimension_id 分组看不见它、发布校验按 dimension_id 联结不计它的权重、删维度也删不掉它（04-057）。
@@ -310,15 +325,29 @@ public class TemplateService {
       int version) {
     Indicator current = requireIndicator(indicatorId);
     EffectiveVersion effective = ensureEditable(current.getTemplateVersionId());
+    requireText(name, 100, "指标名称");
+    requireText(code, 50, "指标编码");
+    requireWeightInRange(weight);
+    requireLength(unit, 20, "单位");
+    requireLength(standard, 500, "评分标准");
     long targetId = effective.requireIndicatorId(indicatorId, current.getTemplateVersionId());
     int guardVersion = effective.copied() ? 0 : version;
 
     requireCodeAvailable(effective.versionId(), code, targetId);
 
+    // 审计记**决定计分口径的每一个字段**（03 §26.5 的 P1-6）：type/scoreMode 决定走哪条计分策略、
+    // targetValue 是 TARGET 换算的分母、standard 是 DIRECT 的人工换算表（12 §E15）——只记 code/name/weight
+    // 的话，审计答不了"这份发布的算法为什么变了"，而 01 SM5 要求模板变更留痕的动机正在于此。
     Map<String, Object> detail = new LinkedHashMap<>();
     AuditDetails.putIfChanged(detail, "code", current.getCode(), code);
     AuditDetails.putIfChanged(detail, "name", current.getName(), name);
     AuditDetails.putIfChanged(detail, "weight", current.getWeight(), weight);
+    AuditDetails.putIfChanged(detail, "type", current.getType(), type);
+    AuditDetails.putIfChanged(detail, "scoreMode", current.getScoreMode(), scoreMode);
+    AuditDetails.putIfChanged(detail, "unit", current.getUnit(), unit);
+    AuditDetails.putIfChanged(detail, "targetValue", current.getTargetValue(), targetValue);
+    AuditDetails.putIfChanged(detail, "standard", current.getStandard(), standard);
+    AuditDetails.putIfChanged(detail, "sortNo", current.getSortNo(), sortNo);
     // 唯一键也会被 UPDATE 踩到（不只是 INSERT）：把 A 的编码改成 B 已在用的值时，前置查重在并发下可能读的是
     // 旧快照（04-057 的同一根因：读的结果决定后续动作，而那个读不是当前读），真正的判定落在这条 UPDATE 上——
     // 不翻译就会漏成 5001（04-030 的形态：同一约束只在一部分写路径上处理）。
@@ -566,6 +595,43 @@ public class TemplateService {
         .orElseThrow(() -> new BizException(ErrorCode.TEMPLATE_INDICATOR_NOT_FOUND));
   }
 
+  /**
+   * 权重的单行校验：范围 `0~100` + 最多两位小数。
+   *
+   * <p>与 `V7` 的 `ck_dimension_weight` / `ck_indicator_weight` 一致，精度与 `DECIMAL(5,2)` 一致。
+   * **两层校验不是冗余**：`@Valid` 只覆盖 HTTP 入口，而 P3 的 Excel 批量导入与 M6 的开放 API 都要写
+   * 这些字段、都不过 DTO。漏了这一层，越界值会一路走到 CHECK 才被库拒绝，经兜底变成 5001，用户看到的
+   * 是"系统异常"而不是"哪一项不对"（06 §2.6 的红线、03 §26.5 的 P1-5）。
+   *
+   * <p>精度用 `stripTrailingZeros().scale()`：`33.340` 的 scale 是 3，但它等于 `33.34`，不该被拒。
+   */
+  private static void requireWeightInRange(BigDecimal weight) {
+    if (weight == null
+        || weight.compareTo(BigDecimal.ZERO) < 0
+        || weight.compareTo(FULL_WEIGHT) > 0) {
+      throw new BizException(ErrorCode.TEMPLATE_VALUE_INVALID, "权重须在 0~100 之间，实际为 " + weight);
+    }
+    if (weight.stripTrailingZeros().scale() > 2) {
+      throw new BizException(ErrorCode.TEMPLATE_VALUE_INVALID, "权重最多保留两位小数，实际为 " + weight);
+    }
+  }
+
+  /** 必填文本字段：非空且不超长。长度上限与 `V7` 的列定义一一对应。 */
+  private static void requireText(String value, int max, String field) {
+    if (value == null || value.isBlank()) {
+      throw new BizException(ErrorCode.TEMPLATE_VALUE_INVALID, field + "不能为空");
+    }
+    requireLength(value, max, field);
+  }
+
+  /** 可空文本字段：`null` 表示"不设置"，不算错误；超长才拦。 */
+  private static void requireLength(String value, int max, String field) {
+    if (value != null && value.length() > max) {
+      throw new BizException(
+          ErrorCode.TEMPLATE_VALUE_INVALID, field + "长度不得超过 " + max + "，实际为 " + value.length());
+    }
+  }
+
   /** 编码查重（12 §E11）：版本内唯一，排除自己那条；保存时就拦，别等发布。 */
   private void requireCodeAvailable(long versionId, String code, Long excludeId) {
     if (indicatorMapper.countByCode(versionId, code, excludeId) > 0) {
@@ -597,9 +663,5 @@ public class TemplateService {
       throw new BizException(
           ErrorCode.TEMPLATE_INDICATOR_CODE_DUPLICATE, "该版本内已存在编码 " + indicator.getCode());
     }
-  }
-
-  private static String describe(Dimension dimension) {
-    return "name=" + dimension.getName() + ", weight=" + dimension.getWeight();
   }
 }

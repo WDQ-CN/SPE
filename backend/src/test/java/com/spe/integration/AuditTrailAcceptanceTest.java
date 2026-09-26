@@ -1,16 +1,12 @@
 package com.spe.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.spe.context.template.api.IndicatorType;
-import com.spe.context.template.api.ScoreMode;
-import com.spe.context.template.internal.EffectiveVersion;
-import com.spe.context.template.internal.TemplateService;
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
@@ -63,8 +59,6 @@ class AuditTrailAcceptanceTest extends AbstractIntegrationTest {
           "INDICATOR_CREATE",
           "INDICATOR_UPDATE",
           "INDICATOR_DELETE");
-
-  @Autowired private TemplateService templateService;
 
   @Test
   @DisplayName("P1 的每条写路径都留痕：13 个动作齐备、内容正确、detail 无口令与令牌")
@@ -196,43 +190,118 @@ class AuditTrailAcceptanceTest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("P2 模板的每条写路径都留痕：10 个动作齐备且 target_type 一致（12 §E8 要求的清单扩展）")
-  void templateWritePathsLeaveAuditRows() {
-    // ⚠️ 这里直接调 Service 而不是走 MockMvc：模板的 Controller 要到 W3 才存在。
-    // W3 完成后应改成与上半部分一致的 HTTP 调用，并清掉这里的注入与辅助方法 —— 否则这条验收
-    // 会一直绕开 Controller 层（那就测不到 @PreAuthorize 与 DTO 校验了）。
-    long templateId = templateService.create("审计验收模板").id();
+  @DisplayName("P2 模板的每条写路径都留痕：10 个动作齐备且 target_type 一致（W3 起走真实 HTTP）")
+  void templateWritePathsLeaveAuditRows() throws Exception {
+    // W3 完成后改走 HTTP：这条验收要经过 Controller 层，才能同时覆盖 @PreAuthorize 与 DTO 校验
+    // （此前直接调 Service 是权宜之计，见 03 §26.5 登记项）。
+    String adminToken = login(ADMIN_USERNAME, ADMIN_PASSWORD);
+
+    String createdBody =
+        mockMvc
+            .perform(authed(json(post("/api/templates"), Map.of("name", "审计验收模板")), adminToken))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    long templateId = objectMapper.readTree(createdBody).path("data").path("id").asLong();
     long v1 = latestVersionIdOf(templateId);
-    templateService.rename(templateId, "审计验收模板-改名");
 
-    templateService.addDimension(v1, "质量", new BigDecimal("100.00"), 1, "质量", false);
+    mockMvc
+        .perform(
+            authed(
+                json(put("/api/templates/" + templateId), Map.of("name", "审计验收模板-改名")),
+                adminToken))
+        .andExpect(status().isOk());
+
+    mockMvc
+        .perform(
+            authed(
+                json(
+                    post("/api/template-versions/" + v1 + "/dimensions"),
+                    Map.of("name", "质量", "weight", "100.00", "sortNo", 1, "suggestedDept", "质量")),
+                adminToken))
+        .andExpect(status().isOk());
     long v1Dimension = idOfDimension(v1, "质量");
-    templateService.addIndicator(
-        v1Dimension, "验收指标甲", "AUDIT_TMP_1", new BigDecimal("100.00"), IndicatorType.QUANT,
-        ScoreMode.RATIO, "%", null, null, 1);
-    long v1Indicator = idOfIndicator(v1, "AUDIT_TMP_1");
 
-    templateService.publish(v1, versionOfVersion(v1));
+    mockMvc
+        .perform(
+            authed(
+                json(
+                    post("/api/dimensions/" + v1Dimension + "/indicators"),
+                    Map.of(
+                        "name", "验收指标甲", "code", "AUDIT_TMP_1", "weight", "100.00",
+                        "type", "QUANT", "scoreMode", "RATIO", "unit", "%", "sortNo", 1)),
+                adminToken))
+        .andExpect(status().isOk());
 
-    // 改已发布版本 → 自动复制出新草稿：这是 TEMPLATE_VERSION_AUTO_COPY 的唯一触发点，
-    // 而它带回的行 id 映射是后续几步能接着改的前提（04-057 修的就是这条路径漏用映射）
-    EffectiveVersion copied =
-        templateService.updateDimension(
-            v1Dimension, "质量", new BigDecimal("100.00"), 1, "质量", false,
-            versionOfDimension(v1Dimension));
-    long v2 = copied.versionId();
-    long v2Dimension = copied.requireDimensionId(v1Dimension, v1);
-    long v2Indicator = copied.requireIndicatorId(v1Indicator, v1);
+    mockMvc
+        .perform(
+            authed(
+                json(
+                    post("/api/template-versions/" + v1 + "/publish"),
+                    Map.of("version", versionOfVersion(v1))),
+                adminToken))
+        .andExpect(status().isOk());
 
-    templateService.updateIndicator(
-        v2Indicator, "验收指标甲-改", "AUDIT_TMP_1", new BigDecimal("60.00"), IndicatorType.QUANT,
-        ScoreMode.RATIO, "%", null, null, 1, versionOfIndicator(v2Indicator));
-    templateService.addIndicator(
-        v2Dimension, "验收指标乙", "AUDIT_TMP_2", new BigDecimal("40.00"), IndicatorType.QUANT,
-        ScoreMode.RATIO, "%", null, null, 2);
+    // 改已发布版本 → 自动复制出新草稿：这是 TEMPLATE_VERSION_AUTO_COPY 的唯一触发点。
+    // HTTP 层不回行 id 映射（WriteResult 只有两个字段），所以按**名字/编码**在新草稿里重新定位——
+    // 这也顺便验证了"复制把内容原样带过去"。
+    String copiedBody =
+        mockMvc
+            .perform(
+                authed(
+                    json(
+                        put("/api/dimensions/" + v1Dimension),
+                        Map.of(
+                            "name", "质量", "weight", "100.00", "sortNo", 1, "suggestedDept", "质量",
+                            "version", versionOfDimension(v1Dimension))),
+                    adminToken))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    long v2 =
+        objectMapper.readTree(copiedBody).path("data").path("effectiveVersionId").asLong();
+    long v2Dimension = idOfDimension(v2, "质量");
+    long v2Indicator = idOfIndicator(v2, "AUDIT_TMP_1");
+
+    mockMvc
+        .perform(
+            authed(
+                json(
+                    put("/api/indicators/" + v2Indicator),
+                    Map.of(
+                        "name", "验收指标甲-改", "code", "AUDIT_TMP_1", "weight", "60.00",
+                        "type", "QUANT", "scoreMode", "RATIO", "unit", "%", "sortNo", 1,
+                        "version", versionOfIndicator(v2Indicator))),
+                adminToken))
+        .andExpect(status().isOk());
+
+    mockMvc
+        .perform(
+            authed(
+                json(
+                    post("/api/dimensions/" + v2Dimension + "/indicators"),
+                    Map.of(
+                        "name", "验收指标乙", "code", "AUDIT_TMP_2", "weight", "40.00",
+                        "type", "QUANT", "scoreMode", "RATIO", "unit", "%", "sortNo", 2)),
+                adminToken))
+        .andExpect(status().isOk());
     long v2IndicatorB = idOfIndicator(v2, "AUDIT_TMP_2");
-    templateService.deleteIndicator(v2IndicatorB, versionOfIndicator(v2IndicatorB));
-    templateService.deleteDimension(v2Dimension, versionOfDimension(v2Dimension));
+
+    mockMvc
+        .perform(
+            authed(
+                delete("/api/indicators/" + v2IndicatorB + "?version=" + versionOfIndicator(v2IndicatorB)),
+                adminToken))
+        .andExpect(status().isOk());
+
+    mockMvc
+        .perform(
+            authed(
+                delete("/api/dimensions/" + v2Dimension + "?version=" + versionOfDimension(v2Dimension)),
+                adminToken))
+        .andExpect(status().isOk());
 
     for (String action : TEMPLATE_AUDIT_ACTIONS) {
       assertThat(auditRows(action)).as("动作 %s 应当留痕", action).isNotEmpty();

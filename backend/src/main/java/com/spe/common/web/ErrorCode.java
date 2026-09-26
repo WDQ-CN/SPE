@@ -39,6 +39,14 @@ public enum ErrorCode {
   /** 叶子端点（改/删维度）的目标不存在。与 2006/2008 同口径，不能省——否则只能错用 2009 或漏成 5xxx。 */
   TEMPLATE_DIMENSION_NOT_FOUND(2015, "维度不存在", HttpStatus.BAD_REQUEST),
   TEMPLATE_INDICATOR_NOT_FOUND(2016, "指标不存在", HttpStatus.BAD_REQUEST),
+
+  /**
+   * 单行取值或长度不合法（权重越界/精度超限、必填为空、字段超长）。
+   *
+   * <p>与 {@link #TEMPLATE_WEIGHT_INVALID} 分开：那个讲的是「**合计**不等于 100」这个跨行业务规则，
+   * 这个讲的是「**某一行**的取值本身填错了」。混用会让用户看到"权重合计有问题"而实际是某个字段超长。
+   */
+  TEMPLATE_VALUE_INVALID(2017, "字段取值或长度不合法", HttpStatus.BAD_REQUEST),
   CONCURRENT_CONFLICT(3001, "数据已被他人改动，请刷新后重试", HttpStatus.CONFLICT),
   FORBIDDEN(4001, "无权限执行该操作", HttpStatus.FORBIDDEN),
   INTERNAL_ERROR(5001, "系统异常，请稍后重试", HttpStatus.INTERNAL_SERVER_ERROR);
