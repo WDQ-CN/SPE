@@ -8,12 +8,17 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}
       MYSQL_DATABASE: ${DB_NAME:-spe}
+      # 应用专用账号的口令（03 §16 SEC-3）：应用不再用 root 连库
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:?请在 .env 中设置 DB_APP_PASSWORD}
+      DB_NAME: ${DB_NAME:-spe}
       TZ: UTC
     ports:
       # 宿主直连调试用（09 D3 与本地已有实例错开）
       - "13306:3306"
     volumes:
       - spe-mysql-data:/var/lib/mysql
+      # 最小权限账号的初始化脚本；**只在数据卷为空时执行**，已有卷需手工建号（见 11 §5.2）
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 5s
@@ -26,6 +31,9 @@ services:
         max-size: "10m"
         max-file: "3"
     restart: unless-stopped
+    # 资源上限（03 §16 的 PERF-5）：默认无上限时，单个容器能吃掉整机内存；
+    # MySQL 8.4 默认 innodb_buffer_pool 128M，1g 足够演示规模。
+    mem_limit: 1g
 
   backend:
     build: ./backend
@@ -34,8 +42,9 @@ services:
       DB_HOST: mysql
       DB_PORT: "3306"
       DB_NAME: ${DB_NAME:-spe}
-      DB_USERNAME: root
-      DB_PASSWORD: ${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}
+      # 应用以**最小权限账号**连库（03 §16 SEC-3）：限本库、无 GRANT/SUPER/FILE 等全局权限
+      DB_USERNAME: spe_app
+      DB_PASSWORD: ${DB_APP_PASSWORD:?请在 .env 中设置 DB_APP_PASSWORD}
       JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
       # 容器内监听端口由镜像的 ENV SERVER_PORT=8080 固定（宿主映射见 ports）
       TZ: UTC
@@ -51,6 +60,8 @@ services:
         max-size: "10m"
         max-file: "3"
     restart: unless-stopped
+    # 512m 限额 + 镜像里的 -XX:MaxRAMPercentage=75（堆约 384m）：Spring Boot 应用实测常驻 200~300MB
+    mem_limit: 512m
 
   nginx:
     build: ./frontend
@@ -72,6 +83,8 @@ services:
         max-size: "10m"
         max-file: "3"
     restart: unless-stopped
+    # 静态资源 + 反代，64m 足够（gzip 与连接缓冲都很少）
+    mem_limit: 64m
 
 volumes:
   # 显式钉名：compose 默认会给卷名加项目前缀（本目录会变成 specs_spe-mysql-data），
