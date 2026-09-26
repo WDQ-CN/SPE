@@ -22,6 +22,18 @@
     <mybatis-plus.version>3.5.17</mybatis-plus.version>
     <jjwt.version>0.12.7</jjwt.version>
     <archunit.version>1.5.0</archunit.version>
+
+    <!-- 供应链核对（03 §20）发现的三个可升级项。这三项都由 Spring Boot BOM 管理，这里用 Boot 认可的
+         属性覆盖到**同一补丁线**内的修复版本（只动补丁位，不跨次版本）：
+           - tomcat-embed-core 10.1.55 → 10.1.59：3 个 CRITICAL（DIGEST 认证重放绕过、访问控制、
+             FORM 认证授权）。**不能写 10.1.58**——OSV 报的修复版本是它，但该版本在 Maven Central 上
+             不存在（目录 404，被跳过/撤回），10.1.59 是修复点之后第一个可用版本，故取它。
+           - jackson-databind 2.21.4 → 2.21.5：3 个 MODERATE（@JsonView 与 @JsonIgnoreProperties 绕过）
+           - log4j-api 2.24.3 → 2.25.5：1 个 MODERATE（MapMessage 的 JSON 序列化对非有限浮点数编码不当）
+         升级后复跑全量测试与端到端，处置记录见 03 §20。 -->
+    <tomcat.version>10.1.59</tomcat.version>
+    <jackson-bom.version>2.21.5</jackson-bom.version>
+    <log4j2.version>2.25.5</log4j2.version>
   </properties>
 
   <dependencies>
