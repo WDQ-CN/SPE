@@ -238,6 +238,74 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
         .isEqualTo(ErrorCode.TEMPLATE_WEIGHT_INVALID);
   }
 
+  // ---------------------------------------------------------------- 2013 的 SQL 判定（W5 补）
+
+  /**
+   * W5 核实出口判据 2 时发现的缺口：2013 原先**只有一条 mock 掉 `findInvalidTargets` 的单测**——
+   * 它验的是"服务层拿到非空列表就抛 2013"，而「**目标值缺失或 ≤ 0**」这个判定本身写在 SQL 里，
+   * 从未在真实数据上跑过。这三条把它补上：两个分支各一条 + 一条边界。
+   *
+   * <p>这里直接改库、不走 `updateIndicator`：要验的正是 SQL 判定；而且那条服务方法要求把**全部字段**
+   * 原样传一遍，我第一版就随手把权重填成了 100（原值 50），于是"交付"维度合计变成 150、**先被 2011 拦下**，
+   * 根本走不到 2013 —— 断言失败才发现。少一次这种调用就少一个能填错的地方。
+   */
+  @Test
+  @DisplayName("发布：TARGET 指标的目标值被清空 → 2013（真库口径；草稿允许清空、发布才拒）")
+  void publishRejectsTargetClearedOnRealData() {
+    long versionId = templateService.ensureEditable(publishedDefaultVersionId()).versionId();
+    long indicatorId = indicatorIdOf(versionId, "OTD_RATE");
+
+    jdbcTemplate.update("UPDATE indicator SET target_value = NULL WHERE id = ?", indicatorId);
+
+    assertThatThrownBy(() -> templateService.publish(versionId, requireVersion(versionId).getVersion()))
+        .isInstanceOf(BizException.class)
+        .hasMessageContaining("OTD_RATE")
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.TEMPLATE_TARGET_INVALID);
+  }
+
+  @Test
+  @DisplayName("发布：TARGET 指标的目标值为 0 → 2013（SQL 判的是 <= 0，不是 IS NULL）")
+  void publishRejectsZeroTargetOnRealData() {
+    long versionId = templateService.ensureEditable(publishedDefaultVersionId()).versionId();
+    long indicatorId = indicatorIdOf(versionId, "OTD_RATE");
+
+    jdbcTemplate.update("UPDATE indicator SET target_value = 0 WHERE id = ?", indicatorId);
+
+    assertThatThrownBy(() -> templateService.publish(versionId, requireVersion(versionId).getVersion()))
+        .isInstanceOf(BizException.class)
+        .hasMessageContaining("OTD_RATE")
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.TEMPLATE_TARGET_INVALID);
+  }
+
+  @Test
+  @DisplayName("边界：非 TARGET 指标的目标值为 0 不影响发布——判据是「TARGET 且目标值不合法」")
+  void nonTargetIndicatorWithZeroTargetIsAccepted() {
+    long versionId = templateService.ensureEditable(publishedDefaultVersionId()).versionId();
+    long indicatorId = indicatorIdOf(versionId, "IQC_PASS_RATE");
+
+    // RATIO 指标留一个 0 目标值：它不参与目标达成率换算，不该拦住发布。
+    // 若 SQL 写成「任何 target_value <= 0 都拒」，这条会红——发布会被 2013 拒掉。
+    jdbcTemplate.update("UPDATE indicator SET target_value = 0 WHERE id = ?", indicatorId);
+
+    // 默认模板其余条件本来就合规（权重是配平的），所以这里应当**发布成功**
+    templateService.publish(versionId, requireVersion(versionId).getVersion());
+
+    assertThat(requireVersion(versionId).getStatus()).isEqualTo(TemplateVersionStatus.PUBLISHED);
+  }
+
+  private long indicatorIdOf(long versionId, String code) {
+    Long id =
+        jdbcTemplate.queryForObject(
+            "SELECT id FROM indicator WHERE template_version_id = ? AND code = ?",
+            Long.class,
+            versionId,
+            code);
+    return id == null ? 0L : id;
+  }
+
+
   @Test
   @DisplayName("契约：is_key 真的能从库里映射出来——只用全 0 的数据断言 isKey()==false 是恒真的假测试")
   void isKeyReallyMapsFromDatabase() {

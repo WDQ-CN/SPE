@@ -35,7 +35,7 @@ $assertPat = 'assertThat|assertEquals|assertTrue|assertFalse|assertNull|assertNo
 # ⚠️ `@Test` 必须带负向断言：否则会匹配注解族的兄弟 `@TestConfiguration` / `@Testcontainers`，于是基础设施类
 # 被当成「有测试却无断言」的坏类（第一版就这样误报了 AbstractIntegrationTest 与 TestcontainersConfiguration）。
 # ArchUnit 的规则用 `@ArchTest`，断言写在 `rule.check(...)` 里，所以上面也要收 `\.check\(`。
-$testPat = '@Test(?![A-Za-z])|@ArchTest'
+$testPat = '@Test(?![A-Za-z])|@ArchTest|@ParameterizedTest(?![A-Za-z])|@RepeatedTest(?![A-Za-z])'
 
 $fail = @()
 $warn = @()
@@ -49,13 +49,20 @@ $testFiles = Get-ChildItem -Recurse (Join-Path $repoRoot 'backend\src\test') -Fi
 $classStats = @()
 foreach ($file in $testFiles) {
   $text = [System.IO.File]::ReadAllText($file.FullName)
-  $tests = ([regex]::Matches($text, $testPat)).Count
+  # ⚠️ 统计前**先剥掉注释**：源码注释里也会出现 `@DisplayName` / `Thread.sleep` / `@Test` 这些字面量，
+  #    不剥就会产生**假发现**。W5 加 orphan-display-name 规则时立刻踩到：AuthServiceTest 里有一句注释
+  #    写着「《@DisplayName》里…」，于是那条规则报了一个**根本不存在的**孤立注解（见 04-065）。
+  #    这是 04-059「检查器不懂框架机制 → 误报」的同类，这次是不懂「注释不是代码」。
+  $code = [regex]::Replace($text, '(?s)/\*.*?\*/', '')
+  $code = [regex]::Replace($code, '(?m)//.*$', '')
+
+  $tests = ([regex]::Matches($code, $testPat)).Count
   if ($tests -eq 0) { continue }
 
-  $displayName = ([regex]::Matches($text, '@DisplayName')).Count
-  $asserts = ([regex]::Matches($text, $assertPat)).Count
-  $sleeps = ([regex]::Matches($text, 'Thread\.sleep')).Count
-  $disabled = ([regex]::Matches($text, '@Disabled|@Ignore')).Count
+  $displayName = ([regex]::Matches($code, '@DisplayName')).Count
+  $asserts = ([regex]::Matches($code, $assertPat)).Count
+  $sleeps = ([regex]::Matches($code, 'Thread\.sleep')).Count
+  $disabled = ([regex]::Matches($code, '@Disabled|@Ignore')).Count
   $relative = $file.FullName.Substring($repoRoot.Length + 1)
 
   # ⚠️ ArchUnit 是「字段型规则」，执行模型与 JUnit 不同，下面 display-name 与 no-assert 两项对它不适用：
@@ -64,7 +71,7 @@ foreach ($file in $testFiles) {
   #   · 断言由框架执行，源码里不会出现 .check(...)，「没有断言」是假象。
   # 这是同一个坑的**第二次**（04-059）：检查器不懂框架机制 → 误报。加新检查项前先问一句
   # 「这条规则对每种测试模型都成立吗」。
-  $isArchUnit = $text -match '@ArchTest'
+  $isArchUnit = $code -match '@ArchTest'
 
   $classStats += [pscustomobject]@{
     路径 = $relative; 测试 = $tests; 断言 = $asserts; sleep = $sleeps
@@ -75,12 +82,22 @@ foreach ($file in $testFiles) {
     $fail += "display-name：$relative 有 $tests 个测试方法但只有 $displayName 个 @DisplayName"
   }
 
+  # 1b) @DisplayName 比测试方法还多 —— 说明有**孤立注解**：某个方法挂着 @DisplayName 却缺 @Test。
+  #     这种方法的危害是「静默失效」的最坏形态：**编译通过、mvn test BUILD SUCCESS、检查器也不报**，
+  #     只是那个用例永远不执行。W5 里真实发生过一次：我用 edit 在 @Test 上方插入新用例时，把锚定的
+  #     @Test + @DisplayName 两行连同一起替换掉了，isKeyReallyMapsFromDatabase 就变成了普通方法；
+  #     我是靠"用例数本该是 12"才发现（见 04-065）。
+  if (-not $isArchUnit -and $displayName -gt $tests) {
+    $fail += "orphan-display-name：$relative 有 $displayName 个 @DisplayName 但只统计到 $tests 个测试方法——有注解却缺 @Test 的方法不会被执行"
+  }
+
   # 2) 跳过的测试
   if ($disabled -gt 0) {
     $fail += "disabled：$relative 有 $disabled 处 @Disabled/@Ignore（跳过的测试等于没测）"
   }
 
-  # 3) Thread.sleep 需要理由（同文件内出现「时序|sleep|等待」的注释即视为已说明）
+  # 3) Thread.sleep 需要理由。⚠️ 这一条**故意用 `$text` 而不是 `$code`**：理由本来就写在注释里，
+  #    拿剥过注释的 `$code` 去查「有没有说明理由」永远查不到——那就变成一条恒真的假检查了。
   if ($sleeps -gt 0 -and $text -notmatch '时序|等待|sleep') {
     $warn += "sleep：$relative 用了 Thread.sleep 但没有说明理由"
   }
