@@ -105,10 +105,10 @@ public class SupplierService {
     AuditDetails.putIfChanged(detail, "category", current.getCategory(), category);
     auditFacade.record(AuditAction.SUPPLIER_UPDATE, AuditTargetType.SUPPLIER, id, detail);
 
-    Supplier updated =
-        supplierMapper.findById(id).orElseThrow(() -> new BizException(ErrorCode.SUPPLIER_NOT_FOUND));
     log.info("编辑供应商 id={}，改动 {}", id, detail.keySet());
-    return SupplierSummary.of(updated);
+    // 同 UserService.update：不回查。字段来自入参或上面那次读，version 由 updateProfile 的 SQL
+    // （`SET ..., version = version + 1`）决定，「编辑后 version 自增」另有集成测试钉住。
+    return new SupplierSummary(id, code, name, category, current.getStatus(), version + 1);
   }
 
   /**

@@ -98,9 +98,13 @@ public class UserService {
     AuditDetails.putIfChanged(detail, "department", current.getDepartment(), department);
     auditFacade.record(AuditAction.USER_UPDATE, AuditTargetType.USER, id, detail);
 
-    SysUser updated = sysUserMapper.findById(id).orElseThrow(() -> new BizException(ErrorCode.USER_NOT_FOUND));
     log.info("编辑用户 id={}，改动 {}", id, detail.keySet());
-    return UserSummary.of(updated);
+    // 不再回查一次：返回的字段要么来自入参（name/role/department），要么来自上面那次读（username/status），
+    // version 由 updateProfile 的 SQL 决定——它是 `SET ..., version = version + 1`，与 Mapper 同源；
+    // 「编辑后 version 自增」另有集成测试断言，SQL 若改动会先在那里变红。
+    // 编辑是 P1 里唯一「写后再读」的路径，去掉它省一次主键查询（压测基线见 03 §18）。
+    return new UserSummary(
+        current.getId(), current.getUsername(), name, role, department, current.getStatus(), version + 1);
   }
 
   /**
