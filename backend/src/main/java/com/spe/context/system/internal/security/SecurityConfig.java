@@ -28,7 +28,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@EnableConfigurationProperties(JwtProperties.class)
+@EnableConfigurationProperties({JwtProperties.class, LoginLimiterProperties.class})
 public class SecurityConfig {
 
   /** JwtService 不带 Spring 注解，便于单元测试直接构造。 */

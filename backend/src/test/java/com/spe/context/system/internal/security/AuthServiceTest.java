@@ -59,7 +59,9 @@ class AuthServiceTest {
   void setUp() {
     // 每个用例一个独立限流器（固定时钟）：避免用例之间通过失败计数互相影响
     loginAttemptLimiter =
-        new LoginAttemptLimiter(Clock.fixed(Instant.parse("2026-09-26T00:00:00Z"), ZoneOffset.UTC));
+        new LoginAttemptLimiter(
+            Clock.fixed(Instant.parse("2026-09-26T00:00:00Z"), ZoneOffset.UTC),
+            LoginLimiterProperties.defaults());
     authService =
         new AuthService(sysUserMapper, passwordEncoder, jwtService, auditFacade, loginAttemptLimiter);
   }
@@ -69,7 +71,7 @@ class AuthServiceTest {
   void loginIsBlockedAfterTooManyFailures() {
     when(sysUserMapper.findByUsernameForAuth("zhangsan")).thenReturn(Optional.empty());
 
-    for (int i = 0; i < LoginAttemptLimiter.MAX_FAILURES_PER_ACCOUNT; i++) {
+    for (int i = 0; i < LoginLimiterProperties.DEFAULT_MAX_FAILURES_PER_ACCOUNT; i++) {
       assertThatThrownBy(() -> authService.login("zhangsan", "wrong-password"))
           .isInstanceOf(BizException.class)
           .extracting(ex -> ((BizException) ex).errorCode())

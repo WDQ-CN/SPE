@@ -37,3 +37,11 @@ app:
     # 必须由环境变量提供；缺失或短于 32 字节时启动即失败（09 D6）
     secret: ${JWT_SECRET:}
     ttl: 2h
+  # 登录失败限流（03 §16 的 SEC-5；参数外化见 03 §18）。四项都可按环境覆盖——
+  # 阈值是运行期策略，改一个数字不该重新构建镜像；不写则回落代码默认值，行为与优化前一致。
+  login-limiter:
+    max-failures-per-account: ${LOGIN_MAX_FAILURES_PER_ACCOUNT:5}
+    max-failures-per-ip: ${LOGIN_MAX_FAILURES_PER_IP:20}
+    window: ${LOGIN_LOCK_WINDOW:15m}
+    # 计数条目上限：防止「海量随机账号」把进程内存推高（满后不再为新 key 建档，已有 key 照常计数）
+    max-entries: ${LOGIN_MAX_ENTRIES:100000}
