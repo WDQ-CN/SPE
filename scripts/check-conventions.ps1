@@ -17,6 +17,11 @@
   而 06 §8 第 21 条自己就写着"本清单自身是否仍然准确（例：新增条款后旧编号有没有重复）"。
   这种事靠人靠不住——04 的复发机制执行率 1/50 就是前车之鉴（03 §22）——交给脚本。
 
+  ⚠️ **每条检查前都有正例断言**（`RequireScanned`，见 04-070 / 04-071）：扫不到输入时判 `scan-empty`
+  **失败**，而不是报「通过」。判据的形状必须是「**拿到 N 个正例且无反例**」，不是「**没有反例**」——
+  后者的反面是"什么都没扫到"，而那恰恰是最常见的一种失败（目录改名、glob 失效、在别的 cwd 里跑）。
+  没有这层断言时，整条检查会在扫不到文件时**静默变成一句 OK**、退出码 0。
+
 .PARAMETER Quiet
   只输出失败与警告（收了给别的脚本用）。
 
@@ -58,6 +63,20 @@ function Warn([string]$name, [string]$detail) {
 }
 function Rel([string]$full) { return $full.Replace($root + '\', '') }
 
+# ⚠️ 正例断言（04-070 / 04-071）：本脚本每条检查都是「扫到东西 → 找反例 → 没反例就 OK」。
+#    这个形状有个致命缺口：**什么都没扫到**时它同样报 OK、退出码 0。触发条件很低——glob 失效、
+#    写法变了、在别的 cwd 里跑。所以每条检查前先断言"扫到了 N 个正例"，扫不到就判**不可信**（FAIL），
+#    而不是"没问题"。判据的形状永远是「**拿到 N 个正例且无反例**」，不是「**没有反例**」。
+#    ⚠️ 消息统一带 `scan-empty：` 前缀（与 check-test-quality.ps1 同名）——独立审查的 P2-2：早先只报原
+#       检查名，于是 `grep scan-empty` 会**漏掉本脚本的全部守卫**，而 CLAUDE 里写的是"两个门禁…判 scan-empty"。
+#    ⚠️ 对 `*.ps1` 这条断言**当前不可达**：脚本自身就是一个 .ps1 ⇒ `RepoFiles '*.ps1'` 至少扫到它，
+#       `$psFiles.Count ≥ 1` 恒真（独立审查的 P2-5）。留它是防御性的，**别把它当成"活着的守卫"**。
+function RequireScanned([string]$name, [int]$count, [string]$what) {
+  if ($count -gt 0) { return $true }
+  Fail $name "scan-empty：$what 一个都没扫到 —— 判定不可信（路径/glob 失效？），不代表没有问题"
+  return $false
+}
+
 # 只扫手写的文件：产物与依赖目录一律不看
 $excluded = '\\(\.git|node_modules|target|dist|test-results|archunit_store|\.idea)\\'
 function RepoFiles([string]$filter) {
@@ -69,6 +88,7 @@ function RepoFiles([string]$filter) {
 Say ''
 Say '=== 1) PowerShell 脚本编码（04-012 / 04-048）==='
 $psFiles = @(RepoFiles '*.ps1')
+$ps1Scanned = RequireScanned 'ps1-bom' $psFiles.Count '.ps1 文件'
 $badBom = 0
 foreach ($file in $psFiles) {
   $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
@@ -78,7 +98,7 @@ foreach ($file in $psFiles) {
     $badBom += 1
   }
 }
-if ($badBom -eq 0) {
+if ($ps1Scanned -and $badBom -eq 0) {
   Pass 'ps1-bom' "（$($psFiles.Count) 个 .ps1 全部带 BOM）"
 }
 
@@ -90,6 +110,7 @@ foreach ($pattern in @('*.md', '*.yml', '*.yaml', '*.java', '*.ts', '*.vue', '*.
   $textFiles += RepoFiles $pattern
 }
 $textFiles = $textFiles | Sort-Object FullName -Unique
+$textScanned = RequireScanned 'text-no-bom' $textFiles.Count '文本文件（.md/.yml/.java/.ts/.vue/.sql…）'
 $withBom = @()
 foreach ($file in $textFiles) {
   $bytes = [System.IO.File]::ReadAllBytes($file.FullName)
@@ -97,7 +118,7 @@ foreach ($file in $textFiles) {
     $withBom += $file
   }
 }
-if ($withBom.Count -eq 0) {
+if ($textScanned -and $withBom.Count -eq 0) {
   Pass 'text-no-bom' "（$($textFiles.Count) 个文本文件均无 BOM）"
 } else {
   foreach ($file in $withBom) { Fail 'text-no-bom' "$(Rel $file.FullName) 带了 BOM（只有 .ps1 需要 BOM）" }
@@ -129,7 +150,14 @@ foreach ($file in $psFiles) {
   }
 }
 if ($scriptHits.Count -eq 0) {
-  Pass 'no-get-content' '（没有脚本用它读内容）'
+  # ⚠️ 这里必须**先看扫描是否有效**：早先写成 `if ($ps1Scanned -and $scriptHits.Count -eq 0) { Pass } else { Warn "发现 0 处…" }`，
+  #    于是".ps1 一个都没扫到"时会走进 else、发出一条**误导性的「发现 0 处」警告**（既不是 OK 也不是 FAIL，
+  #    读起来像"检查过了、有一处问题"）。这与本轮修的其它几处同源：**判据没区分"没有反例"和"没扫到东西"**（04-071）。
+  if ($ps1Scanned) {
+    Pass 'no-get-content' '（没有脚本用它读内容）'
+  } else {
+    Fail 'no-get-content' '.ps1 文件一个都没扫到 —— 这条检查没法判定（不是"没有脚本用它读内容"）'
+  }
 } else {
   Warn 'no-get-content' "发现 $($scriptHits.Count) 处：$($scriptHits -join ', ') —— 读文件内容/统计行数请用专用读工具或 [System.IO.File]::ReadAllText（读纯 ASCII 临时文件时可忽略本警告）"
 }
@@ -139,6 +167,10 @@ Say ''
 Say '=== 4) 文档编号与交叉引用自洽（06 §8 第 21 条要的"本清单自身是否准确"）==='
 
 function DocLines([string]$path) {
+  # ⚠️ 文件不存在时返回空数组，而不是让 ReadAllText 抛异常（实测：探针树里没有 .md 时，本脚本
+  #    直接抛 FileNotFoundException 崩掉，只留一段堆栈）。两者都是「失败」，但后者能告诉人**为什么**：
+  #    「一个编号都没找到 → 判定不可信」（04-071）。
+  if (-not (Test-Path $path)) { return @() }
   return [System.IO.File]::ReadAllText($path, $utf8NoBom) -split "`r?`n"
 }
 
@@ -190,7 +222,8 @@ CheckSequence 'doc03-章节' $nums03 '## 22. 标题'
 CheckSequence 'doc06-自查项' $nums06 'N. 条目（§8 范围内）'
 
 # 交叉引用：引用的编号必须存在
-$mdFiles = @(RepoFiles '*.md') | Where-Object { $_.DirectoryName -eq $root }
+$mdFiles = @(@(RepoFiles '*.md') | Where-Object { $_.DirectoryName -eq $root })
+$mdScanned = RequireScanned 'cross-refs' $mdFiles.Count '根目录 .md 文档'
 $badRefs = @()
 foreach ($file in $mdFiles) {
   $lines = DocLines $file.FullName
@@ -213,7 +246,7 @@ foreach ($file in $mdFiles) {
     }
   }
 }
-if ($badRefs.Count -eq 0) {
+if ($mdScanned -and $badRefs.Count -eq 0) {
   Pass 'cross-refs' "（$($mdFiles.Count) 份根目录文档，引用的 04/03/06 编号全部存在）"
 } else {
   foreach ($ref in $badRefs) { Fail 'cross-refs' $ref }
@@ -224,7 +257,8 @@ Say ''
 Say '=== 5) 安全红线：SQL 拼接与前端危险 API ==='
 
 # 后端主代码：MyBatis 里 ${} 会把参数直接拼进 SQL，必须用 #{} 参数化
-$javaFiles = @(RepoFiles '*.java') | Where-Object { $_.FullName -match '\\backend\\src\\main\\' }
+$javaFiles = @(@(RepoFiles '*.java') | Where-Object { $_.FullName -match '\\backend\\src\\main\\' })
+$javaScanned = RequireScanned 'no-sql-interpolation' $javaFiles.Count '后端主代码 .java'
 $sqlHits = @()
 foreach ($file in $javaFiles) {
   $lines = [System.IO.File]::ReadAllText($file.FullName, $utf8NoBom) -split "`r?`n"
@@ -234,7 +268,7 @@ foreach ($file in $javaFiles) {
     if ($lines[$i].Contains('${')) { $sqlHits += "$(Rel $file.FullName):$($i + 1)" }
   }
 }
-if ($sqlHits.Count -eq 0) {
+if ($javaScanned -and $sqlHits.Count -eq 0) {
   Pass 'no-sql-interpolation' ('（' + $javaFiles.Count + ' 个后端主代码文件里没有 ${} 拼接）')
 } else {
   foreach ($hit in $sqlHits) { Fail 'no-sql-interpolation' ($hit + ' 出现 ${} —— MyBatis 会把它直接拼进 SQL，必须用 #{} 参数化') }
@@ -245,6 +279,10 @@ $feFiles = @()
 foreach ($pattern in @('*.vue', '*.ts')) {
   $feFiles += (RepoFiles $pattern) | Where-Object { $_.FullName -match '\\frontend\\src\\' }
 }
+# ⚠️ 同 check-test-quality.ps1：对 `frontend\src` 是**无条件要求**（目录不在也算扫不到 → FAIL）。
+#    独立审查的 P2-3 已就此定过：这是**有意的取舍**——"目录没了就让检查静默消失"正是本轮修掉的病，
+#    宁可**响亮地红**。已知代价：backend-only 的稀疏检出会得到假 FAIL；将来要支持再区分两类情形。
+$feScanned = RequireScanned 'no-v-html' $feFiles.Count '前端源文件（.vue/.ts）'
 $vHtmlHits = @()
 $otherHits = @()
 foreach ($file in $feFiles) {
@@ -258,14 +296,14 @@ foreach ($file in $feFiles) {
     }
   }
 }
-if ($vHtmlHits.Count -eq 0) {
+if ($feScanned -and $vHtmlHits.Count -eq 0) {
   Pass 'no-v-html' "（$($feFiles.Count) 个前端源文件里没有 v-html）"
 } else {
   foreach ($hit in $vHtmlHits) { Fail 'no-v-html' "$hit 使用了 v-html —— 它把内容按 HTML 渲染，等于给 XSS 开门（03 §16 的 SEC-4）" }
 }
 if ($otherHits.Count -gt 0) {
   Warn 'fe-dangerous-api' "发现 $($otherHits.Count) 处：$($otherHits -join ', ') —— 清空节点之类的用法无害，但请确认不是渲染不可信内容"
-} else {
+} elseif ($feScanned) {
   Pass 'fe-dangerous-api' '（没有 innerHTML / eval(）'
 }
 
