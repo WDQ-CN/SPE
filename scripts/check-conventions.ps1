@@ -229,16 +229,26 @@ foreach ($file in $mdFiles) {
   $lines = DocLines $file.FullName
   for ($i = 0; $i -lt $lines.Count; $i++) {
     $line = $lines[$i]
-    foreach ($m in [regex]::Matches($line, '04-(\d{3})')) {
+    # ⚠️ 正则**必须带边界**（2026-09-26 实测，03 §31.6）：早先写的是 `'04-(\d{3})'`——
+    #    于是**行号范围**里的子串（形如「04 紧接三位数字」，例如把源码位置写成 `:304-308`）
+    #    会被当成一次交叉引用 ⇒ **假阳性**。而且它不是偶发：只要"数字里出现 04+三位数"就触发，
+    #    连**描述这个缺陷的文档本身**都会触发（实测：写 §31.6 时同一次运行 FAIL 从 1 条涨到 7 条）。
+    #    假发现比不检查更糟——它训练人忽略红灯。左边界 `(?<!\d)` 挡"数字尾部"，右边界 `(?!\d)` 挡更长数字。
+    foreach ($m in [regex]::Matches($line, '(?<!\d)04-(\d{3})(?!\d)')) {
       if ($nums04 -notcontains [int]$m.Groups[1].Value) {
         $badRefs += "$(Rel $file.FullName):$($i + 1) 引用了 04-$($m.Groups[1].Value)，但该条目不存在"
       }
     }
-    foreach ($m in [regex]::Matches($line, '03 §(\d+)')) {
+    # 同源：`03 §N` 也要边界，否则「第 103 §5」这种写法会被当成 `03 §5`。
+    foreach ($m in [regex]::Matches($line, '(?<!\d)03 §(\d+)(?!\d)')) {
       if ($nums03 -notcontains [int]$m.Groups[1].Value) {
         $badRefs += "$(Rel $file.FullName):$($i + 1) 引用了 03 §$($m.Groups[1].Value)，但该章节不存在"
       }
     }
+    # ⚠️ 本条**没有锚定文档**（原型是 `§8 第 (\d+) 条`）：若别处出现「01 §8 第 N 条」，也会被拿去和 **06** 的条目比。
+    #    实测现状：全仓 27 处「§8 第 N 条」**全部**确指 06 §8 ⇒ **当前无误报**。
+    #    ⚠️ **本轮刻意不改它的语义**：收紧成 `06 §8 第…` 会让"裸写 §8 第 N 条"不再被检查 = 引入**假阴性**。
+    #    要收紧请先定口径（是"只检查写明 06 的"还是"裸写也必须指 06"）。
     foreach ($m in [regex]::Matches($line, '§8 第 (\d+) 条')) {
       if ($nums06 -notcontains [int]$m.Groups[1].Value) {
         $badRefs += "$(Rel $file.FullName):$($i + 1) 引用了 06 §8 第 $($m.Groups[1].Value) 条，但该条目不存在"
