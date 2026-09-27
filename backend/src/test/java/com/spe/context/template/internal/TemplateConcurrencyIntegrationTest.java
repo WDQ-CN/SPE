@@ -5,10 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
 import com.spe.context.template.api.IndicatorType;
+import com.spe.context.template.api.TemplateVersionStatus;
 import com.spe.integration.AbstractIntegrationTest;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -73,8 +76,10 @@ class TemplateConcurrencyIntegrationTest extends AbstractIntegrationTest {
         results.stream()
             .filter(r -> r instanceof BizException e && e.errorCode() == ErrorCode.CONCURRENT_CONFLICT)
             .toList();
-    assertThat(succeeded).hasSize(1);
-    assertThat(conflicted).hasSize(1);
+    // ⚠️ 断言里带上**实际结果**：只看 `hasSize` 分不清"另一个是干净的 3001"还是"漏出了别的异常"
+    // （比如死锁经兜底变成 5001）——`No results` 式的失败信息在这里等于没有信息（CLAUDE 默认约定第 5 条）。
+    assertThat(succeeded).as("实际结果：%s", describe(results)).hasSize(1);
+    assertThat(conflicted).as("实际结果：%s", describe(results)).hasSize(1);
   }
 
   @Test
@@ -145,34 +150,53 @@ class TemplateConcurrencyIntegrationTest extends AbstractIntegrationTest {
     Dimension dimension = dimensionsOf(versionId).get(0);
     TemplateVersion draft = versionRow(versionId);
 
-    // 主线程起一笔事务：把维度权重 100 → 60（合计不再合规），**先不提交**。
-    // 此刻它持有版本行的锁（updateDimension → ensureEditable 的 FOR UPDATE）。
     TransactionStatus editing = txManager.getTransaction(new DefaultTransactionDefinition());
-    templateService.updateDimension(
-        dimension.getId(), dimension.getName(), new BigDecimal("60.00"), dimension.getSortNo(),
-        dimension.getSuggestedDept(), Boolean.TRUE.equals(dimension.getIsKey()), dimension.getVersion());
-
-    // 另一个线程去发布：它第一条就是 findByIdForUpdate，会被上面的锁挡住
     CountDownLatch started = new CountDownLatch(1);
     ExecutorService pool = Executors.newSingleThreadExecutor();
-    Future<Object> publishing =
-        pool.submit(
-            () -> {
-              started.countDown();
-              try {
-                templateService.publish(versionId, draft.getVersion());
-                return "published";
-              } catch (Exception ex) {
-                return ex;
-              }
-            });
-    started.await();
-    Thread.sleep(500); // 时序手段：够它发起那条锁定读即可（本用例断言的是结果，不是时序）
+    Object result;
+    try {
+      // 主线程起一笔事务：把维度权重 100 → 60（合计不再合规），**先不提交**。
+      // 此刻它持有版本行的锁（updateDimension → ensureEditable 的 FOR UPDATE）。
+      templateService.updateDimension(
+          dimension.getId(), dimension.getName(), new BigDecimal("60.00"), dimension.getSortNo(),
+          dimension.getSuggestedDept(), Boolean.TRUE.equals(dimension.getIsKey()), dimension.getVersion());
 
-    txManager.commit(editing);
+      // 另一个线程去发布：它第一条就是 findByIdForUpdate，会被上面的锁挡住
+      Future<Object> publishing =
+          pool.submit(
+              () -> {
+                started.countDown();
+                try {
+                  templateService.publish(versionId, draft.getVersion());
+                  return "published";
+                } catch (Exception ex) {
+                  return ex;
+                }
+              });
+      started.await();
 
-    Object result = publishing.get(60, TimeUnit.SECONDS);
-    pool.shutdownNow();
+      // ⚠️ 03 §31.7.14 的 P2-8：原来这里是一句 `Thread.sleep(500)`——它只是**猜**"发布线程已经发起那条
+      // 锁定读了"，没有任何判据；极端调度下（线程池还没轮到那个任务）用例会退化成串行场景，而**实现退回
+      // 普通读也照样绿**（假绿）。现在改成**有判据的等待**：轮询 processlist，直到看见那条语句**真的停在
+      // 锁上**（同一条语句在相隔 100ms 的两次采样里都还在执行中）；**超时即失败**——"没复现出并发场景"
+      // 本身不该默默放行。
+      String parked = awaitParkedStatement(java.time.Duration.ofSeconds(15));
+      assertThat(parked)
+          .as(
+              "发布线程必须被挡在**版本行的锁定读**上（`findByIdForUpdate`）。若这里看到的是"
+                  + " `update template_version set status ...`，说明第一条被改回了普通读——"
+                  + "校验读的是旧快照，正是 04-057 那个 P0")
+          .contains("from template_version")
+          .contains("for update");
+
+      txManager.commit(editing);
+      result = publishing.get(60, TimeUnit.SECONDS);
+    } finally {
+      if (!editing.isCompleted()) {
+        txManager.rollback(editing); // 断言失败时也要把锁放掉，不能让一条红用例毒住后面的用例
+      }
+      pool.shutdownNow();
+    }
 
     // 这条断言同时钉住两件事：① 发布的校验读集能看到别人刚提交的内容改动（即 read view 是在锁定读
     // **之后**才建立的）；② 不合规的内容不会被发布出去。若把 publish 的第一条从 findByIdForUpdate
@@ -183,7 +207,159 @@ class TemplateConcurrencyIntegrationTest extends AbstractIntegrationTest {
     assertThat(((BizException) result).errorCode()).isEqualTo(ErrorCode.TEMPLATE_WEIGHT_INVALID);
     assertThat(versionRow(versionId).getStatus())
         .as("校验没过就不能落 PUBLISHED")
-        .isEqualTo(com.spe.context.template.api.TemplateVersionStatus.DRAFT);
+        .isEqualTo(TemplateVersionStatus.DRAFT);
+  }
+
+  /**
+   * 03 §31.7.14 的 P2-7：`concurrentCopyProducesSingleDraft` 名字点的是**模板行锁**，实际守护的是
+   * **版本行锁**（两个线程在同一已发布版本行上 `FOR UPDATE` 就已经串行化了）。这条补上它真正想守的场景：
+   * **同一模板、两个不同的已发布版本**（v1、v2）并发复制——两个事务各自要算 `max(version_no) + 1`，
+   * 若"算 max"与"插入"之间没有有效的串行化，两份草稿会算出同一个版本号。
+   *
+   * <p>用法是**两笔显式事务**（照 {@link #publishSeesAnotherTransactionsUncommittedContentEdits} 的写法）：
+   * 主线程那笔**停在未提交**上，另一个线程在它自己的事务里复制另一个已发布版本；并且**等到那个线程真的
+   * 被锁挡住**（轮询 processlist，超时即失败）才提交——否则调度一慢用例就退化成串行，白测。
+   *
+   * <p>断言的是不变式而不是某一组具体版本号：**两份草稿的 `version_no` 互不相同**（`uk_template_version_no`
+   * 是最后一道防线，撞上会被翻成 3001 而不是漏成 5xxx），且两个源版本都还是 PUBLISHED、一行未改。
+   */
+  @Test
+  @DisplayName("并发：同一模板的两个**不同**已发布版本各自复制 → 两份草稿都成功、version_no 互不相同（不是平行草稿）")
+  void concurrentCopiesFromDifferentPublishedVersionsGetDistinctVersionNumbers() throws Exception {
+    long v1 = newPublishedTemplate();
+    long v2 = publishCopyOf(v1);
+    assertThat(v2).as("fixture 自检：同一模板下要有两个**不同**的已发布版本").isNotEqualTo(v1);
+    assertThat(versionRow(v1).getStatus()).isEqualTo(TemplateVersionStatus.PUBLISHED);
+    assertThat(versionRow(v2).getStatus()).isEqualTo(TemplateVersionStatus.PUBLISHED);
+
+    TransactionStatus first = txManager.getTransaction(new DefaultTransactionDefinition());
+    ExecutorService pool = Executors.newSingleThreadExecutor();
+    EffectiveVersion firstDraft;
+    Object secondResult;
+    try {
+      // 第一笔事务：复制 v1，**保持未提交**（此时它已算出并占用了一个版本号）
+      firstDraft = templateService.ensureEditable(v1);
+
+      Future<Object> second =
+          pool.submit(
+              () -> {
+                try {
+                  // 第二笔事务（另一个线程 = 另一个连接 = 另一笔事务）：复制 v2
+                  return templateService.ensureEditable(v2);
+                } catch (Exception ex) {
+                  return ex;
+                }
+              });
+
+      // 有判据地等：必须**观察到第二个事务真的被锁挡住**才继续。没观察到 = 并发场景没复现出来 = 失败。
+      String parked = awaitParkedStatement(java.time.Duration.ofSeconds(15));
+      assertThat(parked)
+          .as("第二个复制必须被锁挡住（否则两个事务没有真正重叠，本用例退化成串行）")
+          .contains("for update");
+
+      txManager.commit(first);
+      secondResult = second.get(60, TimeUnit.SECONDS);
+    } finally {
+      if (!first.isCompleted()) {
+        txManager.rollback(first);
+      }
+      pool.shutdownNow();
+    }
+
+    assertThat(secondResult)
+        .as("第二个复制也必须成功；拿到 3001 说明两个事务分配了同一个 version_no（平行草稿）")
+        .isInstanceOf(EffectiveVersion.class);
+    long secondDraftId = ((EffectiveVersion) secondResult).versionId();
+    assertThat(secondDraftId).isNotEqualTo(firstDraft.versionId());
+
+    List<Integer> versionNos =
+        jdbcTemplate.queryForList(
+            "SELECT version_no FROM template_version WHERE id IN (?, ?) ORDER BY version_no",
+            Integer.class,
+            firstDraft.versionId(),
+            secondDraftId);
+    assertThat(versionNos)
+        .as("两份草稿的版本号必须互不相同（uk_template_version_no 是最后一道防线）")
+        .hasSize(2)
+        .doesNotHaveDuplicates();
+
+    // 源版本一个字段都没被动过（复制不能反过来改源）
+    assertThat(versionRow(v1).getStatus()).as("v1 必须仍是已发布").isEqualTo(TemplateVersionStatus.PUBLISHED);
+    assertThat(versionRow(v2).getStatus()).as("v2 必须仍是已发布").isEqualTo(TemplateVersionStatus.PUBLISHED);
+  }
+
+  /** 把并发用例的结果列表压成可读文本：断言失败时要能一眼看出"另一个线程到底抛了什么"。 */
+  private static List<String> describe(List<Object> results) {
+    return results.stream()
+        .map(
+            r ->
+                r instanceof BizException e
+                    ? ("BizException(" + e.errorCode() + ": " + e.getMessage() + ")")
+                    : String.valueOf(r))
+        .toList();
+  }
+
+  /** 复制 v1 出草稿并把它发布出去 ⇒ 同模板下的第二个已发布版本（v2）。 */
+  private long publishCopyOf(long sourceVersionId) {
+    EffectiveVersion copy = templateService.ensureEditable(sourceVersionId);
+    TemplateVersion draft = versionRow(copy.versionId());
+    templateService.publish(draft.getId(), draft.getVersion());
+    return copy.versionId();
+  }
+
+  // ------------------------------------- "有判据的等待"（03 §31.7.14 的 P2-8 修在这里）
+
+  /**
+   * 等"**另一个连接确实被锁挡住**"这件事发生，返回那条被挡住的语句（小写、空白已压缩）。
+   *
+   * <p>判据是"**同一条语句在相隔 100ms 的两次采样里都还停在 processlist 上**"——跑得快的语句不可能被
+   * 连续两次采样抓到。这不是"睡够 500ms 就该好了"那种猜测（03 §31.7.14 的 P2-8）。
+   * 超时**抛错**（失败，不是默默放行）：没复现出并发场景时用例必须响亮地红，而不是退化成串行后假装通过。
+   *
+   * <p>⚠️ 为什么是 `SHOW FULL PROCESSLIST` 而不是 `performance_schema.data_lock_waits`：实测测试容器的
+   * 账号权限只有 `GRANT USAGE ON *.*` + `GRANT ALL ON spe.*`，`performance_schema.*` 一律
+   * `SELECT command denied`、`information_schema.innodb_trx` 要 PROCESS 权限 —— processlist 是这个账号
+   * **唯一**能看到的"谁在等锁"视图（同账号的其它连接可见，且 `SHOW FULL` 不截断 `Info`）。
+   */
+  private String awaitParkedStatement(java.time.Duration timeout) throws InterruptedException {
+    Long myConnectionId = jdbcTemplate.queryForObject("SELECT CONNECTION_ID()", Long.class);
+    long deadline = System.nanoTime() + timeout.toNanos();
+    String previous = null;
+    while (System.nanoTime() < deadline) {
+      String current = parkedStatement(myConnectionId);
+      if (current != null && current.equals(previous)) {
+        return current;
+      }
+      previous = current;
+      Thread.sleep(100); // 等待的**轮询间隔**：判据见方法注释，不是"睡够就算好了"
+    }
+    throw new AssertionError(
+        "超时（"
+            + timeout.toSeconds()
+            + "s）没等到任何连接被锁挡住——并发场景没复现出来，用例已退化成串行，不能算通过。"
+            + "最后一次采样看到的是："
+            + previous);
+  }
+
+  /** 当前被挡住的语句（排除我们自己的采样连接与采样语句本身）；没有则返回 null。 */
+  private String parkedStatement(Long excludeConnectionId) {
+    for (Map<String, Object> row : jdbcTemplate.queryForList("SHOW FULL PROCESSLIST")) {
+      Object id = row.get("Id");
+      if (excludeConnectionId != null
+          && id instanceof Number
+          && ((Number) id).longValue() == excludeConnectionId) {
+        continue; // 我们自己的采样语句
+      }
+      Object info = row.get("Info");
+      if (info == null) {
+        continue;
+      }
+      String sql = info.toString().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
+      if (!sql.startsWith("show ") && !sql.contains("processlist")) {
+        return sql;
+      }
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------- 12 §E5 的并发意图（P2 深审加）

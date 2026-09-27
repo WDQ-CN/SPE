@@ -48,6 +48,25 @@ public interface DimensionMapper extends BaseMapper<Dimension> {
   Optional<Dimension> findById(@Param("id") long id);
 
   /**
+   * 与 {@link #findById} 同一条查询，但用**排他锁**（当前读）——写路径的入口读用它。
+   *
+   * <p>**为什么要当前读**（CLAUDE「默认约定」第 6 条）：REPEATABLE READ 下 read view 由事务的第一条一致性
+   * 读建立，入口先做一次普通读就把快照钉死了——之后即便 `ensureEditable` 拿到了锁，后续的普通读
+   * （如 `IndicatorMapper.countByCode` 的编码查重）看到的仍是别人**提交前**的快照，于是"刚被释放的编码"
+   * 被误判成仍被占用（**假 2014**，03 §31.7.5 的 P2）。入口读改成锁定读后，read view 由锁之后的
+   * 第一条普通读建立，锁等到的那些提交都看得见。
+   *
+   * <p>⚠️⚠️ **必须是 `FOR UPDATE`，不能是 `FOR SHARE`**（04-076，我自己踩的）：写成 `FOR SHARE` 时，
+   * 两个线程改**同一行**会退化成 ABBA 死锁 —— 双方先各持该行的 S 锁（S 与 S 兼容），接着都要去
+   * `ensureEditable` 拿**版本行**的 X 锁（互斥，必有一个等），而先拿到版本行的那个回头要对本行做 UPDATE
+   * （**S→X 升级**），被对方仍持着的 S 挡住 ⇒ 环成立。实测：`concurrentUpdatesOnSameRowOneWins`
+   * 确定性变红（3/3），败者拿到 `DeadlockLoserDataAccessException` 而不是 3001。`FOR UPDATE` 让第二个
+   * 线程**在第一条语句就排队**、手里不持任何锁 ⇒ 无环。
+   */
+  @Select("SELECT " + COLUMNS + " FROM dimension WHERE id = #{id} FOR UPDATE")
+  Optional<Dimension> findByIdForUpdate(@Param("id") long id);
+
+  /**
    * 发布校验的聚合视图：一条 SQL 取回每个维度的权重、指标数与指标权重合计。
    *
    * <p>`LEFT JOIN` 是为了**让没有指标的维度也出现在结果里**（`indicatorCount = 0`）——它正是"每维度至少 1 个
@@ -68,12 +87,20 @@ public interface DimensionMapper extends BaseMapper<Dimension> {
       """)
   List<DimensionValidationRow> findForValidation(@Param("versionId") long versionId);
 
+  /**
+   * 改维度：**两道前置条件**——`version`（乐观锁）+ `template_version_id`（**归属版本**）。
+   *
+   * <p>⚠️ 第二个条件是 04-074 加的**第二道闸**：`version` 只保证"这一行没被别人改过"，它**不能**保证
+   * "这一行属于我想改的那个版本"。曾出现过一条静默写穿的路径（复用草稿时映射不完整 → 拿旧行 id 落到
+   * **已发布版本**的行上，而那条行的 `version` 恰好还是调用方手里的值 ⇒ 守卫通过）。钉上生效版本号之后，
+   * "写到非生效版本"在 SQL 层就**不可能成功**（0 行 → 3001），即使上层再犯同样的错也只是响亮失败。
+   */
   @Update(
       """
       UPDATE dimension
       SET name = #{name}, weight = #{weight}, sort_no = #{sortNo},
           suggested_dept = #{suggestedDept}, is_key = #{isKey}, version = version + 1
-      WHERE id = #{id} AND version = #{version}
+      WHERE id = #{id} AND version = #{version} AND template_version_id = #{versionId}
       """)
   int update(
       @Param("id") long id,
@@ -82,15 +109,19 @@ public interface DimensionMapper extends BaseMapper<Dimension> {
       @Param("sortNo") int sortNo,
       @Param("suggestedDept") String suggestedDept,
       @Param("isKey") boolean isKey,
-      @Param("version") int version);
+      @Param("version") int version,
+      @Param("versionId") long versionId);
 
   /**
-   * 删除维度（12 §E13）：带 `version` 守卫，0 行 → 3001。
+   * 删除维度（12 §E13）：**两道前置条件**（`version` + 归属版本，理由见 {@link #update}），0 行 → 3001。
    *
    * <p>**其下的指标由 Service 在同一事务内一并删除**——表上没有外键（06 §4 不要求），不同步删就会留下
    * 孤儿指标：整树读取看不见它们，但自动复制会按 `template_version_id` 把它们一起复制过去，而发布校验
    * 只查"某维度无指标"，孤儿指标永远不会让校验失败。
    */
-  @Update("DELETE FROM dimension WHERE id = #{id} AND version = #{version}")
-  int delete(@Param("id") long id, @Param("version") int version);
+  @Update(
+      "DELETE FROM dimension WHERE id = #{id} AND version = #{version}"
+          + " AND template_version_id = #{versionId}")
+  int delete(
+      @Param("id") long id, @Param("version") int version, @Param("versionId") long versionId);
 }

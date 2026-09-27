@@ -42,6 +42,15 @@ public interface IndicatorMapper extends BaseMapper<Indicator> {
   Optional<Indicator> findById(@Param("id") long id);
 
   /**
+   * 与 {@link #findById} 同一条查询，但用排他锁（当前读）——写路径的入口读用它。
+   *
+   * <p>⚠️ 必须是 `FOR UPDATE` 而不是 `FOR SHARE`（否则同一行的并发修改会形成 S→X 升级死锁）：
+   * 完整推理见 `DimensionMapper.findByIdForUpdate` 与 04-076。
+   */
+  @Select("SELECT " + COLUMNS + " FROM indicator WHERE id = #{id} FOR UPDATE")
+  Optional<Indicator> findByIdForUpdate(@Param("id") long id);
+
+  /**
    * 保存时的编码查重（12 §E11）：在**版本内**比，`excludeId` 排除自己那条（改指标时不该被自己挡住）。
    *
    * <p>用 `<script>` + `<if>` 而不是 `id &lt;&gt; #{excludeId}`：后者在 `excludeId` 为 null 时结果是
@@ -80,13 +89,21 @@ public interface IndicatorMapper extends BaseMapper<Indicator> {
       """)
   List<String> findInvalidTargets(@Param("versionId") long versionId);
 
+  /**
+   * 改指标：**两道前置条件**——`version`（乐观锁）+ `template_version_id`（**归属版本**）。
+   *
+   * <p>⚠️ 第二个条件是 04-074 加的**第二道闸**（理由见 `DimensionMapper.update`）：`version` 只说明"这行没
+   * 被别人改过"，**不说明它属于我要改的版本**。曾有一条静默写穿的路径（复用草稿时映射不完整 → 旧行 id 落到
+   * 已发布版本的行，而那条行的 `version` 恰是调用方手里那个 ⇒ 守卫通过），钉上生效版本号后这类写入在
+   * SQL 层不可能成功（0 行 → 3001）。
+   */
   @Update(
       """
       UPDATE indicator
       SET name = #{name}, code = #{code}, weight = #{weight}, type = #{type},
           score_mode = #{scoreMode}, unit = #{unit}, target_value = #{targetValue},
           standard = #{standard}, sort_no = #{sortNo}, version = version + 1
-      WHERE id = #{id} AND version = #{version}
+      WHERE id = #{id} AND version = #{version} AND template_version_id = #{versionId}
       """)
   int update(
       @Param("id") long id,
@@ -99,11 +116,15 @@ public interface IndicatorMapper extends BaseMapper<Indicator> {
       @Param("targetValue") BigDecimal targetValue,
       @Param("standard") String standard,
       @Param("sortNo") int sortNo,
-      @Param("version") int version);
+      @Param("version") int version,
+      @Param("versionId") long versionId);
 
-  /** 删除指标（带守卫）。 */
-  @Update("DELETE FROM indicator WHERE id = #{id} AND version = #{version}")
-  int delete(@Param("id") long id, @Param("version") int version);
+  /** 删除指标：两道守卫（`version` + 归属版本），0 行 → 3001。 */
+  @Update(
+      "DELETE FROM indicator WHERE id = #{id} AND version = #{version}"
+          + " AND template_version_id = #{versionId}")
+  int delete(
+      @Param("id") long id, @Param("version") int version, @Param("versionId") long versionId);
 
   /**
    * 级联删除某维度下的全部指标（12 §E13）：**删维度时必须同事务调用**，否则留下孤儿指标。

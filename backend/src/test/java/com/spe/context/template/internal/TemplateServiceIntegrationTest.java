@@ -2,6 +2,7 @@ package com.spe.context.template.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
@@ -13,7 +14,10 @@ import com.spe.context.template.api.TemplateSnapshot;
 import com.spe.context.template.api.TemplateSnapshotFacade;
 import com.spe.context.template.api.TemplateVersionStatus;
 import com.spe.integration.AbstractIntegrationTest;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -21,6 +25,7 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -31,6 +36,24 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Transactional
 class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
+
+  /** `V8` 种下的默认模板名。**按名收敛查询范围**，不靠"全表扫描的行顺序"（03 §31.7.14 的 P2-10）。 */
+  private static final String DEFAULT_TEMPLATE_NAME = "季度绩效默认模板";
+
+  /** 用例自己加的那个空维度名：断言 2012 的报文里点名的是**它**（证明违规行真的从 SQL 里回来了）。 */
+  private static final String EMPTY_DIMENSION_NAME = "空维度-无任何指标";
+
+  /** `V9` 的回填脚本。**按类路径读文件本体**执行，不把那段 UPDATE 抄一份进测试——抄一份就守不住迁移。 */
+  private static final String V9_MIGRATION_FILE = "db/migration/V9__backfill_qualitative_standard.sql";
+
+  /** `V9` 回填的 5 个定性指标（脚本里 `WHERE i.code IN (...)` 的那 5 个，顺序与脚本无关）。 */
+  private static final List<String> V9_BACKFILLED_CODES =
+      List.of(
+          "PRICE_COMPETITIVENESS", "PAYMENT_COOP", "ISSUE_RESPONSE", "ABNORMAL_COOP",
+          "CONTACT_STABILITY");
+
+  /** 模拟"用户自己写过的文案"，用来验 `V9` 的 `standard IS NULL` 守卫不会覆盖它。 */
+  private static final String CUSTOM_STANDARD = "用户自己写的";
 
   @Autowired private TemplateService templateService;
   @Autowired private TemplateSnapshotFacade snapshotFacade;
@@ -108,12 +131,56 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
     assertThat(byCode.get("OTD_RATE").targetValue()).isEqualByComparingTo("98");
     assertThat(byCode.get("COST_DOWN_RATE").targetValue()).isEqualByComparingTo("3");
 
-    // 定性指标没有计分方式（策略由 type 决定）；定性档位文案只有 URGENT_RESPONSE 有（附录 A 只给了它）
+    // 定性指标没有计分方式（策略由 type 决定）。
+    // ⚠️ 2026-09-26：附录 A 补齐了另外 5 个指标的档位文案、`V11` 回填入库 ⇒ 本条从
+    // 「只有 URGENT_RESPONSE 有文案」改为「6 个定性指标全都有」。**是这条用例先变红**，
+    // 才确认回填真的生效了（它原本钉的是"留空"这个已过时的前提）。
     assertThat(byCode.values().stream().filter(i -> i.type() == IndicatorType.QUAL))
         .hasSize(6)
         .allSatisfy(i -> assertThat(i.scoreMode()).isNull());
     assertThat(byCode.get("URGENT_RESPONSE").standard()).contains("4 小时内响应");
-    assertThat(byCode.get("ISSUE_RESPONSE").standard()).isNull();
+    // 逐字断言其中一条：这同时**证明库里的中文编码是对的**——只看 Maven 控制台会显示乱码，
+    // 那是控制台代码页（观测端）的问题，不是存储端（CLAUDE「默认约定」第 4 条）。
+    assertThat(byCode.get("ISSUE_RESPONSE").standard())
+        .isEqualTo("5=≤2h 响应并给出可行方案；4=≤8h 响应，方案基本可行；3=≤24h 响应，方案需确认；"
+            + "2=≤48h 响应，方案流于形式；1=>48h 未响应或需多次催办");
+    // 另外 4 条按**结构不变式**断言（不把 5 段长文案抄两遍——内容改了不该让用例陪葬）：
+    assertThat(
+            List.of("PRICE_COMPETITIVENESS", "PAYMENT_COOP", "ABNORMAL_COOP", "CONTACT_STABILITY"))
+        .allSatisfy(
+            code ->
+                assertThat(byCode.get(code).standard())
+                    .as("指标 %s 的档位文案", code)
+                    .isNotBlank()
+                    .startsWith("5=")
+                    .contains("；4=")
+                    .contains("；3=")
+                    .contains("；2=")
+                    .contains("；1="));
+
+    // ⚠️ 上面那条**结构不变式堵不住"张冠李戴"**（03 §31.7.15 指出的第 1 个洞）：两条文案互换后
+    // 5 段结构一字不差，结构断言照样全绿。因此每个 code 再钉一个**只可能出现在它自己文案里**的关键词——
+    // 既不复制 5 段长文案（内容微调不会让用例陪葬），又让"两个指标的文案写反了"必然变红。
+    Map<String, String> distinctiveKeyword =
+        Map.of(
+            "PRICE_COMPETITIVENESS", "基准",
+            "PAYMENT_COOP", "账期",
+            "ISSUE_RESPONSE", "响应",
+            "ABNORMAL_COOP", "整改",
+            "CONTACT_STABILITY", "更换");
+    assertThat(distinctiveKeyword).as("6 个定性指标里，这一张表要覆盖除 URGENT_RESPONSE 外的全部 5 个").hasSize(5);
+    long matched =
+        distinctiveKeyword.entrySet().stream()
+            .filter(e -> byCode.get(e.getKey()).standard().contains(e.getValue()))
+            .count();
+    assertThat(matched)
+        .as("5 条文案必须各自命中自己的区别性关键词（少一条就说明有两条被写反/写串了）")
+        .isEqualTo(5L);
+    distinctiveKeyword.forEach(
+        (code, keyword) ->
+            assertThat(byCode.get(code).standard())
+                .as("指标 %s 的档位文案里必须出现【%s】", code, keyword)
+                .contains(keyword));
 
     // DIRECT 指标的换算表必须落进 standard，否则 P3 会把它当普通 0~100 直接打分（12 §E15 的 R-2）
     assertThat(byCode.get("QUALITY_ACCIDENT").standard()).isEqualTo("0 次=100，1 次=60，≥2 次=0");
@@ -169,10 +236,11 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
     // 新草稿是 DRAFT，且记下了复制来源
     assertThat(versionStatus(effective.versionId())).isEqualTo(TemplateVersionStatus.DRAFT);
     assertThat(copiedFrom(effective.versionId())).isEqualTo(sourceVersionId);
-    // 维度与指标都被复制，映射可用
+    // 维度与指标都被复制，映射可用；且映射里带的是**新行 id + 新行当前 version（恒为 0）**
     assertThat(snapshotDimensions(effective.versionId())).hasSize(sourceDimensions.size());
-    assertThat(effective.dimensionIdMap()).hasSize(sourceDimensions.size());
-    assertThat(effective.indicatorIdMap()).hasSize(13);
+    assertThat(effective.dimensionTargets()).hasSize(sourceDimensions.size());
+    assertThat(effective.indicatorTargets()).hasSize(13);
+    assertThat(effective.dimensionTargets().values()).allSatisfy(t -> assertThat(t.version()).isZero());
     assertThat(effective.requireDimensionId(sourceDimensions.get(0).getId(), sourceVersionId))
         .isNotEqualTo(sourceDimensions.get(0).getId());
   }
@@ -193,6 +261,123 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
             Long.class,
             sourceVersionId);
     assertThat(draftCount).isEqualTo(1L);
+  }
+
+  // ------------------------------------------------- P0 回归：映射不完整时**不得**写穿到已发布版本
+
+  @Test
+  @DisplayName(
+      "P0 回归：复用同源草稿时映射**不完整** → 拿旧行 id 再写必须 2015，且已发布版本一行都不能变"
+          + "（修复前：HTTP 200、响应体说'改动落在草稿'，实际把 PUBLISHED 的行就地改了）")
+  void staleRowIdWithPartialMapIsRejectedAndLeavesPublishedUntouched() {
+    long publishedVersionId = publishedDefaultVersionId();
+    Dimension target = snapshotDimensions(publishedVersionId).get(0);
+    String publishedName = target.getName();
+    int publishedRowVersion = target.getVersion();
+
+    // ① 改一次已发布版本 → 自动复制出新草稿，改动落在**草稿副本**上
+    EffectiveVersion first =
+        templateService.updateDimension(
+            target.getId(),
+            "RENAME-1-" + System.nanoTime(),
+            target.getWeight(),
+            target.getSortNo(),
+            target.getSuggestedDept(),
+            Boolean.TRUE.equals(target.getIsKey()),
+            publishedRowVersion);
+    assertThat(first.copied()).isTrue();
+    assertThat(first.versionId()).isNotEqualTo(publishedVersionId);
+
+    // ② 此时草稿副本的 name 与源行**不同** ⇒ 再复用同一份草稿时按 (sort_no, name) 配对**配不上**，
+    //    维度映射变成部分（空），而指标映射非空（指标的配对键 code 没变）——这正是 P0 的触发形态。
+    //    请求方是"未刷新的页签 / 响应丢失后重试"：手持**已发布版本的旧行 id + 旧 version**。
+    Throwable thrown =
+        catchThrowable(
+            () ->
+                templateService.updateDimension(
+                    target.getId(),
+                    "RENAME-2-" + System.nanoTime(),
+                    target.getWeight(),
+                    target.getSortNo(),
+                    target.getSuggestedDept(),
+                    Boolean.TRUE.equals(target.getIsKey()),
+                    publishedRowVersion));
+
+    // ③ 先断言**损害为 0**：已发布版本一行都不能变。
+    //    ⚠️ 这一步刻意放在"是否抛错"之前——修复前它会把真实被改成的值打出来，
+    //    而只看"有没有抛异常"只能说明"没拒绝"，说不出被改成了什么（CLAUDE 默认约定第 5 条）。
+    Dimension after =
+        snapshotDimensions(publishedVersionId).stream()
+            .filter(d -> d.getId() == target.getId())
+            .findFirst()
+            .orElseThrow();
+    assertThat(after.getName())
+        .as("已发布版本的维度名被就地改写了（P0：写穿到 PUBLISHED）")
+        .isEqualTo(publishedName);
+    assertThat(after.getVersion())
+        .as("已发布版本的乐观锁列被推进了（P0：写穿到 PUBLISHED）")
+        .isEqualTo(publishedRowVersion);
+
+    // ④ 再断言**必须被拒**，且用专属码（2015），而不是靠守卫 3001 兜
+    assertThat(thrown)
+        .as("配不上映射时必须报 2015，而不是拿旧行 id 猜一个写下去")
+        .isInstanceOf(BizException.class);
+    assertThat(((BizException) thrown).errorCode())
+        .isEqualTo(ErrorCode.TEMPLATE_DIMENSION_NOT_FOUND);
+  }
+
+  @Test
+  @DisplayName(
+      "P1 回归（04-074）：复用别人先建好的草稿时，守卫必须用**草稿那一行**的 version——"
+          + "用调用方手里的源行版本号会把「发布前被编辑过的行」误报成 3001")
+  void reusedDraftGuardUsesTargetRowVersion() {
+    // ① 造一个"发布前被编辑过"的已发布版本：默认模板 → 草稿 → 改一个维度 → 发布
+    long firstDraftId = templateService.ensureEditable(publishedDefaultVersionId()).versionId();
+    Dimension draftFirst = snapshotDimensions(firstDraftId).get(0);
+    templateService.updateDimension(
+        draftFirst.getId(),
+        draftFirst.getName(),
+        draftFirst.getWeight(),
+        draftFirst.getSortNo(),
+        draftFirst.getSuggestedDept(),
+        Boolean.TRUE.equals(draftFirst.getIsKey()),
+        draftFirst.getVersion());
+    templateService.publish(firstDraftId, requireVersion(firstDraftId).getVersion());
+
+    Dimension publishedFirst = snapshotDimensions(firstDraftId).get(0);
+    Dimension publishedSecond = snapshotDimensions(firstDraftId).get(1);
+    assertThat(publishedFirst.getVersion())
+        .as("fixture 自检：这一行在已发布版本里应当被编辑过（version=1，不是 0）")
+        .isEqualTo(1);
+
+    // ② 用**另一个**维度触发自动复制（copy 分支）——副本行的 version 全是 0
+    EffectiveVersion copied =
+        templateService.updateDimension(
+            publishedSecond.getId(),
+            "第二维度改名-" + System.nanoTime(),
+            publishedSecond.getWeight(),
+            publishedSecond.getSortNo(),
+            publishedSecond.getSuggestedDept(),
+            Boolean.TRUE.equals(publishedSecond.getIsKey()),
+            publishedSecond.getVersion());
+    assertThat(copied.copied()).isTrue();
+
+    // ③ 再用第一个维度的**已发布行 id + 它在已发布版本里的 version(=1)** 发一次写：
+    //    这次走**复用**分支，目标行是草稿里的副本（version=0）⇒ 守卫必须取 0。
+    //    修复前取的是调用方传进来的 1 ⇒ UPDATE 影响 0 行 ⇒ 一个**没人动过**的行被误报 3001。
+    EffectiveVersion reused =
+        templateService.updateDimension(
+            publishedFirst.getId(),
+            "第一维度改名-" + System.nanoTime(),
+            publishedFirst.getWeight(),
+            publishedFirst.getSortNo(),
+            publishedFirst.getSuggestedDept(),
+            Boolean.TRUE.equals(publishedFirst.getIsKey()),
+            publishedFirst.getVersion());
+
+    assertThat(reused.copied()).as("第二次应当复用已存在的草稿，而不是再复制一份").isFalse();
+    assertThat(reused.versionId()).isEqualTo(copied.versionId());
+    assertThat(versionStatus(copied.versionId())).isEqualTo(TemplateVersionStatus.DRAFT);
   }
 
   // ---------------------------------------------------------------- 删维度不留孤儿（12 §E13）
@@ -236,6 +421,45 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
         .isInstanceOf(BizException.class)
         .extracting(ex -> ((BizException) ex).errorCode())
         .isEqualTo(ErrorCode.TEMPLATE_WEIGHT_INVALID);
+  }
+
+  // ---------------------------------------------------------------- 2012 的 SQL 判定（03 §31.7.13 补）
+
+  /**
+   * 03 §31.7.13：2012（某维度一个指标都没有）原先**只有一条 mock 掉 `findForValidation` 的单测**
+   * （`TemplateServiceTest.publishRejectsEmptyDimension` 直接 stub 出 `indicatorCount = 0` 的那一行），
+   * 而"空维度会不会出现在校验结果里"这件事写在 SQL 的 `LEFT JOIN` 上——把 `LEFT JOIN` 换成 `INNER JOIN`，
+   * 那条单测**照样全绿**，而真库里违规的维度会从结果里凭空消失、**发布反而通过**。这条在真库上补上。
+   */
+  @Test
+  @DisplayName("发布：草稿里加一个**没有指标**的维度 → 2012（真库口径；SQL 换 INNER JOIN 时必须变红）")
+  void publishRejectsDimensionWithoutAnyIndicatorOnRealData() {
+    long versionId = templateService.ensureEditable(publishedDefaultVersionId()).versionId();
+
+    // 只加一个**权重 0、没有指标**的维度：维度合计仍是 100 ⇒ 先走的 2011 不会命中，
+    // 命中的必然是"每维度至少 1 个指标"那条 2012（否则这条用例证明不了 LEFT JOIN 的事）。
+    templateService.addDimension(versionId, EMPTY_DIMENSION_NAME, new BigDecimal("0.00"), 99, "质量", false);
+
+    // fixture 自检：空维度确实进了库，且草稿里正好一个（用"数出来的东西"正面断言，不是"没有反例"）
+    Long emptyDimensions =
+        jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM dimension d WHERE d.template_version_id = ?"
+                + " AND NOT EXISTS (SELECT 1 FROM indicator i WHERE i.dimension_id = d.id)",
+            Long.class,
+            versionId);
+    assertThat(emptyDimensions).as("fixture 自检：草稿里应当恰好有 1 个无指标维度").isEqualTo(1L);
+    Long totalDimensions =
+        jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM dimension WHERE template_version_id = ?", Long.class, versionId);
+    assertThat(totalDimensions).as("fixture 自检：4 个原有维度 + 新增的这个").isEqualTo(5L);
+
+    assertThatThrownBy(() -> templateService.publish(versionId, requireVersion(versionId).getVersion()))
+        .isInstanceOf(BizException.class)
+        // 报文里点名的必须是**这个空维度**：它只能来自 SQL 的 LEFT JOIN 把 `indicatorCount = 0`
+        // 的那一行带回来（INNER JOIN 时该行消失，这里会变成"发布成功"）
+        .hasMessageContaining(EMPTY_DIMENSION_NAME)
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.TEMPLATE_DIMENSION_EMPTY);
   }
 
   // ---------------------------------------------------------------- 2013 的 SQL 判定（W5 补）
@@ -390,15 +614,179 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
         .isEqualTo(ErrorCode.CONCURRENT_CONFLICT);
   }
 
+  // ------------------------------------------- V9 回填的两个核心守卫（03 §31.7.11 / §31.7.12 补）
+
+  /**
+   * 03 §31.7.12 的 P2：`V9` 的**核心守卫**（"不覆盖已有文案"）原先**没有任何用例守着**——全仓只有
+   * `defaultTemplateMatchesAppendixA` 那一处结构断言，而把回填的 `WHERE` 简化成 `WHERE code = …`
+   * （去掉锚点 JOIN 与 `standard IS NULL`）之后它照样全绿。这里把迁移脚本**当一段可重放的 SQL 再跑一遍**
+   * （脚本在容器启动时已经跑过一次，此后 `standard` 全非空，那些条件就再没被任何用例碰过）。
+   */
+  @Test
+  @DisplayName("V9 回填①：用户已写好的文案**不被覆盖**，同一版本里 `standard IS NULL` 的行确实被填上（真库重放迁移文件）")
+  void v9BackfillKeepsCustomStandardAndFillsNullOnes() throws Exception {
+    long draftId = templateService.ensureEditable(publishedDefaultVersionId()).versionId();
+
+    // 造出 §31.7.11 描述的状态：一份"V9 上线之前就存在的派生草稿"——5 行全空，其中一行用户已自己填过
+    assertThat(clearV9Standards(draftId))
+        .as("fixture 自检：草稿里应当有 5 个待回填的定性指标")
+        .isEqualTo(V9_BACKFILLED_CODES.size());
+    jdbcTemplate.update(
+        "UPDATE indicator SET standard = ? WHERE template_version_id = ? AND code = ?",
+        CUSTOM_STANDARD,
+        draftId,
+        "PAYMENT_COOP");
+    assertThat(nonNullV9Standards(draftId))
+        .as("fixture 自检：此刻只有 1 行非空（用户自己写的那行）")
+        .isEqualTo(1L);
+
+    // 执行**迁移文件本体**（回到 V9 的处境：这一版还有 4 行是 NULL）
+    int backfilledRows = runV9Backfill();
+
+    assertThat(standardOf(draftId, "PAYMENT_COOP"))
+        .as("用户自己写的文案被 V9 覆盖了——`standard IS NULL` 这个守卫失效")
+        .isEqualTo(CUSTOM_STANDARD);
+    assertThat(nonNullV9Standards(draftId))
+        .as("守卫的另一半：同一版本里空着的那 4 行**必须**被填上（否则'没被覆盖'可能只是它什么都没干）")
+        .isEqualTo(5L);
+    assertThat(backfilledRows)
+        .as("回填必须真的改了行（判据形状：数出来的东西要 > 0）")
+        .isGreaterThanOrEqualTo(4);
+    // 内容也要对，不只是非空——CASE 里 code↔文案配错（张冠李戴）在这里变红
+    assertThat(standardOf(draftId, "ISSUE_RESPONSE")).startsWith("5=").contains("响应");
+    assertThat(standardOf(draftId, "CONTACT_STABILITY")).contains("更换");
+  }
+
+  /**
+   * 03 §31.7.11：`V9` 的锚点从"只回填 v1"改成了"按 `V8` 种下的指纹认定血统版本 + `standard IS NULL`"，
+   * 因此**副本版本**（`copied_from_version_id` 指向种子那份）也会被回填。这条守的就是那个覆盖面：
+   * 若把条件收窄回"只改 v1"，副本的 5 行会永远空着，而"编辑默认模板"恰好会复用到那份草稿。
+   */
+  @Test
+  @DisplayName("V9 回填②：**副本版本**（copied_from_version_id 指向种子那份）的 5 行也一起被回填，内容逐条正确")
+  void v9BackfillCoversCopiedDraftVersion() throws Exception {
+    long seedVersionId = publishedDefaultVersionId();
+    long copyVersionId = templateService.ensureEditable(seedVersionId).versionId();
+    assertThat(copiedFrom(copyVersionId))
+        .as("fixture 自检：这一份必须是**副本**版本，否则本条用例测不到'副本也会被回填'")
+        .isEqualTo(seedVersionId);
+
+    assertThat(clearV9Standards(copyVersionId))
+        .as("fixture 自检：副本里应当有 5 个定性指标")
+        .isEqualTo(V9_BACKFILLED_CODES.size());
+
+    int backfilledRows = runV9Backfill();
+
+    List<String> filled =
+        jdbcTemplate.queryForList(
+            "SELECT code FROM indicator WHERE template_version_id = ? AND standard IS NOT NULL"
+                + " AND code IN (?, ?, ?, ?, ?) ORDER BY code",
+            String.class,
+            copyVersionId,
+            V9_BACKFILLED_CODES.get(0),
+            V9_BACKFILLED_CODES.get(1),
+            V9_BACKFILLED_CODES.get(2),
+            V9_BACKFILLED_CODES.get(3),
+            V9_BACKFILLED_CODES.get(4));
+    assertThat(filled)
+        .as("副本版本的 5 行必须全部被回填（只填 v1 时这里是空的）")
+        .hasSize(5)
+        .containsExactlyInAnyOrderElementsOf(V9_BACKFILLED_CODES);
+    assertThat(backfilledRows).as("回填必须真的改了行（> 0）").isGreaterThanOrEqualTo(5);
+    assertThat(standardOf(copyVersionId, "PAYMENT_COOP"))
+        .as("副本里的文案内容也要对，不只是非空")
+        .startsWith("5=")
+        .contains("账期");
+  }
+
   // ---------------------------------------------------------------- 辅助
 
   private long publishedDefaultVersionId() {
+    // ⚠️ 03 §31.7.14 的 P2-10：原来这条查询**不按模板名过滤、也没有 ORDER BY**，只写了
+    // `version_no = 1 AND status = 'PUBLISHED' LIMIT 1`。共享容器里跑完全量用例后会有多份
+    // `(version_no = 1, PUBLISHED)`（每个新建模板都是一条），取到哪一条全凭"全表扫描按聚簇索引顺序"
+    // 这个**未指定**的行为——当前恰好取到 V8 那份，换个执行计划就会取到别的模板、用例假红。
+    // 现在按模板名 + id 升序把范围收敛到本类认定的那份种子。
     Long id =
         jdbcTemplate.queryForObject(
-            "SELECT id FROM template_version WHERE version_no = 1 AND status = 'PUBLISHED' LIMIT 1",
-            Long.class);
-    assertThat(id).as("V8 应预置一个已发布版本").isNotNull();
+            "SELECT v.id FROM template_version v JOIN template t ON t.id = v.template_id"
+                + " WHERE t.name = ? AND v.version_no = 1 AND v.status = 'PUBLISHED'"
+                + " ORDER BY v.id LIMIT 1",
+            Long.class,
+            DEFAULT_TEMPLATE_NAME);
+    assertThat(id).as("V8 应预置名为【%s】的已发布 v1", DEFAULT_TEMPLATE_NAME).isNotNull();
     return id;
+  }
+
+  /** 读迁移脚本执行；返回**回填那条 UPDATE 的实际影响行数**（0 行本身就是"什么都没做"的信号）。 */
+  private int runV9Backfill() throws IOException {
+    String raw =
+        new String(
+            new ClassPathResource(V9_MIGRATION_FILE).getContentAsByteArray(), StandardCharsets.UTF_8);
+    // 拆句：剥掉 `--` 行注释后按 ASCII `;` 切。脚本里的档位文案用的是**全角** `；`、也没有别的
+    // ASCII 分号，所以这个拆句器够用——下面两条断言是对**拆句器自己**的正例检查（拆不出语句时必须响亮失败）。
+    StringBuilder withoutComments = new StringBuilder();
+    for (String line : raw.split("\r?\n")) {
+      int comment = line.indexOf("--");
+      withoutComments.append(comment >= 0 ? line.substring(0, comment) : line).append('\n');
+    }
+    List<String> statements =
+        Arrays.stream(withoutComments.toString().split(";"))
+            .map(String::trim)
+            .filter(statement -> !statement.isEmpty())
+            .toList();
+    assertThat(statements)
+        .as("必须从 %s 里真的拆出语句（拆句器失效时不能静默通过）", V9_MIGRATION_FILE)
+        .hasSizeGreaterThanOrEqualTo(3);
+
+    int affected = -1;
+    for (String statement : statements) {
+      if (statement.regionMatches(true, 0, "UPDATE indicator", 0, "UPDATE indicator".length())) {
+        affected = jdbcTemplate.update(statement);
+      } else {
+        // 锚点自检用的临时表 DDL/DML 与最后的 DROP：原样执行（锚点缺失时它自己会 CHECK 失败）
+        jdbcTemplate.execute(statement);
+      }
+    }
+    assertThat(affected).as("迁移文件里必须有一条回填 UPDATE（否则上面拆句或改名了）").isNotEqualTo(-1);
+    return affected;
+  }
+
+  /** 把某个版本的 5 个定性指标文案清成 `NULL`（复现 V9 上线前那份派生草稿的状态）。 */
+  private int clearV9Standards(long versionId) {
+    return jdbcTemplate.update(
+        "UPDATE indicator SET standard = NULL WHERE template_version_id = ?"
+            + " AND code IN (?, ?, ?, ?, ?)",
+        versionId,
+        V9_BACKFILLED_CODES.get(0),
+        V9_BACKFILLED_CODES.get(1),
+        V9_BACKFILLED_CODES.get(2),
+        V9_BACKFILLED_CODES.get(3),
+        V9_BACKFILLED_CODES.get(4));
+  }
+
+  /** 某个版本里**非空**的定性文案行数（"数出来的东西"断言用）。 */
+  private long nonNullV9Standards(long versionId) {
+    Long count =
+        jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM indicator WHERE template_version_id = ? AND standard IS NOT NULL"
+                + " AND code IN (?, ?, ?, ?, ?)",
+            Long.class,
+            versionId,
+            V9_BACKFILLED_CODES.get(0),
+            V9_BACKFILLED_CODES.get(1),
+            V9_BACKFILLED_CODES.get(2),
+            V9_BACKFILLED_CODES.get(3),
+            V9_BACKFILLED_CODES.get(4));
+    return count == null ? 0L : count;
+  }
+
+  private String standardOf(long versionId, String code) {
+    return jdbcTemplate.queryForObject(
+        "SELECT standard FROM indicator WHERE template_version_id = ? AND code = ?",
+        String.class,
+        versionId,
+        code);
   }
 
   private List<Dimension> snapshotDimensions(long versionId) {

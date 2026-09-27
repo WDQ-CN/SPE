@@ -87,6 +87,14 @@ const publishHint = computed(() => {
   if (!isDraft.value) {
     return '该版本已发布、不可修改；在这里做的任何改动都会自动复制出一份新草稿。'
   }
+  // ⚠️ 空版本要**单独一条**（03 §30 的 P2-2）：一个维度都没有时 `report.dimensions.valid` 必然为 false
+  // （合计 0.00），原来会落进下面那条通用文案，用户看到的是「维度权重合计 0.00，还差 100.00」——
+  // 那是"权重没配齐"的口气，而真实情况是他**一个维度都还没建**，先配权重是配不出来的。
+  // 文案分叉只发生在这里；`weight.ts` 的判定语义一个字没改。
+  // 位置在"已发布"之后：已发布版本即使没有维度，也该先说"不可修改"，而不是催他加维度。
+  if (dimensions.value.length === 0) {
+    return '这个版本还没有维度，发布前请至少添加一个维度并在其中配好指标。'
+  }
   if (report.value.emptyDimensions.length > 0) {
     return `维度「${report.value.emptyDimensions.join('、')}」下还没有指标，发布前请至少添加一个。`
   }
@@ -122,6 +130,15 @@ async function loadTree(): Promise<void> {
     tree.value = null
     loadError.value = '版本参数不合法'
     return
+  }
+  // ⚠️ **换了版本就必须在 await 之前把旧树清掉**（03 §30 的 P2-1）：路由组件被复用（`/templates/:versionId`
+  // 的 `name` 不变 ⇒ 不重新挂载）时，`watch` 只调 `loadTree`，而 `tree.value` 仍指向**上一个版本**——
+  // 请求在飞的窗口期内页面渲染的是「上个版本的树 + 新版本的 URL」，写入口（加指标/改维度/删维度、
+  // 发布 vN）全都还在，点下去就是**拿旧版本的 id 往旧版本写**（`runWrite` 用的是 `tree.value.versionId`）。
+  // 上面那条"参数不合法"分支早就这么做了，这里只是把同一条判据补到正常路径上。
+  // 判据是"手里那棵树的 versionId 与目标不同"——写完重取、点重试这些**同一版本**的重载不清树，避免自己闪自己。
+  if (tree.value !== null && tree.value.versionId !== versionId) {
+    tree.value = null
   }
   loading.value = true
   loadError.value = ''
@@ -451,13 +468,13 @@ function statusTagType(): 'success' | 'warning' | 'info' {
           返回列表
         </el-button>
         <el-button
-          v-if="canWrite"
+          v-if="canWrite && tree"
           type="primary"
           :disabled="!canPublish"
           :loading="submitting"
           @click="publish"
         >
-          发布 v{{ tree?.versionNo }}
+          发布 v{{ tree.versionNo }}
         </el-button>
       </div>
     </div>

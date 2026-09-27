@@ -201,7 +201,8 @@ class TemplateServiceTest {
     assertThat(effective.versionId()).isEqualTo(1L);
     assertThat(effective.version()).isEqualTo(7);
     assertThat(effective.copied()).isFalse();
-    assertThat(effective.switchedWithoutMap(1L)).isFalse();
+    // 版本没换 ⇒ 行 id 就是它自己，不需要任何映射
+    assertThat(effective.requireDimensionId(42L, 1L)).isEqualTo(42L);
     verify(templateMapper, never()).lockById(anyLong());
   }
 
@@ -261,20 +262,36 @@ class TemplateServiceTest {
   }
 
   @Test
-  @DisplayName("ensureEditable：已有同源草稿 → 复用，且不写 AUTO_COPY（本次没发生复制）")
+  @DisplayName(
+      "复用同源草稿：不写 AUTO_COPY；**配不上的那一侧**必须抛 2015——哪怕另一侧有映射、哪怕请求里的旧行 id 就在手里")
   void ensureEditableReusesExistingDraft() {
     when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(published(PUBLISHED_VERSION_ID, TEMPLATE_ID, 3)));
     when(templateMapper.lockById(TEMPLATE_ID)).thenReturn(Optional.of(TEMPLATE_ID));
     when(templateVersionMapper.findDraftCopiedFrom(TEMPLATE_ID, PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(draft(9L, 4, 0)));
+    // ⚠️ 03 §31.7.12 的 P2-9：这两条当前读**显式 stub**——"草稿里没有维度行、但有指标行"是用例
+    // 表达出来的前提，而不是 Mockito 对未 stub 方法返回空 List 的默认行为（后者让"删掉映射重建"的
+    // 变异照样绿）。这里的形态正是 04-074 的 P0：**维度侧配不上、指标侧配得上**。
+    when(dimensionMapper.findByVersionIdForShare(9L)).thenReturn(List.of());
+    when(dimensionMapper.findByVersionIdForShare(PUBLISHED_VERSION_ID))
+        .thenReturn(List.of(dimension(10L, PUBLISHED_VERSION_ID)));
+    when(indicatorMapper.findByVersionIdForShare(9L)).thenReturn(List.of(indicator(200L, 55L)));
+    when(indicatorMapper.findByVersionIdForShare(PUBLISHED_VERSION_ID))
+        .thenReturn(List.of(indicator(100L, 10L)));
 
     EffectiveVersion effective = service.ensureEditable(PUBLISHED_VERSION_ID);
 
     assertThat(effective.versionId()).isEqualTo(9L);
     assertThat(effective.copied()).isFalse();
-    // 没有映射：调用方想改/删"旧版本里的某一行"时，那一行不在生效版本里
-    assertThat(effective.switchedWithoutMap(PUBLISHED_VERSION_ID)).isTrue();
+    // 指标侧配上了：能翻译
+    assertThat(effective.requireIndicatorId(100L, PUBLISHED_VERSION_ID)).isEqualTo(200L);
+    // 维度侧配不上：必须**抛 2015**。修复前的写法会 (a) 因为指标映射非空而放行闸门、
+    // 再 (b) 用 getOrDefault 把请求里的 10L 当答案返回 ⇒ 静默把改动写到旧行上。
+    assertThatThrownBy(() -> effective.requireDimensionId(10L, PUBLISHED_VERSION_ID))
+        .isInstanceOf(BizException.class)
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.TEMPLATE_DIMENSION_NOT_FOUND);
     verifyNoInteractions(auditFacade);
   }
 
@@ -315,7 +332,11 @@ class TemplateServiceTest {
   @DisplayName("updateDimension：落到新草稿时守卫用 0（复制出来的行是全新的，不能拿旧行的版本号）")
   void updateDimensionUsesZeroGuardAfterCopy() {
     stubInsertsWithGeneratedIds();
-    when(dimensionMapper.findById(10L)).thenReturn(Optional.of(dimension(10L, PUBLISHED_VERSION_ID)));
+    // ⚠️ 入口读是**当前读**：`TemplateService.requireDimension` 走的是 `findByIdForUpdate`（不是 `findById`）。
+    // 这里一度还 stub 着旧的 `findById`，于是 mock 返回空 ⇒ 走不到被测分支，用例报出来的
+    // 是"维度不存在"(2015) 而不是它真正想验的东西（5 条 mock 用例同时红）。
+    when(dimensionMapper.findByIdForUpdate(10L))
+        .thenReturn(Optional.of(dimension(10L, PUBLISHED_VERSION_ID)));
     when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(published(PUBLISHED_VERSION_ID, TEMPLATE_ID, 3)));
     when(templateMapper.lockById(TEMPLATE_ID)).thenReturn(Optional.of(TEMPLATE_ID));
@@ -326,20 +347,37 @@ class TemplateServiceTest {
         .thenReturn(List.of(dimension(10L, PUBLISHED_VERSION_ID)));
     when(indicatorMapper.findByVersionId(PUBLISHED_VERSION_ID))
         .thenReturn(List.of(indicator(100L, 10L)));
-    when(dimensionMapper.update(anyLong(), any(), any(), anyInt(), any(), eq(false), anyInt()))
+    when(dimensionMapper.update(anyLong(), any(), any(), anyInt(), any(), eq(false), anyInt(), anyLong()))
         .thenReturn(1);
 
     service.updateDimension(10L, "质量", new BigDecimal("40.00"), 1, "质量", false, 99);
 
-    // 关键：调用方传的是 99（旧行的版本号），实际守卫必须是 0
+    // 关键：调用方传的是 99（旧行的版本号），实际守卫必须是 0；**且第二道闸必须钉在生效版本（新草稿）上**，
+    // 而不是源版本——否则 04-074 那种"写到已发布版本"的错在 SQL 层就拦不住（0 行 → 3001 才是我们要的）。
+    ArgumentCaptor<Long> versionIdCaptor = ArgumentCaptor.forClass(Long.class);
     verify(dimensionMapper)
-        .update(anyLong(), eq("质量"), eq(new BigDecimal("40.00")), eq(1), eq("质量"), eq(false), eq(0));
+        .update(
+            anyLong(),
+            eq("质量"),
+            eq(new BigDecimal("40.00")),
+            eq(1),
+            eq("质量"),
+            eq(false),
+            eq(0),
+            versionIdCaptor.capture());
+    assertThat(versionIdCaptor.getValue())
+        .as("第二道闸必须钉在生效版本上，不能是源版本")
+        .isNotEqualTo(PUBLISHED_VERSION_ID);
   }
 
   @Test
   @DisplayName("updateDimension：复用别人的草稿时没有映射 → 2015，不去猜该改哪一行")
   void updateDimensionFailsWhenDraftReusedByOthers() {
-    when(dimensionMapper.findById(10L)).thenReturn(Optional.of(dimension(10L, PUBLISHED_VERSION_ID)));
+    // ⚠️ 入口读是**当前读**：`TemplateService.requireDimension` 走的是 `findByIdForUpdate`（不是 `findById`）。
+    // 这里一度还 stub 着旧的 `findById`，于是 mock 返回空 ⇒ 走不到被测分支，用例报出来的
+    // 是"维度不存在"(2015) 而不是它真正想验的东西（5 条 mock 用例同时红）。
+    when(dimensionMapper.findByIdForUpdate(10L))
+        .thenReturn(Optional.of(dimension(10L, PUBLISHED_VERSION_ID)));
     when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(published(PUBLISHED_VERSION_ID, TEMPLATE_ID, 3)));
     when(templateMapper.lockById(TEMPLATE_ID)).thenReturn(Optional.of(TEMPLATE_ID));
@@ -351,7 +389,7 @@ class TemplateServiceTest {
         .extracting(ex -> ((BizException) ex).errorCode())
         .isEqualTo(ErrorCode.TEMPLATE_DIMENSION_NOT_FOUND);
     verify(dimensionMapper, never())
-        .update(anyLong(), any(), any(), anyInt(), any(), eq(false), anyInt());
+        .update(anyLong(), any(), any(), anyInt(), any(), eq(false), anyInt(), anyLong());
   }
 
   @Test
@@ -369,7 +407,8 @@ class TemplateServiceTest {
   @Test
   @DisplayName("addIndicator：保存时就查重（不等发布），编码重复 → 2014 且不插入")
   void addIndicatorChecksCodeEarly() {
-    when(dimensionMapper.findById(10L)).thenReturn(Optional.of(dimension(10L, 1L)));
+    // 同上：入口读是当前读 `findByIdForUpdate`（误 stub 成 `findById` 时这两条 addIndicator 用例会报 2015）
+    when(dimensionMapper.findByIdForUpdate(10L)).thenReturn(Optional.of(dimension(10L, 1L)));
     when(templateVersionMapper.findByIdForUpdate(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
     when(indicatorMapper.countByCode(1L, "IQC_PASS_RATE", null)).thenReturn(1L);
 
@@ -386,12 +425,13 @@ class TemplateServiceTest {
   @Test
   @DisplayName("updateIndicator：把编码改成已存在的值 → 2014（唯一键也会被 UPDATE 踩到，不能漏成 5001）")
   void updateIndicatorTranslatesDuplicateCode() {
-    when(indicatorMapper.findById(100L)).thenReturn(Optional.of(indicator(100L, 10L)));
+    // 同上：`TemplateService.requireIndicator` 也是当前读 `findByIdForUpdate`
+    when(indicatorMapper.findByIdForUpdate(100L)).thenReturn(Optional.of(indicator(100L, 10L)));
     when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(draft(PUBLISHED_VERSION_ID, 3, 0)));
     when(indicatorMapper.countByCode(PUBLISHED_VERSION_ID, "TAKEN_CODE", 100L)).thenReturn(0L);
     when(indicatorMapper.update(
-            anyLong(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt()))
+            anyLong(), any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), anyLong()))
         .thenThrow(new DuplicateKeyException("uk_indicator_version_code"));
 
     assertThatThrownBy(
@@ -420,7 +460,8 @@ class TemplateServiceTest {
   @Test
   @DisplayName("addIndicator：唯一键冲突 → 2014（前置查重说'没有'时，唯一键就是最后一道防线，不能漏成 5001）")
   void addIndicatorTranslatesUniqueKeyConflict() {
-    when(dimensionMapper.findById(10L)).thenReturn(Optional.of(dimension(10L, 1L)));
+    // 同上：入口读是当前读 `findByIdForUpdate`（误 stub 成 `findById` 时这两条 addIndicator 用例会报 2015）
+    when(dimensionMapper.findByIdForUpdate(10L)).thenReturn(Optional.of(dimension(10L, 1L)));
     when(templateVersionMapper.findByIdForUpdate(1L)).thenReturn(Optional.of(draft(1L, 1, 0)));
     // 关键：前置查重返回「没有这个编码」——并发下它读的是旧快照，正是 04-057 那个根因；
     // 此时真正的判定落在唯一键上，不翻译就会经兜底变成 5001（04-030 的形态）。

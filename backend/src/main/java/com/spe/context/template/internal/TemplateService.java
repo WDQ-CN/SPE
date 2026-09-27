@@ -13,9 +13,11 @@ import com.spe.context.template.api.ScoreMode;
 import com.spe.context.template.api.TemplateVersionStatus;
 import java.math.BigDecimal;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -207,11 +209,12 @@ public class TemplateService {
     requireWeightInRange(weight);
     requireLength(suggestedDept, 50, "建议评估部门");
 
-    // 落到新草稿时，手里这一行已经是"旧版本的旧行"：用映射找到新草稿里的对应行。
-    // 复用别人的草稿时映射为空——那一行确实不在生效版本里，报不存在让用户刷新后重做，而不是猜。
-    long targetId = effective.requireDimensionId(dimensionId, current.getTemplateVersionId());
-    // 复制出来的行是全新的、version 必为 0，不能拿调用方手里那个（属于旧行的）版本号去守卫。
-    int guardVersion = effective.copied() ? 0 : version;
+    // 落到新草稿时，手里这一行已经是"旧版本的旧行"：用映射找到**生效版本**里的对应行，
+    // 并连同它**当前的 version** 一起拿回来——守卫必须用目标行的版本，不是调用方手里源行的
+    // （04-074 的 P1：复用别人的草稿时草稿那一行可能已被改过，用源行的版本号会误报 3001）。
+    // 复用别人的草稿且配不上时抛 2015：那一行确实不在生效版本里，让用户刷新后重做，而不是猜。
+    EffectiveVersion.Target target =
+        effective.requireDimensionRow(dimensionId, current.getTemplateVersionId(), version);
 
     // 审计记**决定计分口径的每一个字段**，不只是 name/weight：suggestedDept 是 P3 发布任务时自动指派的
     // 依据（01 J2）、isKey 供预警规则用（01 W1②）。少记它们，审计答不了"这份发布的指派/预警口径为什么变了"
@@ -222,11 +225,20 @@ public class TemplateService {
     AuditDetails.putIfChanged(detail, "sortNo", current.getSortNo(), sortNo);
     AuditDetails.putIfChanged(detail, "suggestedDept", current.getSuggestedDept(), suggestedDept);
     AuditDetails.putIfChanged(detail, "isKey", current.getIsKey(), isKey);
-    if (dimensionMapper.update(targetId, name, weight, sortNo, suggestedDept, isKey, guardVersion) == 0) {
+    if (dimensionMapper.update(
+            target.id(),
+            name,
+            weight,
+            sortNo,
+            suggestedDept,
+            isKey,
+            target.version(),
+            effective.versionId())
+        == 0) {
       throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
     }
-    auditFacade.record(AuditAction.DIMENSION_UPDATE, AuditTargetType.TEMPLATE, targetId, detail);
-    log.info("改维度 id={}（生效版本 {}）", targetId, effective.versionId());
+    auditFacade.record(AuditAction.DIMENSION_UPDATE, AuditTargetType.TEMPLATE, target.id(), detail);
+    log.info("改维度 id={}（生效版本 {}）", target.id(), effective.versionId());
     return effective;
   }
 
@@ -241,19 +253,19 @@ public class TemplateService {
   public EffectiveVersion deleteDimension(long dimensionId, int version) {
     Dimension current = requireDimension(dimensionId);
     EffectiveVersion effective = ensureEditable(current.getTemplateVersionId());
-    long targetId = effective.requireDimensionId(dimensionId, current.getTemplateVersionId());
-    int guardVersion = effective.copied() ? 0 : version;
+    EffectiveVersion.Target target =
+        effective.requireDimensionRow(dimensionId, current.getTemplateVersionId(), version);
 
-    if (dimensionMapper.delete(targetId, guardVersion) == 0) {
+    if (dimensionMapper.delete(target.id(), target.version(), effective.versionId()) == 0) {
       throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
     }
-    indicatorMapper.deleteByDimensionId(targetId);
+    indicatorMapper.deleteByDimensionId(target.id());
 
     Map<String, Object> detail = new LinkedHashMap<>();
     detail.put("name", current.getName());
     detail.put("weight", current.getWeight());
-    auditFacade.record(AuditAction.DIMENSION_DELETE, AuditTargetType.TEMPLATE, targetId, detail);
-    log.info("删维度 id={}（连带其指标，生效版本 {}）", targetId, effective.versionId());
+    auditFacade.record(AuditAction.DIMENSION_DELETE, AuditTargetType.TEMPLATE, target.id(), detail);
+    log.info("删维度 id={}（连带其指标，生效版本 {}）", target.id(), effective.versionId());
     return effective;
   }
 
@@ -276,6 +288,8 @@ public class TemplateService {
     requireText(name, 100, "指标名称");
     requireText(code, 50, "指标编码");
     requireWeightInRange(weight);
+    requireTypeScoreMode(type, scoreMode);
+    requireTargetValue(targetValue);
     requireLength(unit, 20, "单位");
     requireLength(standard, 500, "评分标准");
     // 关键：落到新草稿时 dimension.getId() 属于**旧版本**，必须翻译成新草稿里的行 id。
@@ -328,12 +342,14 @@ public class TemplateService {
     requireText(name, 100, "指标名称");
     requireText(code, 50, "指标编码");
     requireWeightInRange(weight);
+    requireTypeScoreMode(type, scoreMode);
+    requireTargetValue(targetValue);
     requireLength(unit, 20, "单位");
     requireLength(standard, 500, "评分标准");
-    long targetId = effective.requireIndicatorId(indicatorId, current.getTemplateVersionId());
-    int guardVersion = effective.copied() ? 0 : version;
+    EffectiveVersion.Target target =
+        effective.requireIndicatorRow(indicatorId, current.getTemplateVersionId(), version);
 
-    requireCodeAvailable(effective.versionId(), code, targetId);
+    requireCodeAvailable(effective.versionId(), code, target.id());
 
     // 审计记**决定计分口径的每一个字段**（03 §26.5 的 P1-6）：type/scoreMode 决定走哪条计分策略、
     // targetValue 是 TARGET 换算的分母、standard 是 DIRECT 的人工换算表（12 §E15）——只记 code/name/weight
@@ -353,7 +369,18 @@ public class TemplateService {
     // 不翻译就会漏成 5001（04-030 的形态：同一约束只在一部分写路径上处理）。
     try {
       if (indicatorMapper.update(
-              targetId, name, code, weight, type, scoreMode, unit, targetValue, standard, sortNo, guardVersion)
+              target.id(),
+              name,
+              code,
+              weight,
+              type,
+              scoreMode,
+              unit,
+              targetValue,
+              standard,
+              sortNo,
+              target.version(),
+              effective.versionId())
           == 0) {
         throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
       }
@@ -364,8 +391,12 @@ public class TemplateService {
       throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
     }
 
-    auditFacade.record(AuditAction.INDICATOR_UPDATE, AuditTargetType.TEMPLATE, targetId, detail);
-    log.info("改指标 id={}（生效版本 {}），改动 {}", targetId, effective.versionId(), detail.keySet());
+    auditFacade.record(AuditAction.INDICATOR_UPDATE, AuditTargetType.TEMPLATE, target.id(), detail);
+    log.info(
+        "改指标 id={}（生效版本 {}），改动 {}",
+        target.id(),
+        effective.versionId(),
+        detail.keySet());
     return effective;
   }
 
@@ -373,17 +404,17 @@ public class TemplateService {
   public EffectiveVersion deleteIndicator(long indicatorId, int version) {
     Indicator current = requireIndicator(indicatorId);
     EffectiveVersion effective = ensureEditable(current.getTemplateVersionId());
-    long targetId = effective.requireIndicatorId(indicatorId, current.getTemplateVersionId());
-    int guardVersion = effective.copied() ? 0 : version;
+    EffectiveVersion.Target target =
+        effective.requireIndicatorRow(indicatorId, current.getTemplateVersionId(), version);
 
-    if (indicatorMapper.delete(targetId, guardVersion) == 0) {
+    if (indicatorMapper.delete(target.id(), target.version(), effective.versionId()) == 0) {
       throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
     }
 
     Map<String, Object> detail = new LinkedHashMap<>();
     detail.put("code", current.getCode());
-    auditFacade.record(AuditAction.INDICATOR_DELETE, AuditTargetType.TEMPLATE, targetId, detail);
-    log.info("删指标 id={}（生效版本 {}）", targetId, effective.versionId());
+    auditFacade.record(AuditAction.INDICATOR_DELETE, AuditTargetType.TEMPLATE, target.id(), detail);
+    log.info("删指标 id={}（生效版本 {}）", target.id(), effective.versionId());
     return effective;
   }
 
@@ -507,15 +538,19 @@ public class TemplateService {
   /**
    * 复用别人已经建好的同源草稿，并**重建「源行 id → 草稿行 id」的映射**（12 §E5 的并发意图）。
    *
-   * <p>⚠️ 这里原先返回空映射，于是 {@link EffectiveVersion#switchedWithoutMap} 判为真、调用方拿到
-   * 2015「维度不存在」——**而那一行明明在**（复制时照抄过去了），只是没有映射能定位它。后果是 E5 明写的
-   * 场景「两个人同时改同一已发布版本的**不同维度**，理应落在**同一份**新草稿上」实际会失败，而且报的错
-   * 有误导性（说"不存在"，其实存在）。P2 深审用一个并发用例把它钉住了
-   * （`TemplateConcurrencyIntegrationTest.concurrentEditsOnPublishedVersionShareOneDraft`）。
+   * <p>⚠️ 这里原先返回空映射，于是调用方拿到 2015「维度不存在」——**而那一行明明在**（复制时照抄过去了），
+   * 只是没有映射能定位它。后果是 E5 明写的场景「两个人同时改同一已发布版本的**不同维度**，理应落在
+   * **同一份**新草稿上」实际会失败，而且报的错有误导性（说"不存在"，其实存在）。P2 深审用一个并发用例把它
+   * 钉住了（`TemplateConcurrencyIntegrationTest.concurrentEditsOnPublishedVersionShareOneDraft`）。
    *
-   * <p>重建方式：**指标按 `code`**（版本内唯一，最可靠）、**维度按 `(sort_no, name)`**（维度没有唯一键，
+   * <p>重建方式：**指标按 `code`**（版本内有唯一键，最可靠）、**维度按 `(sort_no, name)`**（维度没有唯一键，
    * 但复制是逐一照抄，这两个字段必然原样带过去）。配对不上的行**不进映射**，调用方拿到 2015/2016——
-   * 那时它确实不在草稿里（例如它在源版本存在、但草稿里那一行被别人删掉了）。
+   * 那时它确实不在草稿里（例如它在源版本存在、但配对键被改过，或那一行被别人删掉了）。
+   *
+   * <p>⚠️ **配对键重复时一律不进映射**（03 §31.7.14 的 P2-11）：`(sort_no, name)` 在库里**没有唯一键**，
+   * 同一版本里可以存在两行同序号同名。按 key 建 map 时**后者会覆盖前者**，于是"改 A 却落到 B"——
+   * **静默改错行**，比报错严重得多。因此某键在本侧出现不止一次就标记为**歧义**、不进映射 ⇒ 调用方拿到 2015
+   * （响亮），而不是被配到"另一行"。（指标侧不需要这层：`uk_indicator_version_code` 已保证版本内编码唯一。）
    *
    * <p>`copied` 保持 `false`：本次**没有**发生复制，不该写 `TEMPLATE_VERSION_AUTO_COPY` 审计
    * （12 §E5 的要求）。能否定位行由映射本身决定，与这个标志解耦。
@@ -525,32 +560,44 @@ public class TemplateService {
    * 这是 CLAUDE 第 6 条那个坑的第四次显形，而且比前几次更隐蔽：**旧读发生在锁之后**。
    */
   private EffectiveVersion reuseExistingDraft(TemplateVersion draft, TemplateVersion source) {
-    Map<String, Long> draftDimensions = new HashMap<>();
+    Map<String, Dimension> draftDimensions = new HashMap<>();
+    Set<String> ambiguousDimensionKeys = new HashSet<>();
     for (Dimension dimension : dimensionMapper.findByVersionIdForShare(draft.getId())) {
-      draftDimensions.put(dimensionKey(dimension.getSortNo(), dimension.getName()), dimension.getId());
+      String key = dimensionKey(dimension.getSortNo(), dimension.getName());
+      if (draftDimensions.put(key, dimension) != null) {
+        ambiguousDimensionKeys.add(key);
+      }
     }
-    Map<Long, Long> dimensionIdMap = new HashMap<>();
+    Map<Long, EffectiveVersion.Target> dimensionTargets = new HashMap<>();
     for (Dimension dimension : dimensionMapper.findByVersionIdForShare(source.getId())) {
-      Long newId = draftDimensions.get(dimensionKey(dimension.getSortNo(), dimension.getName()));
-      if (newId != null) {
-        dimensionIdMap.put(dimension.getId(), newId);
+      String key = dimensionKey(dimension.getSortNo(), dimension.getName());
+      if (ambiguousDimensionKeys.contains(key)) {
+        continue; // 歧义键：宁可不映射（调用方拿到 2015），也不把它配到"另一行"
+      }
+      Dimension copy = draftDimensions.get(key);
+      if (copy != null) {
+        // ⚠️ 守卫用**草稿这一行当前**的 version，不是调用方手里源行的——拿源行的版本号守卫会让
+        // "没人动过的行"被误报 3001（实测过），反方向还可能放过一次 stale 写（04-074 的 P1）。
+        dimensionTargets.put(
+            dimension.getId(), new EffectiveVersion.Target(copy.getId(), copy.getVersion()));
       }
     }
 
-    Map<String, Long> draftIndicators = new HashMap<>();
+    Map<String, Indicator> draftIndicators = new HashMap<>();
     for (Indicator indicator : indicatorMapper.findByVersionIdForShare(draft.getId())) {
-      draftIndicators.put(indicator.getCode(), indicator.getId());
+      draftIndicators.put(indicator.getCode(), indicator);
     }
-    Map<Long, Long> indicatorIdMap = new HashMap<>();
+    Map<Long, EffectiveVersion.Target> indicatorTargets = new HashMap<>();
     for (Indicator indicator : indicatorMapper.findByVersionIdForShare(source.getId())) {
-      Long newId = draftIndicators.get(indicator.getCode());
-      if (newId != null) {
-        indicatorIdMap.put(indicator.getId(), newId);
+      Indicator copy = draftIndicators.get(indicator.getCode());
+      if (copy != null) {
+        indicatorTargets.put(
+            indicator.getId(), new EffectiveVersion.Target(copy.getId(), copy.getVersion()));
       }
     }
 
     return new EffectiveVersion(
-        draft.getId(), draft.getVersion(), false, dimensionIdMap, indicatorIdMap);
+        draft.getId(), draft.getVersion(), false, dimensionTargets, indicatorTargets);
   }
 
   /** 维度的配对键：`sort_no` 可重复、名称也可重复，但两者的组合在"复制照抄"的语境下足够定位。 */
@@ -568,8 +615,8 @@ public class TemplateService {
     draft.setVersion(0);
     insertVersionOrConflict(draft);
 
-    Map<Long, Long> dimensionIdMap = new HashMap<>();
-    Map<Long, Long> indicatorIdMap = new HashMap<>();
+    Map<Long, EffectiveVersion.Target> dimensionTargets = new HashMap<>();
+    Map<Long, EffectiveVersion.Target> indicatorTargets = new HashMap<>();
 
     List<Dimension> dimensions = dimensionMapper.findByVersionId(source.getId());
     Map<Long, List<Indicator>> byDimension =
@@ -586,7 +633,8 @@ public class TemplateService {
       copy.setIsKey(Boolean.TRUE.equals(dimension.getIsKey()));
       copy.setVersion(0);
       dimensionMapper.insert(copy);
-      dimensionIdMap.put(dimension.getId(), copy.getId());
+      // 副本是全新行 ⇒ 它的当前 version 恒为 0（守卫用它，不是源行的版本号）
+      dimensionTargets.put(dimension.getId(), new EffectiveVersion.Target(copy.getId(), 0));
 
       for (Indicator indicator : byDimension.getOrDefault(dimension.getId(), List.of())) {
         Indicator indicatorCopy = new Indicator();
@@ -603,7 +651,8 @@ public class TemplateService {
         indicatorCopy.setSortNo(indicator.getSortNo());
         indicatorCopy.setVersion(0);
         insertIndicatorOrConflict(indicatorCopy);
-        indicatorIdMap.put(indicator.getId(), indicatorCopy.getId());
+        indicatorTargets.put(
+            indicator.getId(), new EffectiveVersion.Target(indicatorCopy.getId(), 0));
       }
     }
 
@@ -619,10 +668,11 @@ public class TemplateService {
         "已发布版本 id={} 被修改，自动复制出草稿 id={}（维度 {} 个、指标 {} 个）",
         source.getId(),
         draft.getId(),
-        dimensionIdMap.size(),
-        indicatorIdMap.size());
+        dimensionTargets.size(),
+        indicatorTargets.size());
 
-    return new EffectiveVersion(draft.getId(), draft.getVersion(), true, dimensionIdMap, indicatorIdMap);
+    return new EffectiveVersion(
+        draft.getId(), draft.getVersion(), true, dimensionTargets, indicatorTargets);
   }
 
   // ------------------------------------------------------------------ 辅助
@@ -635,13 +685,13 @@ public class TemplateService {
 
   private Dimension requireDimension(long dimensionId) {
     return dimensionMapper
-        .findById(dimensionId)
+        .findByIdForUpdate(dimensionId)
         .orElseThrow(() -> new BizException(ErrorCode.TEMPLATE_DIMENSION_NOT_FOUND));
   }
 
   private Indicator requireIndicator(long indicatorId) {
     return indicatorMapper
-        .findById(indicatorId)
+        .findByIdForUpdate(indicatorId)
         .orElseThrow(() -> new BizException(ErrorCode.TEMPLATE_INDICATOR_NOT_FOUND));
   }
 
@@ -653,7 +703,10 @@ public class TemplateService {
    * 这些字段、都不过 DTO。漏了这一层，越界值会一路走到 CHECK 才被库拒绝，经兜底变成 5001，用户看到的
    * 是"系统异常"而不是"哪一项不对"（06 §2.6 的红线、03 §26.5 的 P1-5）。
    *
-   * <p>精度用 `stripTrailingZeros().scale()`：`33.340` 的 scale 是 3，但它等于 `33.34`，不该被拒。
+   * <p>⚠️ 精度判据是 **`scale()`——不接受"多余但等值的尾零"**，与 DTO 的 `@Digits(fraction = 2)` **同口径**
+   * （03 §31.7.4 的 P2）：服务层一度用 `stripTrailingZeros().scale()`，于是 `33.340` 在 DTO 被拒、在服务层
+   * 被放行——**同一条约束两套口径**，程序化路径（P3 的 Excel 导入 / M6 的开放 API）收下的值，HTTP 路径
+   * 根本收不下。现在两侧一致：`33.340` 一律拒（提示"最多两位小数"），`33.34` 一律收。
    */
   private static void requireWeightInRange(BigDecimal weight) {
     if (weight == null
@@ -661,8 +714,52 @@ public class TemplateService {
         || weight.compareTo(FULL_WEIGHT) > 0) {
       throw new BizException(ErrorCode.TEMPLATE_VALUE_INVALID, "权重须在 0~100 之间，实际为 " + weight);
     }
-    if (weight.stripTrailingZeros().scale() > 2) {
+    if (weight.scale() > 2) {
       throw new BizException(ErrorCode.TEMPLATE_VALUE_INVALID, "权重最多保留两位小数，实际为 " + weight);
+    }
+  }
+
+  /**
+   * 目标值的单行校验（`target_value DECIMAL(12,4)`）：最多 4 位小数 + 整数部分最多 8 位。
+   *
+   * <p>与 DTO 的 `@Digits(integer = 8, fraction = 4)` 同口径。**这一层原来完全缺失**（03 §31.7.14 的 P2-12），
+   * 而 `DECIMAL(12,4)` 对**超过 4 位的小数会静默四舍五入**——实测写 `98.12345` 进库变成 `98.1235`，
+   * 无错误、无警告，等于把 TARGET 换算的**分母**悄悄改掉。越界有 strict mode 兜底（`ERROR 1264`），
+   * 精度没有兜底，所以必须在这里拦。`null` 合法：非 TARGET 指标不必填，TARGET 缺值由发布校验（2013）拦。
+   */
+  private static void requireTargetValue(BigDecimal targetValue) {
+    if (targetValue == null) {
+      return;
+    }
+    if (targetValue.scale() > 4) {
+      throw new BizException(
+          ErrorCode.TEMPLATE_VALUE_INVALID, "目标值最多保留四位小数，实际为 " + targetValue);
+    }
+    if (targetValue.precision() - targetValue.scale() > 8) {
+      throw new BizException(
+          ErrorCode.TEMPLATE_VALUE_INVALID, "目标值整数部分不得超过 8 位，实际为 " + targetValue);
+    }
+  }
+
+  /**
+   * `type` 与 `scoreMode` 的配套一致性（01 §6.1a；口径也写在 `V7` 的列注释里）。
+   *
+   * <p>**定量必须有计分模式**（DIRECT / RATIO / TARGET——P3 按它选策略），**定性必须没有**
+   * （1~5 ×20 是固定换算，不走策略）。
+   *
+   * <p>⚠️ 这条校验原先**一层都没有**，而 `CreateIndicatorRequest` 的 javadoc 却写着"这一对约束的完整校验
+   * 在服务层"——**注释在维护一条并不存在的保证**。后果：直连 API 传 `type=QUAL, scoreMode=RATIO` 能存进草稿、
+   * 还能发布出去，而版本一经发布就**冻结、不可就地修**（要再发一版并重绑任务）；P3 的计分若按 `scoreMode`
+   * 非空优先，定性指标就会被按定量口径算（03 §31.7.3 / §31.7.14 的 P2-13，两位审查者各自独立发现）。
+   */
+  private static void requireTypeScoreMode(IndicatorType type, ScoreMode scoreMode) {
+    if (type == IndicatorType.QUANT && scoreMode == null) {
+      throw new BizException(
+          ErrorCode.TEMPLATE_VALUE_INVALID, "定量指标必须指定计分模式（DIRECT/RATIO/TARGET）");
+    }
+    if (type == IndicatorType.QUAL && scoreMode != null) {
+      throw new BizException(
+          ErrorCode.TEMPLATE_VALUE_INVALID, "定性指标的计分模式必须为空（固定按 1~5 ×20 换算，不走计分策略）");
     }
   }
 

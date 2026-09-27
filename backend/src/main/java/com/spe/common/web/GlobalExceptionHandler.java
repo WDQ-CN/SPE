@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -40,6 +41,22 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
     return ResponseEntity.status(errorCode.httpStatus())
         .body(Result.fail(errorCode.code(), ex.getMessage()));
+  }
+
+  /**
+   * 锁等待超时 / 死锁 → 3001（与守卫 UPDATE 的 0 行同一个码）。
+   *
+   * <p>12 §E12 要求"两类并发冲突都翻成 3001"（唯一键冲突与锁冲突），但原先只有**插入/更新**那几条路径
+   * 各自 `try/catch` 翻译，**锁定读**（`findByIdForUpdate` / `findByVersionIdForShare`）上的锁等待没有任何
+   * 一层兜底——超过 `innodb_lock_wait_timeout` 或死锁时会落到 `Exception` 兜底变成 **5001「系统异常」**，
+   * 用户看到"服务器错误"而不知道该刷新重试（03 §31.7.6 的 P2）。这里集中映射一次，覆盖全部写路径；
+   * `CannotAcquireLockException` 是它的子类，一并覆盖。
+   */
+  @ExceptionHandler(PessimisticLockingFailureException.class)
+  public ResponseEntity<Result<Void>> handleLockConflict(PessimisticLockingFailureException ex) {
+    log.warn("并发冲突（锁等待/死锁）：{}", ex.getMessage());
+    return ResponseEntity.status(ErrorCode.CONCURRENT_CONFLICT.httpStatus())
+        .body(Result.fail(ErrorCode.CONCURRENT_CONFLICT));
   }
 
   /** 越权：方法级鉴权在 Controller 内抛出时由此兜底（过滤器链上的 403 见 AccessDeniedHandler）。 */

@@ -16,12 +16,20 @@ import type { IndicatorType, ScoreMode } from '@/shared/types/enums'
  * 版本发起改动时，服务端会在同一事务里复制出新草稿再改，于是：
  *
  * <ul>
- *   <li>`effectiveVersionId !== 请求里的 versionId` → **发生了自动复制**，行 id 全变了，
- *       必须按新 id **重新拉整棵树**（不能拿响应去就地改手里的数组）；</li>
- *   <li>相等 → 只是原地更新，把 `effectiveVersion` 写回手里的树即可。</li>
+ *   <li>`effectiveVersionId !== 请求里的 versionId` → **换了版本**（多半是新建了草稿，也可能是
+ *       复用一个**已存在**的同源草稿），行 id 全变了：必须按新 id **重新拉整棵树**，不能拿响应
+ *       去就地改手里的数组（服务端刻意不回"旧行 id → 新行 id"的映射，见 `shared/types/dto.ts`）；</li>
+ *   <li>相等 → 版本没换，行 id 仍然有效。</li>
  * </ul>
  *
- * 这就是 12 §R-5 说的那件事：只回 id 不够，只回 version 也不够——**两个都要**，否则下一次改删
+ * <p>⚠️ **前端对这两种情况的处理是同一个动作：整树重取**（`TemplateEditorView.runWrite`）。
+ * 差别只在"要不要 `router.replace` 到新版本"。所以这里的 {@link WriteResult.effectiveVersion}
+ * ——重取回来的树自带每个新行的 `version`，就地写回反倒要自己维护一份映射——**全前端零消费**
+ * （`WriteOutcome` 只取 id 与文案）。它仍然必须回（12 §R-5 要求 id 与 version 都回），
+ * 因为"改成就地更新、省掉一次重取"是当初留好的口子；03 §30 的 P2-4 记的就是这段说明
+ * 与实现（整树重取）对不上。
+ *
+ * <p>这就是 12 §R-5 说的那件事：只回 id 不够，只回 version 也不够——**两个都要**，否则下一次改删
  * 会被后端的乐观锁守卫用 3001 拒掉。
  */
 
