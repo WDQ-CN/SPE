@@ -23,7 +23,7 @@ public interface IndicatorMapper extends BaseMapper<Indicator> {
 
   String COLUMNS =
       "id, dimension_id, template_version_id, name, code, weight, type, score_mode,"
-          + " unit, target_value, standard, sort_no, version";
+          + " unit, target_value, standard, sort_no, version, src_indicator_id";
 
   /** 整棵树的第三层：**按版本一次取全部指标**（不是逐个维度去查）。 */
   @Select(

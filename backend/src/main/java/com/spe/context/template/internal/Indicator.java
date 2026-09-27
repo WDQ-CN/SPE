@@ -55,4 +55,7 @@ public class Indicator {
 
   /** 乐观锁版本（12 §E2/E12）。 */
   private Integer version;
+
+  /** **复制来源行 id**（04-081）：理由与回退口径见 {@link Dimension#getSrcDimensionId()}。 */
+  private Long srcIndicatorId;
 }

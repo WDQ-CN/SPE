@@ -69,10 +69,11 @@ public interface TemplateVersionMapper extends BaseMapper<TemplateVersion> {
   /**
    * 复用查询（12 §E5）：同模板、**源自同一个已发布版本**、且仍是草稿的那个版本。
    *
-   * <p>⚠️ **末尾的 `FOR UPDATE` 不是可选项**。调用方已持有模板行锁（{@link TemplateMapper#lockById}），
-   * 但 MySQL 默认 REPEATABLE READ 下**普通读走的是事务开始时的快照**——第二个事务即便等到了锁，也看不到
-   * 第一个刚提交的草稿，于是判定"没有同源草稿"、自己去插一份，撞唯一键变成 3001 并留下孤儿草稿。
-   * 这是并发用例实测出来的（不写 `FOR UPDATE` 时它确实红），不是理论推演。
+   * <p>⚠️ **末尾的 `FOR UPDATE` 不是可选项**。调用方已持有版本行锁，但 MySQL 默认 REPEATABLE READ 下
+   * **普通读走的是事务开始时的快照**——第二个事务即便等到了"同一模板下复制"的那把锁
+   * （{@link #findMaxVersionNoForUpdate}），也看不到第一个刚提交的草稿，于是判定"没有同源草稿"、
+   * 自己插一份，撞唯一键变成 3001 并留下孤儿草稿。这是并发用例实测出来的（不写 `FOR UPDATE` 时它确实红），
+   * 不是理论推演。
    */
   @Select(
       "SELECT " + COLUMNS
@@ -83,11 +84,16 @@ public interface TemplateVersionMapper extends BaseMapper<TemplateVersion> {
       @Param("templateId") long templateId, @Param("sourceVersionId") long sourceVersionId);
 
   /**
-   * 当前最大的版本号，**当前读并锁住那一行**（调用方必须已持有模板行锁）。
+   * 当前最大的版本号，**当前读并锁住那一行**。
+   *
+   * <p>⚠️ **它是"同一模板下的复制"唯一的串行化点**（04-080）：模板行锁已删除——那把是**冗余**的，
+   * 两把锁会互相掩盖对方的失效（实测：只动其中任一把，跨版本并发复制用例都不红）。另一个并发复制方要读的
+   * 正是这一行（或该模板尚无版本时的那段间隙），因此它会阻塞到本事务提交；而 `FOR UPDATE` 是当前读、
+   * 看得见等到的那些提交 ⇒ 随后算出的 `max + 1` 才是权威的。
    *
    * <p>为什么不用 `SELECT MAX(version_no)`：① 聚合函数上加不了 `FOR UPDATE`，而普通读在 REPEATABLE READ
-   * 下会读到过期快照，算出已经被别人用掉的版本号；② 取"最大那一行"本身就能顺带把它锁住，语义也更直白。
-   * 模板下还没有任何版本时返回空，调用方按 0 处理。
+   * 下会读到过期快照，算出已经被别人用掉的版本号（实测：把它降级成快照，跨版本并发复制用例会红）；
+   * ② 取"最大那一行"本身就能顺带把它锁住，语义也更直白。模板下还没有任何版本时返回空，调用方按 0 处理。
    */
   @Select(
       "SELECT version_no FROM template_version WHERE template_id = #{templateId}"

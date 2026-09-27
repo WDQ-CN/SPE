@@ -203,16 +203,16 @@ class TemplateServiceTest {
     assertThat(effective.copied()).isFalse();
     // 版本没换 ⇒ 行 id 就是它自己，不需要任何映射
     assertThat(effective.requireDimensionId(42L, 1L)).isEqualTo(42L);
-    verify(templateMapper, never()).lockById(anyLong());
+    // 草稿路径**直接返回**：连"有没有同源草稿"都不必查（04-080 删掉模板行锁后，这条断言换成它）
+    verify(templateVersionMapper, never()).findDraftCopiedFrom(anyLong(), anyLong());
   }
 
   @Test
-  @DisplayName("ensureEditable：已发布 → 先锁模板行、再复制整棵树，带回 id 映射并写 AUTO_COPY")
+  @DisplayName("ensureEditable：已发布 → 先查复用、再算 max 并复制整棵树，带回 id 映射并写 AUTO_COPY")
   void ensureEditableCopiesPublished() {
     stubInsertsWithGeneratedIds();
     when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(published(PUBLISHED_VERSION_ID, TEMPLATE_ID, 3)));
-    when(templateMapper.lockById(TEMPLATE_ID)).thenReturn(Optional.of(TEMPLATE_ID));
     when(templateVersionMapper.findDraftCopiedFrom(TEMPLATE_ID, PUBLISHED_VERSION_ID))
         .thenReturn(Optional.empty());
     when(templateVersionMapper.findMaxVersionNoForUpdate(TEMPLATE_ID)).thenReturn(Optional.of(3));
@@ -227,10 +227,11 @@ class TemplateServiceTest {
     assertThat(effective.versionId()).isNotEqualTo(PUBLISHED_VERSION_ID);
     assertThat(effective.requireDimensionId(10L, PUBLISHED_VERSION_ID)).isNotEqualTo(10L);
     assertThat(effective.requireIndicatorId(100L, PUBLISHED_VERSION_ID)).isNotEqualTo(100L);
-    // 锁先于复用查询 —— 顺序反了"复用"就不可信
-    var order = org.mockito.Mockito.inOrder(templateMapper, templateVersionMapper);
-    order.verify(templateMapper).lockById(TEMPLATE_ID);
+    // 顺序不变式：**先查复用、再算 max**——已经有同源草稿就不该去动版本号（04-080 删掉模板行锁后，
+    // 这里不再能断言"锁先于复用查询"，改成断言这条仍然成立的顺序）
+    var order = org.mockito.Mockito.inOrder(templateVersionMapper);
     order.verify(templateVersionMapper).findDraftCopiedFrom(TEMPLATE_ID, PUBLISHED_VERSION_ID);
+    order.verify(templateVersionMapper).findMaxVersionNoForUpdate(TEMPLATE_ID);
     // 源版本绝不能被发布/改动
     verify(templateVersionMapper, never()).publish(eq(PUBLISHED_VERSION_ID), anyInt());
     verify(auditFacade).record(eq(AuditAction.TEMPLATE_VERSION_AUTO_COPY), any(), any(), any());
@@ -244,7 +245,6 @@ class TemplateServiceTest {
     // 在这条用例里会拿到空、抛 2010 —— 也就是说这条用例在旧写法上是红的。
     when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(published(PUBLISHED_VERSION_ID, TEMPLATE_ID, 3)));
-    when(templateMapper.lockById(TEMPLATE_ID)).thenReturn(Optional.of(TEMPLATE_ID));
     when(templateVersionMapper.findDraftCopiedFrom(TEMPLATE_ID, PUBLISHED_VERSION_ID))
         .thenReturn(Optional.empty());
     when(templateVersionMapper.findMaxVersionNoForUpdate(TEMPLATE_ID)).thenReturn(Optional.of(3));
@@ -267,7 +267,6 @@ class TemplateServiceTest {
   void ensureEditableReusesExistingDraft() {
     when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(published(PUBLISHED_VERSION_ID, TEMPLATE_ID, 3)));
-    when(templateMapper.lockById(TEMPLATE_ID)).thenReturn(Optional.of(TEMPLATE_ID));
     when(templateVersionMapper.findDraftCopiedFrom(TEMPLATE_ID, PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(draft(9L, 4, 0)));
     // ⚠️ 03 §31.7.12 的 P2-9：这两条当前读**显式 stub**——"草稿里没有维度行、但有指标行"是用例
@@ -301,7 +300,6 @@ class TemplateServiceTest {
     stubInsertsWithGeneratedIds();
     when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(published(PUBLISHED_VERSION_ID, TEMPLATE_ID, 3)));
-    when(templateMapper.lockById(TEMPLATE_ID)).thenReturn(Optional.of(TEMPLATE_ID));
     when(templateVersionMapper.findDraftCopiedFrom(eq(TEMPLATE_ID), anyLong()))
         .thenReturn(Optional.empty());
     when(templateVersionMapper.findMaxVersionNoForUpdate(TEMPLATE_ID))
@@ -339,7 +337,6 @@ class TemplateServiceTest {
         .thenReturn(Optional.of(dimension(10L, PUBLISHED_VERSION_ID)));
     when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(published(PUBLISHED_VERSION_ID, TEMPLATE_ID, 3)));
-    when(templateMapper.lockById(TEMPLATE_ID)).thenReturn(Optional.of(TEMPLATE_ID));
     when(templateVersionMapper.findDraftCopiedFrom(TEMPLATE_ID, PUBLISHED_VERSION_ID))
         .thenReturn(Optional.empty());
     when(templateVersionMapper.findMaxVersionNoForUpdate(TEMPLATE_ID)).thenReturn(Optional.of(3));
@@ -380,7 +377,6 @@ class TemplateServiceTest {
         .thenReturn(Optional.of(dimension(10L, PUBLISHED_VERSION_ID)));
     when(templateVersionMapper.findByIdForUpdate(PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(published(PUBLISHED_VERSION_ID, TEMPLATE_ID, 3)));
-    when(templateMapper.lockById(TEMPLATE_ID)).thenReturn(Optional.of(TEMPLATE_ID));
     when(templateVersionMapper.findDraftCopiedFrom(TEMPLATE_ID, PUBLISHED_VERSION_ID))
         .thenReturn(Optional.of(draft(9L, 4, 0)));
 

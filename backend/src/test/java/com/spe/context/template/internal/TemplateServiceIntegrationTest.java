@@ -267,8 +267,8 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
 
   @Test
   @DisplayName(
-      "P0 回归：复用同源草稿时映射**不完整** → 拿旧行 id 再写必须 2015，且已发布版本一行都不能变"
-          + "（修复前：HTTP 200、响应体说'改动落在草稿'，实际把 PUBLISHED 的行就地改了）")
+      "P0 回归（04-074）+ D1 升级（04-081）：改过名的行用旧行 id 再写，现在能**精确定位到草稿副本**；"
+          + "而无论走哪条路径，**已发布版本一行都不能变**")
   void staleRowIdWithPartialMapIsRejectedAndLeavesPublishedUntouched() {
     long publishedVersionId = publishedDefaultVersionId();
     Dimension target = snapshotDimensions(publishedVersionId).get(0);
@@ -318,12 +318,62 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
         .as("已发布版本的乐观锁列被推进了（P0：写穿到 PUBLISHED）")
         .isEqualTo(publishedRowVersion);
 
-    // ④ 再断言**必须被拒**，且用专属码（2015），而不是靠守卫 3001 兜
+    // ④ 04-081 之后：身份由 `src_dimension_id` 提供 ⇒ 这次写**应当成功**（精确落在草稿副本上），
+    //    不再报 2015。旧实现只能按 (sort_no, name) 配对，配不上就报 2015 —— 那是 P0 的**止损**，
+    //    现在换成了根治。"配不上就 2015"仍然存在，只是触发条件收窄为"那一行确实不在生效版本里"
+    //    （由 `TemplateServiceTest.ensureEditableReusesExistingDraft` 覆盖）。
     assertThat(thrown)
-        .as("配不上映射时必须报 2015，而不是拿旧行 id 猜一个写下去")
-        .isInstanceOf(BizException.class);
-    assertThat(((BizException) thrown).errorCode())
-        .isEqualTo(ErrorCode.TEMPLATE_DIMENSION_NOT_FOUND);
+        .as("改过名的行应当靠源行 id 精确定位，而不是报 2015（04-081 的升级点）")
+        .isNull();
+  }
+
+  @Test
+  @DisplayName(
+      "D1 回归（04-081）：草稿里改过维度名之后，复用仍能精确定位 —— 靠复制时留下的 src_dimension_id，"
+          + "而不是可编辑的业务键（旧实现到这里只能报 2015）")
+  void reusePairsBySourceRowIdEvenAfterRename() {
+    long publishedVersionId = publishedDefaultVersionId();
+    Dimension target = snapshotDimensions(publishedVersionId).get(0);
+
+    // ① 改一次已发布版本 → 复制出新草稿；副本必须记下"我从哪一行复制来"
+    EffectiveVersion first =
+        templateService.updateDimension(
+            target.getId(),
+            "RENAME-D1-" + System.nanoTime(),
+            target.getWeight(),
+            target.getSortNo(),
+            target.getSuggestedDept(),
+            Boolean.TRUE.equals(target.getIsKey()),
+            target.getVersion());
+    assertThat(first.copied()).isTrue();
+    Long srcId =
+        jdbcTemplate.queryForObject(
+            "SELECT src_dimension_id FROM dimension WHERE template_version_id = ? ORDER BY id LIMIT 1",
+            Long.class,
+            first.versionId());
+    assertThat(srcId).as("副本必须记下源行 id（否则复用只能靠业务键猜）").isEqualTo(target.getId());
+
+    // ② 再用**已发布版本的旧行 id** 发一次写（走复用分支）。此刻业务键已经发散——草稿里那一行改了名——
+    //    旧实现（按 (sort_no, name) 配对）只能报 2015；现在应当按 src_dimension_id 精确命中。
+    EffectiveVersion reused =
+        templateService.updateDimension(
+            target.getId(),
+            "RENAME-D1-2-" + System.nanoTime(),
+            target.getWeight(),
+            target.getSortNo(),
+            target.getSuggestedDept(),
+            Boolean.TRUE.equals(target.getIsKey()),
+            target.getVersion());
+
+    assertThat(reused.copied()).as("第二次应当复用已存在的草稿").isFalse();
+    assertThat(reused.versionId()).isEqualTo(first.versionId());
+    // 与 P0 用例同一个不变式：已发布版本一行都不能变
+    Dimension after =
+        snapshotDimensions(publishedVersionId).stream()
+            .filter(d -> d.getId() == target.getId())
+            .findFirst()
+            .orElseThrow();
+    assertThat(after.getName()).as("已发布版本被就地改写了").isEqualTo(target.getName());
   }
 
   @Test

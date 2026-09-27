@@ -19,7 +19,8 @@ import org.apache.ibatis.annotations.Update;
 public interface DimensionMapper extends BaseMapper<Dimension> {
 
   String COLUMNS =
-      "id, template_version_id, name, weight, sort_no, suggested_dept, is_key, version";
+      "id, template_version_id, name, weight, sort_no, suggested_dept, is_key, version,"
+          + " src_dimension_id";
 
   /** 整棵树的第二层（12 §R-15 的"三条查询"之一）。 */
   @Select(

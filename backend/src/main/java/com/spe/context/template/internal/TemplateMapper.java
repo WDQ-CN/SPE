@@ -73,18 +73,14 @@ public interface TemplateMapper extends BaseMapper<Template> {
   @Update("UPDATE template SET name = #{name} WHERE id = #{id}")
   int updateName(@Param("id") long id, @Param("name") String name);
 
-  /**
-   * 锁住模板行（12 §E12）——**自动复制新草稿前必须先拿它**。
-   *
-   * <p>为什么必须有这一步：复制要先算出 `max(version_no) + 1`，而 `SELECT MAX(...)` 在 REPEATABLE READ 下是
-   * **一致性读**——既不阻塞别人、也不阻止别人插入。两个请求于是可能各读到同一个 max、各插一份草稿，用户的
-   * 两笔改动被分到两个版本里，谁都不报错。唯一键只能防"同一版本号插两次"，拦不住这种平行草稿。
-   *
-   * <p>锁在模板行上，粒度正好是"同一模板的复制串行化"；`FOR UPDATE` 是当前读，能看到别人刚提交的行，
-   * 因此后面那次"复用已有草稿"的查询才是可信的。
-   *
-   * @return 存在则返回 id；模板不存在返回空（调用方转 2009）
-   */
-  @Select("SELECT id FROM template WHERE id = #{id} FOR UPDATE")
-  Optional<Long> lockById(@Param("id") long id);
+  // ⚠️ 这里原先有一把 `lockById`（`SELECT id FROM template WHERE id = ? FOR UPDATE`），**2026-09-27 删除**
+  // （04-080）：它的目的是"串行化同一模板下的复制"，但实测**它是冗余的** ——
+  // `TemplateVersionMapper.findMaxVersionNoForUpdate`（`SELECT MAX(version_no) ... FOR UPDATE`）已经挡在
+  // 同一个位置（另一个复制方要读的正是那一行/那段间隙）：① 只删本方法、并发用例仍绿；② 只把 max 那条降级
+  // 成快照、用例也绿；③ **两者同时动才红**。两把锁互相掩盖了对方的失效 ⇒ 用例对**单独一把**失效无感。
+  // 删掉冗余这把之后，max 那条成为唯一的串行化点，"那一把一坏就红"。
+  //
+  // 连带失去的一点（可忽略、但如实记下）：原先它顺带校验了"模板行存在"（不存在 → 2009）。现在这条校验没有
+  // 了 —— 但 `template_version.template_id` 只能由本上下文的写路径写入，版本行存在即意味着模板行当时存在；
+  // 且 V7 有意不建外键（06 §4），这从来就不是硬保证。
 }

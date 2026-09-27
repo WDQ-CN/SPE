@@ -520,14 +520,20 @@ public class TemplateService {
   /**
    * 保证写操作落在一个**草稿**上（12 §E5 / §E12）：本来就是草稿就原样返回；是已发布版本就先复制出新草稿。
    *
-   * <p>三步，缺一不可：
+   * <p>三步：
    * <ol>
-   *   <li><b>锁模板行</b>：`SELECT ... FOR UPDATE` 把同一模板下的复制串行化。只靠"先查 max 再插"不够——
-   *       `SELECT MAX()` 在 REPEATABLE READ 下是一致性读，两个请求可能各读到同一个值、各插一份草稿，
-   *       用户的改动被分到两个版本里，谁都不报错（唯一键只能防"同一版本号插两次"）；</li>
+   *   <li><b>当前读版本行</b>（`FOR UPDATE`）：状态决定"要不要复制"，而普通读走的是事务开始时的快照——
+   *       另一个事务可能刚把这个草稿发布了，拿快照里的 DRAFT 去插入维度就会污染已发布版本，且没有守卫能拦
+   *       （版本守卫挡的是 UPDATE，不是 INSERT）。它同时与「发布」那条 UPDATE 互斥，读到的状态才是权威的；</li>
    *   <li><b>复用同源草稿</b>：已经有人为这个已发布版本建过草稿就直接用它，不再复制第二份；</li>
    *   <li><b>复制整棵树</b>：把维度与指标一并复制，并记下**旧行 id → 新行 id** 的映射。</li>
    * </ol>
+   *
+   * <p>⚠️ **"同一模板下的复制"由 `findMaxVersionNoForUpdate`（`SELECT MAX(version_no) ... FOR UPDATE`）
+   * 串行化，不再另取模板行锁**（04-080）：原先复制前还要 `templateMapper.lockById`，实测**它是冗余的** ——
+   * 只删它、并发用例仍绿；只把 max 那条降级成快照、用例也绿；**两者同时动才红**。即两把锁互相掩盖了对方的
+   * 失效，跨版本并发用例对**单独一把**失效无感。删掉冗余那把之后，max 那条成为**唯一**的串行化点，
+   * 用例从此"那一把一坏就红"——**这个区分力是这次删除换来的**。
    */
   @Transactional
   public EffectiveVersion ensureEditable(long versionId) {
@@ -543,11 +549,7 @@ public class TemplateService {
       return EffectiveVersion.sameAs(version.getId(), version.getVersion());
     }
 
-    // 锁顺序在所有路径上一致：先版本行、再模板行（模板行锁用来串行化"同一模板下的复制"）
     long templateId = version.getTemplateId();
-    templateMapper.lockById(templateId)
-        .orElseThrow(() -> new BizException(ErrorCode.TEMPLATE_NOT_FOUND));
-
     return templateVersionMapper
         .findDraftCopiedFrom(templateId, version.getId())
         .map(draft -> reuseExistingDraft(draft, version))
@@ -579,21 +581,33 @@ public class TemplateService {
    * 这是 CLAUDE 第 6 条那个坑的第四次显形，而且比前几次更隐蔽：**旧读发生在锁之后**。
    */
   private EffectiveVersion reuseExistingDraft(TemplateVersion draft, TemplateVersion source) {
-    Map<String, Dimension> draftDimensions = new HashMap<>();
+    // 草稿侧建**两张表**：① 按"复制来源行 id"（精确——04-081 起新建的草稿都有）；② 按业务键（老草稿该列
+    // 为 NULL 时的回退）。有源行 id 的行**只进第一张表**，不让它把同键的正常行搅浑。
+    Map<Long, Dimension> draftDimensionsBySrc = new HashMap<>();
+    Map<String, Dimension> draftDimensionsByKey = new HashMap<>();
     Set<String> ambiguousDimensionKeys = new HashSet<>();
     for (Dimension dimension : dimensionMapper.findByVersionIdForShare(draft.getId())) {
+      if (dimension.getSrcDimensionId() != null) {
+        draftDimensionsBySrc.put(dimension.getSrcDimensionId(), dimension);
+        continue;
+      }
       String key = dimensionKey(dimension.getSortNo(), dimension.getName());
-      if (draftDimensions.put(key, dimension) != null) {
+      if (draftDimensionsByKey.put(key, dimension) != null) {
         ambiguousDimensionKeys.add(key);
       }
     }
     Map<Long, EffectiveVersion.Target> dimensionTargets = new HashMap<>();
     for (Dimension dimension : dimensionMapper.findByVersionIdForShare(source.getId())) {
-      String key = dimensionKey(dimension.getSortNo(), dimension.getName());
-      if (ambiguousDimensionKeys.contains(key)) {
-        continue; // 歧义键：宁可不映射（调用方拿到 2015），也不把它配到"另一行"
+      // ① 精确：复制时留下的源行 id —— 改名、同序号同名都不再影响定位（这就是 04-081 要解决的问题）
+      Dimension copy = draftDimensionsBySrc.get(dimension.getId());
+      if (copy == null) {
+        // ② 回退（老草稿）：按业务键配对；键有歧义时**不映射** —— 宁让调用方拿到 2015，也不配到"另一行"
+        String key = dimensionKey(dimension.getSortNo(), dimension.getName());
+        if (ambiguousDimensionKeys.contains(key)) {
+          continue;
+        }
+        copy = draftDimensionsByKey.get(key);
       }
-      Dimension copy = draftDimensions.get(key);
       if (copy != null) {
         // ⚠️ 守卫用**草稿这一行当前**的 version，不是调用方手里源行的——拿源行的版本号守卫会让
         // "没人动过的行"被误报 3001（实测过），反方向还可能放过一次 stale 写（04-074 的 P1）。
@@ -602,13 +616,21 @@ public class TemplateService {
       }
     }
 
-    Map<String, Indicator> draftIndicators = new HashMap<>();
+    Map<Long, Indicator> draftIndicatorsBySrc = new HashMap<>();
+    Map<String, Indicator> draftIndicatorsByCode = new HashMap<>();
     for (Indicator indicator : indicatorMapper.findByVersionIdForShare(draft.getId())) {
-      draftIndicators.put(indicator.getCode(), indicator);
+      if (indicator.getSrcIndicatorId() != null) {
+        draftIndicatorsBySrc.put(indicator.getSrcIndicatorId(), indicator);
+        continue;
+      }
+      draftIndicatorsByCode.put(indicator.getCode(), indicator);
     }
     Map<Long, EffectiveVersion.Target> indicatorTargets = new HashMap<>();
     for (Indicator indicator : indicatorMapper.findByVersionIdForShare(source.getId())) {
-      Indicator copy = draftIndicators.get(indicator.getCode());
+      Indicator copy = draftIndicatorsBySrc.get(indicator.getId());
+      if (copy == null) {
+        copy = draftIndicatorsByCode.get(indicator.getCode());
+      }
       if (copy != null) {
         indicatorTargets.put(
             indicator.getId(), new EffectiveVersion.Target(copy.getId(), copy.getVersion()));
@@ -651,6 +673,8 @@ public class TemplateService {
       copy.setSuggestedDept(dimension.getSuggestedDept());
       copy.setIsKey(Boolean.TRUE.equals(dimension.getIsKey()));
       copy.setVersion(0);
+      // 留下"我从哪一行复制来"的痕迹：复用同源草稿时按它精确配对（04-081），不再依赖可编辑的业务键
+      copy.setSrcDimensionId(dimension.getId());
       dimensionMapper.insert(copy);
       // 副本是全新行 ⇒ 它的当前 version 恒为 0（守卫用它，不是源行的版本号）
       dimensionTargets.put(dimension.getId(), new EffectiveVersion.Target(copy.getId(), 0));
@@ -669,6 +693,7 @@ public class TemplateService {
         indicatorCopy.setStandard(indicator.getStandard());
         indicatorCopy.setSortNo(indicator.getSortNo());
         indicatorCopy.setVersion(0);
+        indicatorCopy.setSrcIndicatorId(indicator.getId());
         insertIndicatorOrConflict(indicatorCopy);
         indicatorTargets.put(
             indicator.getId(), new EffectiveVersion.Target(indicatorCopy.getId(), 0));
