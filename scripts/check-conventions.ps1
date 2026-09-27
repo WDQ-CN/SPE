@@ -317,6 +317,51 @@ if ($otherHits.Count -gt 0) {
   Pass 'fe-dangerous-api' '（没有 innerHTML / eval(）'
 }
 
+# ---------------------------------------------------------------- 6) 迁移脚本不得越出应用账号的权限（04-077）
+Say ''
+Say '=== 6) 迁移脚本的权限边界（04-077：应用账号是最小权限的）==='
+# 为什么：Flyway 是**应用自己在启动时跑**的，用的是应用账号 `spe_app`。它的权威权限集（实测
+# `SHOW GRANTS FOR 'spe_app'@'%'`）只有：
+#   GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, REFERENCES, INDEX, ALTER ON `spe`.* TO `spe_app`@`%`
+# ⚠️ **注意这里没有 `CREATE TEMPORARY TABLES`**：所以"迁移里出现 DDL 就判失败"是**错的**（V1~V8 全都在
+#    建表、跑得过）；真正会炸的是**越出这个集合**的语句。V9 的守卫一度用「临时表 + CHECK」，在容器里以
+#    **root** 验证通过，真实部署却：
+#      Message : Access denied for user 'spe_app'@'%' to database 'spe'
+#    ⇒ 迁移失败、**后端起不来**，而且 `flyway_schema_history` 会留下 `success = 0`（不 repair 就再也起不来）。
+# ⚠️ 必须**先剥掉 `--` 注释**再匹配：V9 的注释里就写着「不能用 DDL」「CREATE TEMPORARY TABLES」，
+#    不剥注释就会**自己触发自己**（匹配类判据必须带语境，03 §31.5/§31.6 是同一类坑）。
+# ⚠️ 这条规则是静态兜底，**不能替代运行态验证**：真正的判据仍是"新镜像启动后 `flyway_schema_history`
+#    里 `success = 1` + 进程 healthy"（04-077 预防第 2 条）。
+$migrationDir = Join-Path $root 'backend\src\main\resources\db\migration'
+$migrationFiles = @()
+if (Test-Path $migrationDir) { $migrationFiles = @(Get-ChildItem -Path $migrationDir -File -Filter 'V*.sql') }
+$migScanned = RequireScanned 'migration-privileges' $migrationFiles.Count '迁移脚本（V*.sql）'
+$forbiddenPattern =
+  '(?i)\b(CREATE|DROP)\s+TEMPORARY\s+TABLE\b' +   # 实测：spe_app 没有这个权限
+  '|\b(GRANT|REVOKE)\b' +                          # 授权语句（应用账号无 WITH GRANT OPTION）
+  '|\bSET\s+(GLOBAL|PERSIST)\b' +                  # 系统变量（需 SYSTEM_VARIABLES_ADMIN）
+  '|\bLOAD\s+DATA\b|\bINTO\s+(OUTFILE|DUMPFILE)\b' + # 需 FILE 权限
+  '|\bperformance_schema\b'                        # 需 PROCESS 权限（04-075 的测试批实测读不到）
+$privHits = @()
+foreach ($file in $migrationFiles) {
+  $lines = [System.IO.File]::ReadAllLines($file.FullName, [System.Text.Encoding]::UTF8)
+  for ($i = 0; $i -lt $lines.Count; $i++) {
+    $code = $lines[$i]
+    $comment = $code.IndexOf('--')
+    if ($comment -ge 0) { $code = $code.Substring(0, $comment) }
+    if ($code -match $forbiddenPattern) {
+      $privHits += "$(Rel $file.FullName):$($i + 1) -> $($code.Trim())"
+    }
+  }
+}
+if ($migScanned -and $privHits.Count -eq 0) {
+  Pass 'migration-privileges' "（$($migrationFiles.Count) 个迁移脚本里没有越出应用账号权限的语句）"
+} else {
+  foreach ($hit in $privHits) {
+    Fail 'migration-privileges' "$hit —— 迁移里用了应用账号没有的权限：真实部署会 Access denied ⇒ 迁移失败、后端起不来（04-077）"
+  }
+}
+
 # ---------------------------------------------------------------- 汇总
 Say ''
 if ($script:failures.Count -gt 0) {
