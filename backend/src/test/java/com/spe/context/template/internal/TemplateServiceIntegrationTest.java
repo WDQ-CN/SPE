@@ -735,16 +735,26 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
             .map(String::trim)
             .filter(statement -> !statement.isEmpty())
             .toList();
+    // ⚠️ 这里**不钉语句条数**：V9 的语句形态会随"要不要加锚点自检"变化（曾经是 4 条：建临时表 +
+    //    INSERT + UPDATE + DROP；现在是 2 条：锚点自检 SELECT + UPDATE）。钉死条数的断言会在脚本正常
+    //    演进时变红，却一条真正的缺陷都拦不住（03 §31.7.15 那类"断言写偏"）。改为断言**意图**：
+    //    拆句器真的拆出了那条 `UPDATE indicator`，且**恰好一条**（漏拆 / 拆重都必须红）。
     assertThat(statements)
         .as("必须从 %s 里真的拆出语句（拆句器失效时不能静默通过）", V9_MIGRATION_FILE)
-        .hasSizeGreaterThanOrEqualTo(3);
+        .isNotEmpty();
+    assertThat(
+            statements.stream()
+                .filter(s -> s.regionMatches(true, 0, "UPDATE indicator", 0, "UPDATE indicator".length()))
+                .count())
+        .as("回填那条 UPDATE 必须被拆出来、且只有一条（否则本用例会静默什么都不做）")
+        .isEqualTo(1L);
 
     int affected = -1;
     for (String statement : statements) {
       if (statement.regionMatches(true, 0, "UPDATE indicator", 0, "UPDATE indicator".length())) {
         affected = jdbcTemplate.update(statement);
       } else {
-        // 锚点自检用的临时表 DDL/DML 与最后的 DROP：原样执行（锚点缺失时它自己会 CHECK 失败）
+        // 锚点自检那条 SELECT：原样执行（锚点缺失时它会自己抛 ERROR 1242，本用例跑在 V8 种子上 ⇒ 不会）
         jdbcTemplate.execute(statement);
       }
     }

@@ -29,16 +29,24 @@
 --     本次批准的范围不含它。⇒ 打分页上它比另外 5 个略长，属**已知的外观不一致**（见 04-073）。
 
 -- ---------------------------------------------------------------- 锚点自检（让"什么都没做"响起来）
--- 纯 SQL 没有 IF，`SIGNAL` 也只能在存储程序里条件化 ⇒ 用一张带 CHECK 的临时表表达
--- "当且仅当锚点缺失时报错"。实测 `SIGNAL` 在普通脚本里可用（ERROR 1644），但这里需要的是**条件**报错。
--- 锚点存在（正常情况，包括本脚本重跑）⇒ 插入 0 ⇒ 通过；一个都找不到 ⇒ 插入 1 ⇒ CHECK 失败 ⇒ 迁移失败。
--- ⚠️ 注意判据是**锚点是否存在**，不是"改了几行"——后者在重跑时合法地为 0，不能当错误。
-CREATE TEMPORARY TABLE v9_anchor_guard (n INT NOT NULL CHECK (n = 0));
-INSERT INTO v9_anchor_guard (n)
-SELECT IF(COUNT(DISTINCT template_version_id) = 0, 1, 0)
-  FROM indicator
- WHERE code = 'URGENT_RESPONSE'
-   AND standard LIKE '5=4 小时内响应并给出明确方案%';
+-- 判据是**锚点是否存在**，不是"改了几行"——后者在本脚本重跑时合法地为 0，不能当错误。
+--
+-- ⚠️⚠️ 这里**不能用 DDL**（04-077 的教训，实测）：应用连库用的是**最小权限账号** `spe_app`，它**没有
+-- `CREATE TEMPORARY TABLES`** —— 我最初用"临时表 + CHECK (n = 0)"做守卫，在容器里以 root 实测通过，
+-- 但真实部署直接失败：`Access denied for user 'spe_app'@'%' to database 'spe'` ⇒ 迁移失败、**后端起不来**
+-- （`flyway_schema_history` 留下 `success = 0` 的第 9 行，还得 repair 才能启动）。**用 root 验证迁移
+-- 等于没验证**：身份与被部署身份不同。
+--
+-- 纯 SQL 里 `SIGNAL` **不能条件化**（`IF` 只在存储程序内合法，实测普通脚本里 `SIGNAL` 可用但没有 IF 包它），
+-- 所以改用"**只在需要时报错**"的表达式：`IF(条件, 多行子查询, 0)`。实测 MySQL 的 `IF` **会短路**——
+-- 条件为假时那张多行子查询根本不被求值（返回 0、不报错）；条件为真时才求值并抛 `ERROR 1242
+-- (21000) Subquery returns more than 1 row`。整条语句只需要 `SELECT` 权限。
+SELECT IF(
+    (SELECT COUNT(DISTINCT template_version_id) FROM indicator
+      WHERE code = 'URGENT_RESPONSE'
+        AND standard LIKE '5=4 小时内响应并给出明确方案%') = 0,
+    (SELECT 1 UNION ALL SELECT 2),
+    0) AS v9_anchor_guard;
 
 -- ---------------------------------------------------------------- 一次性回填 5 个指标
 -- 派生表（而不是 `EXISTS` 子查询）是必须的：MySQL 不允许"UPDATE 某表、同时在子查询里读同一张表"
@@ -65,5 +73,3 @@ SET i.standard = CASE i.code
 END
 WHERE i.code IN ('PRICE_COMPETITIVENESS', 'PAYMENT_COOP', 'ISSUE_RESPONSE', 'ABNORMAL_COOP', 'CONTACT_STABILITY')
   AND i.standard IS NULL;
-
-DROP TEMPORARY TABLE v9_anchor_guard;
