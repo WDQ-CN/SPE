@@ -225,16 +225,23 @@ public class TemplateService {
     AuditDetails.putIfChanged(detail, "sortNo", current.getSortNo(), sortNo);
     AuditDetails.putIfChanged(detail, "suggestedDept", current.getSuggestedDept(), suggestedDept);
     AuditDetails.putIfChanged(detail, "isKey", current.getIsKey(), isKey);
-    if (dimensionMapper.update(
-            target.id(),
-            name,
-            weight,
-            sortNo,
-            suggestedDept,
-            isKey,
-            target.version(),
-            effective.versionId())
-        == 0) {
+    int affected;
+    try {
+      affected =
+          dimensionMapper.update(
+              target.id(),
+              name,
+              weight,
+              sortNo,
+              suggestedDept,
+              isKey,
+              target.version(),
+              effective.versionId());
+    } catch (PessimisticLockingFailureException ex) {
+      // 锁等待/死锁与"守卫 UPDATE 影响 0 行"是同一类冲突 ⇒ 同一个码（04-079：原先这条路径没翻）
+      throw lockConflict();
+    }
+    if (affected == 0) {
       throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
     }
     auditFacade.record(AuditAction.DIMENSION_UPDATE, AuditTargetType.TEMPLATE, target.id(), detail);
@@ -256,7 +263,13 @@ public class TemplateService {
     EffectiveVersion.Target target =
         effective.requireDimensionRow(dimensionId, current.getTemplateVersionId(), version);
 
-    if (dimensionMapper.delete(target.id(), target.version(), effective.versionId()) == 0) {
+    int affected;
+    try {
+      affected = dimensionMapper.delete(target.id(), target.version(), effective.versionId());
+    } catch (PessimisticLockingFailureException ex) {
+      throw lockConflict();
+    }
+    if (affected == 0) {
       throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
     }
     indicatorMapper.deleteByDimensionId(target.id());
@@ -388,7 +401,7 @@ public class TemplateService {
       throw new BizException(
           ErrorCode.TEMPLATE_INDICATOR_CODE_DUPLICATE, "该版本内已存在编码 " + code);
     } catch (PessimisticLockingFailureException ex) {
-      throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
+      throw lockConflict();
     }
 
     auditFacade.record(AuditAction.INDICATOR_UPDATE, AuditTargetType.TEMPLATE, target.id(), detail);
@@ -407,7 +420,13 @@ public class TemplateService {
     EffectiveVersion.Target target =
         effective.requireIndicatorRow(indicatorId, current.getTemplateVersionId(), version);
 
-    if (indicatorMapper.delete(target.id(), target.version(), effective.versionId()) == 0) {
+    int affected;
+    try {
+      affected = indicatorMapper.delete(target.id(), target.version(), effective.versionId());
+    } catch (PessimisticLockingFailureException ex) {
+      throw lockConflict();
+    }
+    if (affected == 0) {
       throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
     }
 
@@ -788,21 +807,41 @@ public class TemplateService {
   }
 
   /**
+   * **"锁冲突 → 3001"的单点定义**（12 §E12）：`PessimisticLockingFailureException` 涵盖锁等待超时与
+   * InnoDB 死锁（`CannotAcquireLockException` 是它的子类——REPEATABLE READ 下唯一索引插入会先等锁、
+   * 超时抛它）。
+   *
+   * <p>⚠️ **为什么要显式收成一处**（04-079）：这个翻译原先散在 3 个 `try/catch` 里，而
+   * `updateDimension` / `deleteDimension` / `deleteIndicator` **一处都没有** —— 今天靠
+   * `GlobalExceptionHandler` 的集中映射兜住了 HTTP 入口，但**服务层被内部调用**（P3 的 Excel 导入、
+   * 事件监听、批处理——它们没有 HTTP 边界）时会漏成 **5xxx**。现在六条写路径全部显式翻译，
+   * 且"翻成什么码"只在这里定义。
+   */
+  private static BizException lockConflict() {
+    return new BizException(ErrorCode.CONCURRENT_CONFLICT);
+  }
+
+  /**
    * 插入版本并把并发异常翻成 3001（见 {@link #create} 的说明）。
    *
-   * <p>**两类都要翻**（12 §6 风险表第 2 行与 §E12 的明文要求）：唯一键冲突（`DuplicateKeyException`）与
-   * 锁等待/死锁（`PessimisticLockingFailureException`，含 `CannotAcquireLockException`——REPEATABLE READ 下
-   * 唯一索引插入会先等锁、超时抛它）。只翻前者的话，后者会经兜底变成 5001。
+   * <p>**两类都要翻**（12 §6 风险表第 2 行与 §E12 的明文要求）：唯一键冲突（`DuplicateKeyException`，即
+   * `uk_template_version_no`）与锁等待/死锁——两者都是"别人先动了一步"，对调用方是同一件事 ⇒ 同一个码。
    */
   private void insertVersionOrConflict(TemplateVersion version) {
     try {
       templateVersionMapper.insert(version);
     } catch (DuplicateKeyException | PessimisticLockingFailureException ex) {
-      throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
+      throw lockConflict();
     }
   }
 
-  /** 插入指标并把两类并发异常翻成 2014（与前置查重同一个码，别让并发那条路径漏成 5xxx）。 */
+  /**
+   * 插入指标并把两类并发异常翻成 **2014**（与前置查重同一个码，别让并发那条路径漏成 5xxx）。
+   *
+   * <p>⚠️ 这里**有意**与 {@link #lockConflict} 不同：指标插入的唯一键是 `uk_indicator_version_code`，
+   * 对用户来说"并发插入同编码"与"该版本内已存在编码"是同一件事 ⇒ 翻成 2014 更可行动（12 §E11）。
+   * 别为了"统一"把它改成 3001。
+   */
   private void insertIndicatorOrConflict(Indicator indicator) {
     try {
       indicatorMapper.insert(indicator);
