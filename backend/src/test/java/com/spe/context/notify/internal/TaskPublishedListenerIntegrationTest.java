@@ -50,9 +50,9 @@ class TaskPublishedListenerIntegrationTest extends AbstractIntegrationTest {
     assertThat(notificationsAbout(qualityEvaluator, "任务-" + year))
         .as("质量维度被指派给该评估人 ⇒ 必须有通知（行数 ≥ 1 是对判据 9 的直接兑现）")
         .hasSize(1);
-    assertThat(notificationsAbout(qualityEvaluator, "任务-" + year).get(0).getType())
+    assertThat(notificationsAbout(qualityEvaluator, "任务-" + year).get(0).type())
         .isEqualTo(NotificationService.TYPE_TASK_PUBLISHED);
-    assertThat(notificationsAbout(qualityEvaluator, "任务-" + year).get(0).getContent())
+    assertThat(notificationsAbout(qualityEvaluator, "任务-" + year).get(0).content())
         .as("通知里要有任务名与周期，否则收件人不知道是哪件事")
         .contains("任务-" + year)
         .contains("Q1");
@@ -193,13 +193,13 @@ class TaskPublishedListenerIntegrationTest extends AbstractIntegrationTest {
    * 本用例自己制造的通知（按任务名过滤）：共享测试库里同一个收件人会收到**多个用例**的通知，
    * 直接对全表断言会随执行顺序漂移（CLAUDE 默认约定第 5 条：把范围收敛到本用例建立的数据）。
    */
-  private List<Notification> notificationsAbout(long receiverId, String taskName) {
+  private List<NotificationSummary> notificationsAbout(long receiverId, String taskName) {
     return notificationsOf(receiverId).stream()
-        .filter(notification -> notification.getContent() != null && notification.getContent().contains(taskName))
+        .filter(summary -> summary.content() != null && summary.content().contains(taskName))
         .toList();
   }
 
-  private List<Notification> notificationsOf(long receiverId) {
+  private List<NotificationSummary> notificationsOf(long receiverId) {
     return notificationService.page(receiverId, PageQuery.of(1, 50)).list();
   }
 

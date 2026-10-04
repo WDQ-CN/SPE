@@ -4,8 +4,8 @@ import com.spe.common.page.PageQuery;
 import com.spe.common.page.PageResult;
 import com.spe.common.security.AuthenticatedOperator;
 import com.spe.common.web.Result;
-import com.spe.context.notify.internal.Notification;
 import com.spe.context.notify.internal.NotificationService;
+import com.spe.context.notify.internal.NotificationSummary;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -30,7 +30,7 @@ public class NotificationController {
   private final NotificationService notificationService;
 
   @GetMapping
-  public Result<PageResult<Notification>> list(
+  public Result<PageResult<NotificationSummary>> list(
       @RequestParam(defaultValue = "1") int page,
       @RequestParam(defaultValue = "10") int size,
       @AuthenticationPrincipal AuthenticatedOperator operator) {

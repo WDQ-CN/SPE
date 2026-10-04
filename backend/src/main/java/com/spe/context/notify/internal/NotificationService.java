@@ -36,10 +36,14 @@ public class NotificationService {
   }
 
   @Transactional(readOnly = true)
-  public PageResult<Notification> page(long receiverId, PageQuery query) {
+  public PageResult<NotificationSummary> page(long receiverId, PageQuery query) {
     long total = notificationMapper.countByReceiver(receiverId);
-    List<Notification> rows =
-        notificationMapper.findPage(receiverId, query.offset(), query.size());
+    // 投影成 Summary 再出上下文（2026-10-04）：实体是本上下文的内部形状，
+    // 直接序列化会让"将来加的内部列"静默暴露（03 §34.7 的登记项）
+    List<NotificationSummary> rows =
+        notificationMapper.findPage(receiverId, query.offset(), query.size()).stream()
+            .map(NotificationSummary::of)
+            .toList();
     return new PageResult<>(rows, total, query.page(), query.size());
   }
 
