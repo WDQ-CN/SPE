@@ -154,17 +154,22 @@ onMounted(() => void list.load())
 </script>
 
 <template>
-  <el-card>
-    <template #header>
-      <div class="card-header">
-        <span>评估任务</span>
-        <el-button
-          type="primary"
-          @click="openDialog"
-        >
-          新建任务
-        </el-button>
-      </div>
+  <PageHeader
+    eyebrow="EVALUATION TASKS"
+    title="评估任务"
+  />
+
+  <SectionCard
+    title="任务列表"
+    delay="0.1s"
+  >
+    <template #actions>
+      <el-button
+        type="primary"
+        @click="openDialog"
+      >
+        新建任务
+      </el-button>
     </template>
 
     <div class="filters">
@@ -400,16 +405,10 @@ onMounted(() => void list.load())
         </el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </SectionCard>
 </template>
 
 <style scoped>
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
 .filters {
   display: flex;
   gap: 8px;

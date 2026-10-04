@@ -216,6 +216,11 @@ watch(() => route.params.id, () => void load())
 
 <template>
   <div v-loading="loading">
+    <PageHeader
+      eyebrow="SCORE SHEET"
+      :title="sheet ? `打分 · ${sheet.dimensionName}` : '打分'"
+    />
+
     <el-alert
       v-if="error"
       :title="error"
@@ -224,32 +229,29 @@ watch(() => route.params.id, () => void load())
       show-icon
     />
     <template v-else-if="sheet">
-      <el-card class="block">
-        <template #header>
-          <div class="card-header">
-            <span>评分：{{ sheet.dimensionName }}</span>
-            <span class="actions">
-              <el-tag>{{ SHEET_STATUS_LABEL[sheet.status] }}</el-tag>
-              <el-button
-                link
-                type="primary"
-                @click="onDownloadTemplate"
-              >
-                下载导入模板
-              </el-button>
-              <el-upload
-                :auto-upload="false"
-                :show-file-list="false"
-                accept=".xlsx"
-                @change="onImport"
-              >
-                <el-button
-                  link
-                  type="primary"
-                >Excel 导入</el-button>
-              </el-upload>
-            </span>
-          </div>
+      <SectionCard :title="`评分：${sheet.dimensionName}`">
+        <template #actions>
+          <el-tag>{{ SHEET_STATUS_LABEL[sheet.status] }}</el-tag>
+          <el-button
+            link
+            type="primary"
+            @click="onDownloadTemplate"
+          >
+            下载导入模板
+          </el-button>
+          <el-upload
+            :auto-upload="false"
+            :show-file-list="false"
+            accept=".xlsx"
+            @change="onImport"
+          >
+            <el-button
+              link
+              type="primary"
+            >
+              Excel 导入
+            </el-button>
+          </el-upload>
         </template>
 
         <el-alert
@@ -319,12 +321,9 @@ watch(() => route.params.id, () => void load())
             </template>
           </el-table-column>
         </el-table>
-      </el-card>
+      </SectionCard>
 
-      <el-card class="block">
-        <template #header>
-          试算（不落库）
-        </template>
+      <SectionCard title="试算（不落库）">
         <el-descriptions :column="3">
           <el-descriptions-item label="本维度得分">
             <span v-if="dimensionPreview?.complete">{{ dimensionPreview.score }}（{{ dimensionPreview.grade }}）</span>
@@ -353,7 +352,7 @@ watch(() => route.params.id, () => void load())
             {{ preview?.taskSupplier.sheets.length ?? 0 }}
           </el-descriptions-item>
         </el-descriptions>
-      </el-card>
+      </SectionCard>
 
       <div class="footer">
         <el-button
@@ -381,22 +380,6 @@ watch(() => route.params.id, () => void load())
 </template>
 
 <style scoped>
-.block {
-  margin-bottom: 12px;
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
 .input {
   width: 100%;
 }

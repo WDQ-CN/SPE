@@ -1,6 +1,235 @@
+/* 自托管字体（CSP 的 font-src 只有 'self' 与 data:，外链字体会被拦 —— 见 frontend/security-headers.conf）：
+   BubbledotICG-FinePos 是 CC BY 4.0，来源 onlinewebfonts.com，署名见 public/fonts/README.md。
+   ⚠️ 设计提示词里给的是 `<link href="https://...">` 外链写法，本项目必须改自托管，否则
+   style-src/font-src 会拦掉它，e2e 的「CSP 无违规」断言也会红。 */
+@font-face {
+  font-family: 'BubbledotICG-FinePos';
+  src: url('/fonts/BubbledotICG-FinePos.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 html,
 body,
 #app {
   height: 100%;
   margin: 0;
 }
+
+/* Sentra 风格基线（2026-10-04）：字体与暗色基底照设计提示词；
+   ⚠️ 内容区仍是浅色卡片（见 DefaultLayout 的 .layout__main），
+   所以这里的黑底只作为"壳"，不影响表格与表单的可读性。 */
+html,
+body {
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'JetBrains Mono', monospace;
+  background: #000;
+}
+
+/* ---- Element Plus 主题色 → Sentra 的强调橙 #F64302 ----------------------------
+   EP 默认主色是蓝的（#409eff），而设计提示词的唯一强调色是橙——不改这组变量，
+   按钮/链接/焦点环/激活态会整片偏蓝，风格就对不上了。
+   light-N / dark-2 是按 EP 的算法（与白/黑按比例混合）从主色推出来的，不是随手挑的。
+
+   ⚠️ 用 `html:root` 而不是 `:root`：EP 的样式由 unplugin **按需**注入，注入时机晚于
+   main.ts 里的本文件，同特异性的 `:root` 会被它盖回默认值（运行态探针会看到 #409eff）。 */
+html:root {
+  --el-color-primary: #f64302;
+  --el-color-primary-light-3: #f97b4e;
+  --el-color-primary-light-5: #faa180;
+  --el-color-primary-light-7: #fcc6b3;
+  --el-color-primary-light-8: #fdd9cc;
+  --el-color-primary-light-9: #feece5;
+  --el-color-primary-dark-2: #c43602;
+}
+
+/* 大号显示字体（Sentra 的 Bubbledot 点阵字）：只用于品牌名与大数字，正文一律 JetBrains Mono */
+.font-display {
+  font-family: 'BubbledotICG-FinePos', 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+/* ⚠️ 入场动画是「opacity: 0 + animation forwards」写的（照提示词），
+   所以必须给"不想看动画"的用户留一条生路：否则动画被禁用时整页内容会停在透明状态（等于白屏）。
+   这既是可访问性要求，也是 03 §16 那类"静默失效"的防线。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    opacity: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================================================
+   全局 Element Plus 组件皮肤（2026-10-04，逐页细化的底座）
+
+   为什么放全局而不是逐页 `:deep()`：圆角、表头、卡片边框、输入高度这些是**每一页都要
+   一致**的观感，散在十个页面的 scoped 样式里必然漂移（06 §3.2 的"同一事实只在一处定义"
+   对样式同样成立）。页面里只写它**特有**的东西。
+
+   ⚠️ 选择器一律带 `html` 前缀提高特异性：EP 的样式由 unplugin **按需注入**、时机晚于本
+   文件，同特异性的规则会被它盖回去——主色那组变量就是这么栽过一次（见上面 html:root）。
+   ========================================================================== */
+
+html:root {
+  /* 圆角：对齐 Sentra 的 rounded-xl(12px) / rounded-2xl(16px) 两档 */
+  --el-border-radius-base: 10px;
+  --el-border-radius-small: 8px;
+  --el-border-radius-round: 999px;
+
+  /* 填充与描边收敛到 Sentra 的次级卡片色一族，让分页/hover/斑马纹落在同一色系 */
+  --el-fill-color-light: #ebe8eb;
+  --el-fill-color-lighter: #f2f0f2;
+  --el-border-color-lighter: rgb(0 0 0 / 6%);
+  --el-text-color-primary: #101010;
+  --el-text-color-regular: rgb(0 0 0 / 72%);
+}
+
+/* ---- 卡片：去边框 + 16px 圆角 + 极浅投影（Sentra 的 rounded-2xl）---- */
+html .el-card {
+  border: none;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+}
+
+/* 卡片标题栏做"eyebrow 化"：小号、大写、宽字距、灰——与首页 .home__card-title 同一形态 */
+html .el-card__header {
+  padding: 16px 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgb(0 0 0 / 55%);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgb(0 0 0 / 6%);
+}
+
+html .el-card__body {
+  padding: 20px;
+}
+
+/* ---- 表格：表头吃次级卡片色，行 hover 用更浅一档 ---- */
+html .el-table {
+  --el-table-border-color: rgb(0 0 0 / 5%);
+  --el-table-header-bg-color: #ebe8eb;
+  --el-table-header-text-color: rgb(0 0 0 / 70%);
+  --el-table-row-hover-bg-color: #f2f0f2;
+
+  border-radius: 12px;
+}
+
+html .el-table th.el-table__cell {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* ---- 输入类控件：圆角统一 ---- */
+html .el-input__wrapper,
+html .el-textarea__inner {
+  border-radius: 10px;
+}
+
+/* ---- 按钮：圆角 + 中等字重（主色已在上面的 html:root 改成橙）---- */
+html .el-button {
+  font-weight: 500;
+  border-radius: 10px;
+}
+
+/* ---- 弹窗 / 消息框：大圆角 ---- */
+html .el-dialog,
+html .el-message-box {
+  border-radius: 16px;
+}
+
+/* ---- 标签 / 分页当前页：小圆角 ---- */
+html .el-tag {
+  border-radius: 8px;
+}
+
+html .el-pagination.is-background .el-pager li,
+html .el-pagination.is-background .btn-prev,
+html .el-pagination.is-background .btn-next {
+  border-radius: 8px;
+}
+
+/* ============================================================================
+   页面级工具类：各页共用同一套页头与卡片（页面里只写自己特有的东西）
+   ========================================================================== */
+
+/* 页头：eyebrow（小号大写宽字距）+ 标题，形态与首页一致 */
+.page-head {
+  padding: 2px 2px 0;
+  margin-bottom: 16px;
+}
+
+.page-eyebrow {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: rgb(0 0 0 / 45%);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #000;
+  letter-spacing: -0.01em;
+}
+
+/* 页面里的区块入场（与首页同一缓动；延迟由各页用 style 指定，形成阶梯） */
+@keyframes spe-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-block {
+  opacity: 0;
+  animation: spe-fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ---- 卡片标题栏的「标题 + 右侧操作」形态（SectionCard 组件用）----
+   原先这套结构在 6 个页面各写一遍、还配了两套类名（`.page__header` / `.card-header`）。
+   现在结构在组件里、样式在这里：改这一处，全项目的卡片标题栏一起变。 */
+.section-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.section-head__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* 区块之间的竖直间距：原先 6 个页面各写一份 `.block { margin-bottom }`，
+   现在由组件自带类承担——改这一处，全项目的区块间距一起变。 */
+.section-card {
+  margin-bottom: 12px;
+}
+
+
+

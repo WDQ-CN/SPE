@@ -99,6 +99,11 @@ onMounted(load)
 
 <template>
   <div v-loading="loading">
+    <PageHeader
+      eyebrow="TASK DETAIL"
+      title="任务详情"
+    />
+
     <el-alert
       v-if="error"
       :title="error"
@@ -107,10 +112,7 @@ onMounted(load)
       show-icon
     />
     <template v-else-if="detail">
-      <el-card class="block">
-        <template #header>
-          {{ detail.name }}
-        </template>
+      <SectionCard :title="detail.name">
         <el-descriptions :column="3">
           <el-descriptions-item label="周期">
             {{ detail.year }} 年 Q{{ detail.quarter }}
@@ -131,12 +133,9 @@ onMounted(load)
             {{ detail.approvers.map((item) => item.name).join(' → ') || '未配置' }}
           </el-descriptions-item>
         </el-descriptions>
-      </el-card>
+      </SectionCard>
 
-      <el-card class="block">
-        <template #header>
-          进度看板
-        </template>
+      <SectionCard title="进度看板">
         <el-table :data="progress?.rows ?? []">
           <el-table-column
             prop="supplierName"
@@ -191,12 +190,9 @@ onMounted(load)
             </template>
           </el-table-column>
         </el-table>
-      </el-card>
+      </SectionCard>
 
-      <el-card>
-        <template #header>
-          评分单与指派
-        </template>
+      <SectionCard title="评分单与指派">
         <el-table :data="sheets">
           <el-table-column
             prop="supplierName"
@@ -247,7 +243,7 @@ onMounted(load)
             </template>
           </el-table-column>
         </el-table>
-      </el-card>
+      </SectionCard>
     </template>
 
     <el-dialog
@@ -285,8 +281,3 @@ onMounted(load)
   </div>
 </template>
 
-<style scoped>
-.block {
-  margin-bottom: 12px;
-}
-</style>

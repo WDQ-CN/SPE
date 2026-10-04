@@ -125,9 +125,16 @@ function draftTagType(row: TemplateSummary): 'warning' | 'info' {
 </script>
 
 <template>
-  <el-card>
-    <div class="page__header">
-      <h2>评估模板</h2>
+  <PageHeader
+    eyebrow="EVALUATION TEMPLATES"
+    title="评估模板"
+  />
+
+  <SectionCard
+    title="模板列表"
+    delay="0.1s"
+  >
+    <template #actions>
       <el-button
         v-if="canWrite"
         type="primary"
@@ -135,7 +142,7 @@ function draftTagType(row: TemplateSummary): 'warning' | 'info' {
       >
         新建模板
       </el-button>
-    </div>
+    </template>
 
     <el-alert
       v-if="!canWrite"
@@ -271,16 +278,10 @@ function draftTagType(row: TemplateSummary): 'warning' | 'info' {
         </el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </SectionCard>
 </template>
 
 <style scoped>
-.page__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
 .page__notice {
   margin-bottom: 12px;
 }

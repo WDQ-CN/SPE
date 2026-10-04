@@ -124,17 +124,22 @@ async function toggleStatus(row: SupplierSummary): Promise<void> {
 </script>
 
 <template>
-  <el-card shadow="never">
-    <template #header>
-      <div class="page__header">
-        <span>供应商档案</span>
-        <el-button
-          type="primary"
-          @click="openDialog(null)"
-        >
-          新增供应商
-        </el-button>
-      </div>
+  <PageHeader
+    eyebrow="SUPPLIER MASTER DATA"
+    title="供应商档案"
+  />
+
+  <SectionCard
+    title="供应商列表"
+    delay="0.1s"
+  >
+    <template #actions>
+      <el-button
+        type="primary"
+        @click="openDialog(null)"
+      >
+        新增供应商
+      </el-button>
     </template>
 
     <el-form
@@ -317,16 +322,10 @@ async function toggleStatus(row: SupplierSummary): Promise<void> {
         </el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </SectionCard>
 </template>
 
 <style scoped>
-.page__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
 .page__search {
   margin-bottom: 4px;
 }

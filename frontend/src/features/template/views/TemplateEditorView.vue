@@ -443,7 +443,16 @@ function statusTagType(): 'success' | 'warning' | 'info' {
 </script>
 
 <template>
-  <el-card v-loading="loading">
+  <PageHeader
+    eyebrow="TEMPLATE EDITOR"
+    title="模板编辑器"
+  />
+
+  <el-card
+    v-loading="loading"
+    class="page-block"
+    style="animation-delay: 0.1s"
+  >
     <div class="editor__header">
       <div>
         <h2 class="editor__title">

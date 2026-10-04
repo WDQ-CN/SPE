@@ -39,18 +39,23 @@ onMounted(load)
 </script>
 
 <template>
-  <el-card>
-    <template #header>
-      <div class="card-header">
-        <span>我的待办</span>
-        <el-button
-          link
-          type="primary"
-          @click="load"
-        >
-          刷新
-        </el-button>
-      </div>
+  <PageHeader
+    eyebrow="MY TODO"
+    title="我的待办"
+  />
+
+  <SectionCard
+    title="待办清单"
+    delay="0.1s"
+  >
+    <template #actions>
+      <el-button
+        link
+        type="primary"
+        @click="load"
+      >
+        刷新
+      </el-button>
     </template>
 
     <el-alert
@@ -114,13 +119,5 @@ onMounted(load)
         </template>
       </el-table-column>
     </el-table>
-  </el-card>
+  </SectionCard>
 </template>
-
-<style scoped>
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-</style>

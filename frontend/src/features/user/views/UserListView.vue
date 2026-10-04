@@ -177,17 +177,22 @@ async function submitReset(): Promise<void> {
 </script>
 
 <template>
-  <el-card shadow="never">
-    <template #header>
-      <div class="page__header">
-        <span>用户管理</span>
-        <el-button
-          type="primary"
-          @click="openDialog(null)"
-        >
-          新增用户
-        </el-button>
-      </div>
+  <PageHeader
+    eyebrow="USER &amp; ACCESS CONTROL"
+    title="用户管理"
+  />
+
+  <SectionCard
+    title="用户列表"
+    delay="0.1s"
+  >
+    <template #actions>
+      <el-button
+        type="primary"
+        @click="openDialog(null)"
+      >
+        新增用户
+      </el-button>
     </template>
 
     <el-alert
@@ -439,16 +444,10 @@ async function submitReset(): Promise<void> {
         </el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </SectionCard>
 </template>
 
 <style scoped>
-.page__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
 .page__error {
   margin-bottom: 12px;
 }

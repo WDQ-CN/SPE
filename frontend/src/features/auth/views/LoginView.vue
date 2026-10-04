@@ -50,14 +50,21 @@ async function submit(): Promise<void> {
 
 <template>
   <div class="login">
-    <el-card
-      class="login__card"
-      shadow="never"
-    >
-      <template #header>
+    <!-- Sentra 的 Hero 层次：eyebrow → 点阵大标题 → 操作面板 -->
+    <div class="login__brand page-block">
+      <p class="login__eyebrow">
+        SUPPLIER PERFORMANCE EVALUATION
+      </p>
+      <h1 class="login__title font-display">
         {{ APP_NAME }}
-      </template>
+      </h1>
+    </div>
 
+    <el-card
+      class="login__card page-block"
+      shadow="never"
+      style="animation-delay: 0.15s"
+    >
       <el-alert
         v-if="errorMessage"
         class="login__error"
@@ -112,15 +119,41 @@ async function submit(): Promise<void> {
 </template>
 
 <style scoped>
+/* 登录页是**唯一不在暗壳里**的页面，所以它自己就是"整块 Sentra"：
+   纯黑底 + 点阵大标题 + 一张亮色卡片（照 Hero 的层次）。 */
 .login {
   display: flex;
+  flex-direction: column;
+  gap: 32px;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  min-height: 100vh;
+  padding: 24px 16px;
+  background: #000;
+}
+
+.login__brand {
+  text-align: center;
+}
+
+.login__eyebrow {
+  margin: 0 0 12px;
+  font-size: 11px;
+  color: rgb(255 255 255 / 60%);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.login__title {
+  margin: 0;
+  font-size: clamp(1.8rem, 5vw, 3rem);
+  line-height: 1.05;
+  color: #fff;
+  letter-spacing: -0.01em;
 }
 
 .login__card {
-  width: 360px;
+  width: min(380px, calc(100vw - 32px));
 }
 
 .login__error {

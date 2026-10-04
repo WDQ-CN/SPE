@@ -145,7 +145,7 @@ function logout(): void {
           退出
         </el-button>
       </el-header>
-      <el-main>
+      <el-main class="layout__main">
         <router-view :key="viewKey" />
       </el-main>
     </el-container>
@@ -153,34 +153,105 @@ function logout(): void {
 </template>
 
 <style scoped>
+/* ============================================================================
+   Sentra 视觉语言落到后台（2026-10-04）
+   设计提示词给的是**落地页**：页面黑 #000 + 亮区块 #E8E5E9/#f0eded 交替。
+   后台不能整页黑（表格与表单的可读性会垮），所以映射成 **暗壳 + 亮内容区**：
+   侧栏与顶栏吃 #000，内容区吃 #E8E5E9，卡片用 #EBE8EB / #fff——
+   色板、圆角、缓动、字体全部来自提示词，只是分区方式适配了管理系统。
+   ========================================================================== */
+
 .layout {
   height: 100%;
 }
 
+/* ---- 暗壳：侧栏 ---- */
 .layout__aside {
-  border-right: 1px solid var(--el-border-color-light);
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  border-right: 1px solid rgb(255 255 255 / 8%);
 }
 
 .layout__brand {
-  padding: 16px;
+  padding: 18px 20px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
   font-weight: 600;
-  border-bottom: 1px solid var(--el-border-color-light);
+  color: #fff;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
 }
 
+/* 菜单在暗底上的取值：改的是 Element Plus 自己的 CSS 变量，
+   而不是逐个覆盖它的内部类——变量是 EP 的公开契约，升级时不易碎。 */
+.layout__aside :deep(.el-menu) {
+  --el-menu-bg-color: transparent;
+  --el-menu-text-color: rgb(255 255 255 / 55%);
+  --el-menu-hover-bg-color: rgb(255 255 255 / 8%);
+  --el-menu-active-color: #fff;
+  --el-menu-border-color: transparent;
+
+  padding: 8px;
+  border-right: none;
+}
+
+.layout__aside :deep(.el-menu-item) {
+  height: 42px;
+  margin-bottom: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  border-radius: 0.75rem;
+}
+
+/* 激活项 = Sentra 的"白 pill"语言（那里是 bg-black text-white，这里反相） */
+.layout__aside :deep(.el-menu-item.is-active) {
+  font-weight: 600;
+  color: #fff;
+  background: rgb(255 255 255 / 14%);
+}
+
+/* ---- 暗壳：顶栏 ---- */
 .layout__header {
   display: flex;
   gap: 12px;
   align-items: center;
   justify-content: flex-end;
-  border-bottom: 1px solid var(--el-border-color-light);
+  color: rgb(255 255 255 / 75%);
+  background: #000;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+/* 顶栏里的 link 按钮（通知 / 退出）默认是 EP 的主题色，在纯黑上看不清 */
+.layout__header :deep(.el-button.is-link) {
+  color: rgb(255 255 255 / 70%);
+}
+
+.layout__header :deep(.el-button.is-link:hover) {
+  color: #f64302;
 }
 
 .layout__user {
   display: flex;
   gap: 8px;
   align-items: center;
+  font-size: 13px;
 }
 
+/* ---- 亮内容区：Sentra 的亮区块色 ---- */
+.layout__main {
+  padding: 16px;
+  overflow: auto;
+  background: #e8e5e9;
+}
+
+/* 入场动画改由各页显式标注 `.page-block`（定义在 base.css）。
+   原来这里是 `.layout__main :deep(> *)` 一网打尽，两个问题：
+   ① 页面改成多根节点后它是否命中并不直观；② 与页面自己写的入场会**双重叠加**
+   （同一元素上两个 `animation` 属性只取后者，等于其中一处是白写的）。
+   显式标在页面上可读、也能让各页自己排延迟阶梯。 */
+
+/* ---- 通知下拉（在亮底 popover 里，保持可读）---- */
 .notice {
   padding: 6px 0;
   border-bottom: 1px solid var(--el-border-color-lighter);

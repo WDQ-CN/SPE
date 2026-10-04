@@ -43,11 +43,15 @@ async function save(): Promise<void> {
 </script>
 
 <template>
-  <el-card shadow="never">
-    <template #header>
-      等级阈值
-    </template>
+  <PageHeader
+    eyebrow="SYSTEM SETTINGS"
+    title="系统设置"
+  />
 
+  <SectionCard
+    title="等级阈值"
+    delay="0.1s"
+  >
     <el-alert
       v-if="loadError"
       class="page__error"
@@ -142,7 +146,7 @@ async function save(): Promise<void> {
         </el-button>
       </el-form-item>
     </el-form>
-  </el-card>
+  </SectionCard>
 </template>
 
 <style scoped>
