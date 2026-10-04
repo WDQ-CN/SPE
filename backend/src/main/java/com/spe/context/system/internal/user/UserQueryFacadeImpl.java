@@ -1,5 +1,6 @@
 package com.spe.context.system.internal.user;
 
+import com.spe.context.system.api.Role;
 import com.spe.context.system.api.UserBrief;
 import com.spe.context.system.api.UserQueryFacade;
 import com.spe.context.system.api.UserStatus;
@@ -41,6 +42,15 @@ public class UserQueryFacadeImpl implements UserQueryFacade {
         .findById(userId)
         .map(user -> user.getStatus() == UserStatus.ENABLED)
         .orElse(false);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<Long> findEnabledIdsByDepartmentAndRoles(String department, Collection<Role> roles) {
+    if (department == null || department.isBlank() || roles == null || roles.isEmpty()) {
+      return List.of();
+    }
+    return sysUserMapper.findEnabledIdsByDepartmentAndRoles(department, roles);
   }
 
   private static UserBrief toBrief(SysUser user) {

@@ -9,26 +9,29 @@ import { canAccess, visibleMenus } from './menu'
  * 「菜单里看不到、但直接输地址就进去了」——手工点界面试不出来，只有把矩阵写成用例才守得住。
  */
 describe('侧边菜单可见性（01 §7）', () => {
-  it('ADMIN 能看到全部五个入口（评估模板是 P2 新加的）', () => {
+  it('ADMIN 能看到六个入口（评估任务在 P3 加入；评分单是隐藏入口）', () => {
     expect(visibleMenus(['ADMIN']).map((menu) => menu.path)).toEqual([
       '/',
       '/suppliers',
       '/templates',
+      '/tasks',
       '/users',
       '/settings',
     ])
   })
 
-  it('MANAGER 能看到首页、供应商与评估模板（01 §7 矩阵给 MANAGER「查看」模板）', () => {
+  it('MANAGER 能看到首页、供应商、模板、评估任务与我的待办（01 §7）', () => {
     expect(visibleMenus(['MANAGER']).map((menu) => menu.path)).toEqual([
       '/',
       '/suppliers',
       '/templates',
+      '/tasks',
+      '/my',
     ])
   })
 
-  it('EVALUATOR 与 VIEWER 只有首页（模板/供应商/用户/设置四个入口都不给）', () => {
-    expect(visibleMenus(['EVALUATOR']).map((menu) => menu.path)).toEqual(['/'])
+  it('EVALUATOR 只有首页与我的待办；VIEWER 只有首页', () => {
+    expect(visibleMenus(['EVALUATOR']).map((menu) => menu.path)).toEqual(['/', '/my'])
     expect(visibleMenus(['VIEWER']).map((menu) => menu.path)).toEqual(['/'])
   })
 
@@ -63,6 +66,16 @@ describe('入口级访问判定', () => {
     expect(canAccess('/templates/12', ['MANAGER'])).toBe(true)
     expect(canAccess('/templates/12', ['EVALUATOR'])).toBe(false)
     expect(canAccess('/templates/12', ['VIEWER'])).toBe(false)
+  })
+
+  it('隐藏入口不进菜单，但仍然受入口级权限管辖（评分单页是 P3 的典型）', () => {
+    // 这类页面"从列表点进去"，不该出现在侧边栏；但如果连登记都不登记，
+    // canAccess 会因"未登记即放行"把它对所有角色打开（包括 VIEWER）
+    expect(visibleMenus(['MANAGER']).map((menu) => menu.path)).not.toContain('/sheets')
+    expect(canAccess('/sheets/12', ['MANAGER'])).toBe(true)
+    expect(canAccess('/sheets/12', ['EVALUATOR'])).toBe(true)
+    expect(canAccess('/sheets/12', ['VIEWER'])).toBe(false)
+    expect(canAccess('/sheets/12', ['ADMIN'])).toBe(false)
   })
 
   it('未登记的路径一律放行：本表只管入口级可见性', () => {

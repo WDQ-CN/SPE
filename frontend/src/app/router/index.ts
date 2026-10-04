@@ -47,6 +47,32 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/features/template/views/TemplateEditorView.vue'),
         meta: { title: '模板编辑器' },
       },
+      // 详情页与打分页都挂在各自的**列表入口**之下（/tasks、/my），靠 menu.ts 的前缀匹配继承权限：
+      // /tasks/12 → /tasks、/sheets/9 → /sheets（评分单入口登记为 hidden，不进菜单但受管辖）。
+      {
+        path: 'tasks',
+        name: 'tasks',
+        component: () => import('@/features/evaluation/views/TaskListView.vue'),
+        meta: { title: '评估任务' },
+      },
+      {
+        path: 'tasks/:id',
+        name: 'task-detail',
+        component: () => import('@/features/evaluation/views/TaskDetailView.vue'),
+        meta: { title: '任务详情' },
+      },
+      {
+        path: 'my',
+        name: 'my-sheets',
+        component: () => import('@/features/evaluation/views/MySheetsView.vue'),
+        meta: { title: '我的待办' },
+      },
+      {
+        path: 'sheets/:id',
+        name: 'sheet-scoring',
+        component: () => import('@/features/evaluation/views/SheetScoringView.vue'),
+        meta: { title: '评分' },
+      },
       {
         path: 'users',
         name: 'users',

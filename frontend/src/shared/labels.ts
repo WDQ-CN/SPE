@@ -1,9 +1,12 @@
 import type {
   Department,
+  EvalTaskStatus,
   IndicatorType,
   Role,
   ScoreMode,
+  SheetStatus,
   SupplierStatus,
+  TaskSupplierStatus,
   TemplateVersionStatus,
   UserStatus,
 } from './types/enums'
@@ -77,3 +80,23 @@ export const ROLE_OPTIONS: SelectOption<Role>[] = toOptions(ROLE_LABEL)
 export const DEPARTMENT_OPTIONS: SelectOption<Department>[] = toOptions(DEPARTMENT_LABEL)
 export const INDICATOR_TYPE_OPTIONS: SelectOption<IndicatorType>[] = toOptions(INDICATOR_TYPE_LABEL)
 export const SCORE_MODE_OPTIONS: SelectOption<ScoreMode>[] = toOptions(SCORE_MODE_LABEL)
+
+export const EVAL_TASK_STATUS_LABEL: Record<EvalTaskStatus, string> = {
+  DRAFT: '草稿',
+  IN_PROGRESS: '进行中',
+  COMPLETED: '已完成',
+  CANCELED: '已取消',
+}
+
+export const TASK_SUPPLIER_STATUS_LABEL: Record<TaskSupplierStatus, string> = {
+  SCORING: '评分中',
+  PENDING_APPROVAL: '待审批',
+  APPROVING: '审批中',
+  EFFECTIVE: '已生效',
+}
+
+export const SHEET_STATUS_LABEL: Record<SheetStatus, string> = {
+  UNASSIGNED: '待指派',
+  SCORING: '评分中',
+  SUBMITTED: '已提交',
+}

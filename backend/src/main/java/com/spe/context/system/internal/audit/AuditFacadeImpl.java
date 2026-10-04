@@ -6,7 +6,7 @@ import com.spe.common.web.ClientIpResolver;
 import com.spe.context.system.api.AuditAction;
 import com.spe.context.system.api.AuditFacade;
 import com.spe.context.system.api.AuditTargetType;
-import com.spe.context.system.internal.security.AuthenticatedOperator;
+import com.spe.common.security.AuthenticatedOperator;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

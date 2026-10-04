@@ -19,4 +19,15 @@ public interface UserQueryFacade {
 
   /** 是否在职（`ENABLED`）；账号不存在按不在职处理。 */
   boolean isEnabled(long userId);
+
+  /**
+   * 按部门 + 角色查**在职**用户 id，**按 id 升序**（13 §E12 的自动指派）。
+   *
+   * <p>升序不是随手写的：多人同部门时发布任务要"取 id 最小者"，需要**确定性**——否则同一个任务重跑
+   * 可能指派给不同的人，集成用例与演示都不可复现。排序在 SQL 里定死，调用方取第一个即可。
+   *
+   * @param department 部门 code（`sys_user.department`，见 01 §7）；为空时返回空列表（不猜部门）
+   * @param roles 允许的角色集合；为空时返回空列表
+   */
+  List<Long> findEnabledIdsByDepartmentAndRoles(String department, Collection<Role> roles);
 }

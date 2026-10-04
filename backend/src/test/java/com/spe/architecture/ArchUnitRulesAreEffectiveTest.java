@@ -34,7 +34,7 @@ class ArchUnitRulesAreEffectiveTest {
               "com.spe.context.alert.fixture",
               "com.spe.context.analytics.fixture",
               "com.spe.context.evaluation.fixture",
-              "com.spe.context.evaluation.internal.scoring.fixture",
+              "com.spe.context.evaluation.internal.scoring.calculator.fixture",
               // R-H 的两条规则针对 Controller 命名，夹具单独放在这里（不属任何上下文，
               // 因此不会被 R-A/R-E/R-F/R-G 命中，一个夹具只违反自己那一条）
               "com.spe.architecture.fixture");

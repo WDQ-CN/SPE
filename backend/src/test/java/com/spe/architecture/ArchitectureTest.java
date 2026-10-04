@@ -71,14 +71,22 @@ class ArchitectureTest {
           .because("QueryMapper 仅含 SELECT（05 §8.3）")
           .allowEmptyShould(true);
 
-  /** R-C 计分器纯函数：ScoreCalculator 所在包不得依赖 Spring / MyBatis（05 ADR-4）。 */
+  /**
+   * R-C 计分器纯函数：**计算**包不得依赖 Spring / MyBatis（05 ADR-4）。
+   *
+   * <p>⚠️ 包名在 2026-10-01（W4）**收窄**过一次：原先写的是 BT..internal.scoring..BT，而 W4 把
+   * BTS coreMapperBT/BTScoreWriterBT/BTScoringServiceBT 也放进了 scoring 子包 ⇒ 规则对"整个 scoring 子包
+   * 不许碰框架"报出 41 处违规。ADR-4 要守的是**算法**的纯度（"规则变更只需跑纯函数单测，不依赖 DB/容器"），
+   * 不是"这个子包里不许有 Mapper"。所以把纯计算挪进 BTscoring.calculatorBT，规则也钉在它上面。
+   */
   @ArchTest
   static final ArchRule scoreCalculatorStaysFrameworkFree =
-      noClasses().that().resideInAPackage("..context.evaluation.internal.scoring..")
+      noClasses().that().resideInAPackage("..context.evaluation.internal.scoring.calculator..")
           .should().dependOnClassesThat()
           .resideInAnyPackage("org.springframework..", "org.apache.ibatis..", "com.baomidou..")
-          .because("计分器是不碰 Spring/MyBatis 的纯函数（ADR-4）")
-          .allowEmptyShould(true);
+          .because("计分器是不碰 Spring/MyBatis 的纯函数（ADR-4）");
+  // ⚠️ 2026-10-01（W2.1）：本包已落地真实的 ScoreCalculator ⇒ 去掉 allowEmptyShould。
+  //    留着它的话，将来谁把这个类挪走/删掉，规则会**重新空转通过**（04-071 同族：扫不到输入时必须失败）。
 
   /** R-D 事件卫生：领域事件字段全部 final（record 实现天然满足）；监听器不回调发布方 internal 由 R-A 保证。 */
   @ArchTest

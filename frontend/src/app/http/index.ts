@@ -19,6 +19,18 @@ const DEFAULT_MESSAGE: Record<ErrorSegment, string> = {
   unknown: '请求失败',
 }
 
+declare module 'axios' {
+  export interface AxiosRequestConfig {
+    /**
+     * 二进制下载（xlsx 模板）：**跳过 Result 解包**。
+     *
+     * <p>响应体不是 `Result` 信封而是文件字节，走普通解包会读到 `undefined.code` 判成失败
+     * （13 §E18 的模板下载端点）。
+     */
+    skipResultUnwrap?: boolean
+  }
+}
+
 const instance = axios.create({ baseURL: '/api', timeout: 10_000 })
 
 instance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
@@ -99,6 +111,9 @@ function failWithTransport(error: AxiosError): never {
 
 instance.interceptors.response.use(
   (response: AxiosResponse<Result<unknown>>) => {
+    if (response.config.skipResultUnwrap) {
+      return response
+    }
     const result = response.data
     return result.code === 0 ? response : failWith(result)
   },
@@ -128,5 +143,21 @@ export const http = {
   // 02 §4 已有 DELETE 类端点（如 /api-tokens），先备好，避免届时绕开统一封装
   delete<T>(url: string, params?: object): Promise<T> {
     return instance.delete<Result<T>>(url, { params }).then((response) => response.data.data)
+  },
+  /**
+   * 下载二进制文件（P3 的 Excel 模板）：**不走 Result 解包**——响应体就是 xlsx 字节。
+   * 传 `skipResultUnwrap` 让响应拦截器原样放行（见文件顶部的模块增强）。
+   */
+  download(url: string): Promise<Blob> {
+    return instance
+      .get<Blob>(url, { responseType: 'blob', skipResultUnwrap: true })
+      .then((response) => response.data)
+  },
+  /**
+   * 上传文件（multipart/form-data）：字段名 `file` 与服务端 `@RequestParam("file")` 对齐。
+   * 浏览器会自动补 multipart 的 boundary，所以这里**不手写 `Content-Type`**（手写会丢 boundary）。
+   */
+  upload<T>(url: string, formData: FormData): Promise<T> {
+    return instance.post<Result<T>>(url, formData).then((response) => response.data.data)
   },
 }

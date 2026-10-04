@@ -12,5 +12,7 @@ public enum AuditTargetType {
   SUPPLIER,
   SETTING,
   /** P2 起：模板、模板版本、维度、指标（四者共用一个目标类型，具体对象由 action 区分）。 */
-  TEMPLATE
+  TEMPLATE,
+  /** P3 起：评估任务、评估单、评分单（三者共用一个目标类型，具体对象由 action 区分，13 §E20）。 */
+  TASK
 }

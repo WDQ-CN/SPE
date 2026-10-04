@@ -47,8 +47,31 @@ public enum ErrorCode {
    * 这个讲的是「**某一行**的取值本身填错了」。混用会让用户看到"权重合计有问题"而实际是某个字段超长。
    */
   TEMPLATE_VALUE_INVALID(2017, "字段取值或长度不合法", HttpStatus.BAD_REQUEST),
+  // ---- P3（13 §E20）：任务 / 评分单。分段口径：状态冲突用 3001、状态本就不允许用 2020、横向越权用 4xxx ----
+  TASK_NOT_FOUND(2018, "评估任务不存在", HttpStatus.BAD_REQUEST),
+  /** 01 J4：同一供应商同一周期只允许一个非取消任务。⚠️ 该约束**没有数据库兜底**（13 §E10）。 */
+  TASK_PERIOD_DUPLICATE(2019, "该供应商在本周期已有评估任务", HttpStatus.BAD_REQUEST),
+  /** 状态**本就不允许**该操作（如把已发布任务当草稿改）；并发下别人先改了则走 3001（13 §E20 的口径）。 */
+  TASK_STATUS_INVALID(2020, "任务当前状态不允许该操作", HttpStatus.BAD_REQUEST),
+  TASK_SUPPLIER_EMPTY(2021, "请至少选择一个供应商，且审批链至少一级", HttpStatus.BAD_REQUEST),
+  SHEET_NOT_FOUND(2022, "评分单不存在", HttpStatus.BAD_REQUEST),
+  /** 指定的人员不存在、已停用或角色不符（审批链成员与改派对象共用；01 §7 的两个补充边界）。 */
+  USER_NOT_ELIGIBLE(2023, "指定的人员不存在、已停用或角色不符", HttpStatus.BAD_REQUEST),
+  SHEET_SCORES_INCOMPLETE(2024, "该维度还有指标未填写", HttpStatus.BAD_REQUEST),
+  SCORE_VALUE_INVALID(2025, "录入值超出允许范围", HttpStatus.BAD_REQUEST),
+  /** 上传的不是可解析的 xlsx / 表头缺失（文件级失败，01 E3）。 */
+  IMPORT_FILE_INVALID(2026, "文件无法解析为 xlsx，请重新下载导入模板", HttpStatus.BAD_REQUEST),
+  /** 逐格校验失败：message 里带**行列定位**，可多条（01 E3）。有它 ⇒ **整批不写**，避免半截批次。 */
+  IMPORT_CELL_INVALID(2027, "导入内容有误", HttpStatus.BAD_REQUEST),
   CONCURRENT_CONFLICT(3001, "数据已被他人改动，请刷新后重试", HttpStatus.CONFLICT),
   FORBIDDEN(4001, "无权限执行该操作", HttpStatus.FORBIDDEN),
+  /**
+   * 这张评分单不是指派给我的（01 §7 数据可见性 / 13 §E13 的第二层过滤）。
+   *
+   * <p>归 **4xxx 而不是 2xxx**（13 §E20 的裁决）：参数完全合法，是"你无权访问这一行"；放进 2xxx 会让前端
+   * 按"表单回显"处理，把越权显示成"参数有误"。
+   */
+  SHEET_NOT_ACCESSIBLE(4002, "无权访问该评分单", HttpStatus.FORBIDDEN),
   INTERNAL_ERROR(5001, "系统异常，请稍后重试", HttpStatus.INTERNAL_SERVER_ERROR);
 
   private final int code;

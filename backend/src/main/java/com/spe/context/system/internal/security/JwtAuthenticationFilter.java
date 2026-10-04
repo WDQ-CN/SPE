@@ -1,5 +1,6 @@
 package com.spe.context.system.internal.security;
 
+import com.spe.common.security.AuthenticatedOperator;
 import com.spe.context.system.api.UserBrief;
 import com.spe.context.system.api.UserQueryFacade;
 import io.jsonwebtoken.JwtException;

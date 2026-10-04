@@ -17,18 +17,19 @@ import { ADMIN } from './support'
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:18081'
 const PROBE_PASSWORD = 'E2eTest@12345'
 
-/** 01 §7 权限矩阵在 P1 范围内的映射：供应商 = ADMIN/MANAGER；用户与系统设置 = 仅 ADMIN */
+/** 01 §7 权限矩阵在 P1~P3 范围内的映射（顺序与 `app/menu.ts` 的登记顺序一致） */
 const ROLE_CASES = [
   {
     username: 'e2e-w5-manager',
     role: 'MANAGER',
-    // P2-W4 起「评估模板」对 MANAGER 可见（01 §7 给 MANAGER 查看模板的口径，12 §E7）
-    menus: ['首页', '供应商', '评估模板'],
+    // P2-W4 起「评估模板」对 MANAGER 可见；P3-W6 起再加「评估任务」（建/改/发布）与「我的待办」
+    menus: ['首页', '供应商', '评估模板', '评估任务', '我的待办'],
   },
   {
     username: 'e2e-w5-evaluator',
     role: 'EVALUATOR',
-    menus: ['首页'],
+    // P3-W6 起评估人多一个「我的待办」（其唯一的业务入口；评分单页 /sheets 是隐藏路径，不进菜单）
+    menus: ['首页', '我的待办'],
   },
   {
     username: 'e2e-w5-viewer',

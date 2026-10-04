@@ -358,9 +358,23 @@ class SystemApiIntegrationTest extends AbstractIntegrationTest {
         .andExpect(jsonPath("$.data.role").value("MANAGER"))
         .andExpect(jsonPath("$.data.version").value(1));
 
-    // DisplayName 说「列表可见」，就真的查一次列表——否则这条描述没有任何断言支撑
+    // DisplayName 说「列表可见」，就真的查一次列表——否则这条描述没有任何断言支撑。
+    // ⚠️ 不能假设"新用户在第 1 页"：列表按 id 升序分页，共享测试库里行数会涨（04-092）。
+    //    先取 total 再查**最后一页**，新用户 id 最大 ⇒ 一定在那里。
+    var pageOne =
+        mockMvc
+            .perform(authed(get("/api/users").param("page", "1").param("size", "50"), adminToken))
+            .andExpect(status().isOk())
+            .andReturn();
+    long total =
+        com.jayway.jsonpath.JsonPath.parse(pageOne.getResponse().getContentAsString())
+            .read("$.data.total", Long.class);
+    long lastPage = Math.max(1, (total + 49) / 50);
     mockMvc
-        .perform(authed(get("/api/users").param("page", "1").param("size", "50"), adminToken))
+        .perform(
+            authed(
+                get("/api/users").param("page", String.valueOf(lastPage)).param("size", "50"),
+                adminToken))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.list[*].name", org.hamcrest.Matchers.hasItem("改名后")));
 

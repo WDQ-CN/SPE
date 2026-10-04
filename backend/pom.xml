@@ -22,6 +22,14 @@
     <mybatis-plus.version>3.5.17</mybatis-plus.version>
     <jjwt.version>0.12.7</jjwt.version>
     <archunit.version>1.5.0</archunit.version>
+    <!-- Excel（01 E3）：4.0.3 是 2026-10 的稳定线；升级前先复跑导入的集成用例与 11 §5.3 的核对表 -->
+    <easyexcel.version>4.0.3</easyexcel.version>
+    <!--
+      ⚠️ 必须显式钉住 commons-compress（04-091）：EasyExcel→POI 5.4 需要 ≥1.27 的
+      putArchiveEntry(ZipArchiveEntry)，而 Testcontainers 传递进来的是 1.24.0；Maven 的就近原则会选 1.24.0，
+      运行期直接 NoSuchMethodError（生成/读取 xlsx 时才炸，编译期完全看不出来）。
+    -->
+    <commons-compress.version>1.27.1</commons-compress.version>
 
     <!-- 供应链核对（03 §20）发现的三个可升级项。这三项都由 Spring Boot BOM 管理，这里用 Boot 认可的
          属性覆盖到**同一补丁线**内的修复版本（只动补丁位，不跨次版本）：
@@ -79,6 +87,18 @@
     <dependency>
       <groupId>org.flywaydb</groupId>
       <artifactId>flyway-mysql</artifactId>
+    </dependency>
+
+    <!-- Excel：导入模板下载 + 任务级批量导入（01 E3/E17）。版本钉在 properties（09 D2 的版本基线） -->
+    <dependency>
+      <groupId>com.alibaba</groupId>
+      <artifactId>easyexcel</artifactId>
+      <version>${easyexcel.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-compress</artifactId>
+      <version>${commons-compress.version}</version>
     </dependency>
 
     <!-- JWT：0.12.x 的 builder/parser 链 -->

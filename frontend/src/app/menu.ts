@@ -16,6 +16,13 @@ export interface MenuItem {
   title: string
   /** 可见角色；**空数组表示任意已登录角色都可见**（首页） */
   roles: Role[]
+  /**
+   * 只做**入口级权限**、不进侧边菜单（详情页这类"从列表点进去"的路径）。
+   *
+   * <p>为什么也要登记：`canAccess` 按最长前缀归属入口，未登记的路径**一律放行**——
+   * 不登记就等于"直接输地址能进"。评分单页 `s/sheets/:id` 正是这种路径（P3 新增）。
+   */
+  hidden?: boolean
 }
 
 const MENUS: MenuItem[] = [
@@ -24,6 +31,12 @@ const MENUS: MenuItem[] = [
   { path: '/suppliers', title: '供应商', roles: ['ADMIN', 'MANAGER'] },
   // 01 §7：评估模板管理 = ADMIN（写）/ MANAGER（查看），即两者都可见这个入口
   { path: '/templates', title: '评估模板', roles: ['ADMIN', 'MANAGER'] },
+  // 01 §7：评估任务 = ADMIN（只读）/ MANAGER（建、改、发布）
+  { path: '/tasks', title: '评估任务', roles: ['ADMIN', 'MANAGER'] },
+  // 01 §7：我的待办 = 评估人与采购经理（管理员与只读用户不参与打分）
+  { path: '/my', title: '我的待办', roles: ['MANAGER', 'EVALUATOR'] },
+  // 打分页：从待办/详情点进去，不进菜单，但必须登记才能让守卫按前缀拦住越权角色
+  { path: '/sheets', title: '评分单', roles: ['MANAGER', 'EVALUATOR'], hidden: true },
   // 01 §7：用户、系统设置 = 仅 ADMIN
   { path: '/users', title: '用户管理', roles: ['ADMIN'] },
   { path: '/settings', title: '系统设置', roles: ['ADMIN'] },
@@ -35,7 +48,7 @@ function allows(item: MenuItem, roles: Role[]): boolean {
 
 /** 当前角色可见的菜单（保持登记顺序，首页永远在最前） */
 export function visibleMenus(roles: Role[]): MenuItem[] {
-  return MENUS.filter((item) => allows(item, roles))
+  return MENUS.filter((item) => allows(item, roles) && !item.hidden)
 }
 
 /**

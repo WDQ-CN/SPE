@@ -1,4 +1,4 @@
-package com.spe.context.evaluation.internal.scoring.fixture;
+package com.spe.context.evaluation.internal.scoring.calculator.fixture;
 
 import org.springframework.stereotype.Component;
 

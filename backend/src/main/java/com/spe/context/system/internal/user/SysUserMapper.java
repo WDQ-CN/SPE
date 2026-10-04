@@ -62,6 +62,24 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
       """)
   Optional<SysUser> findByUsernameForAuth(@Param("username") String username);
 
+  /**
+   * 按部门 + 角色查在职用户 id（升序）——P3 发布任务的自动指派用（13 §E12）。
+   *
+   * <p>排序在 SQL 里而不是 Java 里：调用方要的是"部门内 id 最小者"这个**确定性**结果（13 §E12），
+   * 让库来定序比让调用方自己排更不容易漂移。
+   */
+  @Select(
+      """
+      <script>
+      SELECT id FROM sys_user
+      WHERE status = 'ENABLED' AND department = #{department} AND role IN
+      <foreach item="item" collection="roles" open="(" separator="," close=")">#{item}</foreach>
+      ORDER BY id
+      </script>
+      """)
+  List<Long> findEnabledIdsByDepartmentAndRoles(
+      @Param("department") String department, @Param("roles") Collection<Role> roles);
+
   @Select("SELECT COUNT(*) FROM sys_user WHERE username = #{username}")
   long countByUsername(@Param("username") String username);
 

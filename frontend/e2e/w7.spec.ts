@@ -175,6 +175,9 @@ test('W4 判据：ADMIN 改已发布版本 → 自动复制出新草稿 → 再�
     await expect
       .poll(() => versionIdOf(page), { message: '改已发布版本后应换到新草稿' })
       .not.toBe(versionId)
+    // 状态标签切换时 Element Plus 的过渡会**短暂并存两个** `.editor__status`（leave-active + enter-active），
+    // 直接 toContainText 会因 strict mode 匹配到 2 个元素而失败——先等它收敛成一个再断言（P3-W7 实测）
+    await expect(page.locator('.editor__status')).toHaveCount(1)
     await expect(page.locator('.editor__status')).toContainText('草稿')
     // 新草稿里质量是 80 → 维度合计 80，提示"还差 20"，且**保存成功**（E4：只拦发布不拦保存）
     await expect(page.getByText('还差 20')).toBeVisible()
@@ -203,6 +206,7 @@ test('W4 判据：ADMIN 改已发布版本 → 自动复制出新草稿 → 再�
     )
     await page.getByRole('button', { name: /^发布 v/ }).click()
     await page.locator('.el-message-box').getByRole('button', { name: '确定' }).click()
+    await expect(page.locator('.editor__status')).toHaveCount(1)
     await expect(page.locator('.editor__status')).toContainText('已发布')
 
     // 5) 用接口核对：确实多了一个已发布版本（不假设版本号，重复执行也不会失败）

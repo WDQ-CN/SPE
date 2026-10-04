@@ -26,13 +26,15 @@ test('admin 登录后落首页：菜单五项、身份正确、控制台无错�
 
   await expect(page).toHaveURL(/localhost:18081\/$/)
   const items = page.locator('.el-menu-item')
-  // P2-W4 起多一个「评估模板」（01 §7：ADMIN 写 / MANAGER 查看，两者都可见入口）
-  await expect(items).toHaveCount(5)
+  // P2-W4 起多一个「评估模板」；P3-W6 起又多一个「评估任务」（01 §7：ADMIN 只读 / MANAGER 建改发，
+  // 两者都可见入口）。「我的待办」只有 MANAGER/EVALUATOR 可见，ADMIN 看不到，故这里是 6 项。
+  await expect(items).toHaveCount(6)
   await expect(items.nth(0)).toContainText('首页')
   await expect(items.nth(1)).toContainText('供应商')
   await expect(items.nth(2)).toContainText('评估模板')
-  await expect(items.nth(3)).toContainText('用户管理')
-  await expect(items.nth(4)).toContainText('系统设置')
+  await expect(items.nth(3)).toContainText('评估任务')
+  await expect(items.nth(4)).toContainText('用户管理')
+  await expect(items.nth(5)).toContainText('系统设置')
 
   // 「系统管理员」在页头标签和首页信息卡里都会出现，getByText 会因命中多个而报 strict mode violation
   await expect(page.locator('.layout__user .el-tag')).toHaveText('系统管理员')

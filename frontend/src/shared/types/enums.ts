@@ -36,3 +36,17 @@ export type IndicatorType = 'QUANT' | 'QUAL'
 
 /** 计分方式（01 §6.1 / 12 §E2）：仅定量指标有值 */
 export type ScoreMode = 'DIRECT' | 'RATIO' | 'TARGET'
+
+/**
+ * 评估任务状态（02 §3.1 的 `eval_task.status` / 06 §2.1）。
+ *
+ * P3 只有 **DRAFT →（发布）→ IN_PROGRESS** 一条可达迁移；`COMPLETED`（J3：全部评估单生效）要等 P4 的定稿，
+ * `CANCELED`（J6）是机会项——**列出来是为了显示历史数据，不表示现在可选**（07 §4 的口径）。
+ */
+export type EvalTaskStatus = 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELED'
+
+/** 评估单状态（06 §2.1）：P3 只产生 SCORING → PENDING_APPROVAL；APPROVING/EFFECTIVE 属 P4。 */
+export type TaskSupplierStatus = 'SCORING' | 'PENDING_APPROVAL' | 'APPROVING' | 'EFFECTIVE'
+
+/** 评分单状态（06 §2.1）：P3 三态全部可达。 */
+export type SheetStatus = 'UNASSIGNED' | 'SCORING' | 'SUBMITTED'

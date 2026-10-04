@@ -40,5 +40,16 @@ public enum AuditAction {
   INDICATOR_CREATE,
   INDICATOR_UPDATE,
   INDICATOR_DELETE,
+  // ---- P3 起：任务与评分单（13 §E20 的词表；动作码只增不改）----
+  TASK_CREATE,
+  TASK_UPDATE,
+  /** 发布（T1）：detail 记供应商数、评分单数、指派成功/未指派数。 */
+  TASK_PUBLISH,
+  /** 改派（01 J2）：detail 记 sheetId 与 before/after 的指派人与 sheetId。 */
+  SHEET_ASSIGN,
+  /** 提交评分单（T2）：detail 记 sheetId、提交的指标数（**不记分值**，13 §E20 的敏感面）。 */
+  SHEET_SUBMIT,
+  /** Excel 导入（01 E3）：detail 记批次号、写入格数、跳过格数、错误数——**不记内容**。 */
+  SHEET_IMPORT,
   ACCESS_DENIED
 }

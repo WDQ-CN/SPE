@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.spe.common.security.AuthenticatedOperator;
 import com.spe.context.system.api.Department;
 import com.spe.context.system.api.Role;
 import com.spe.context.system.api.UserBrief;
