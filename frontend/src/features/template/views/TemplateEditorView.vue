@@ -448,6 +448,8 @@ function statusTagType(): 'success' | 'warning' | 'info' {
     title="模板编辑器"
   />
 
+  <!-- 刻意不走 SectionCard（03 §35 登记在案的例外）：这里的头部是"标题 + 状态 tag + 副标题 + 按钮组"
+       的复合结构，SectionCard 的 title + actions 两个槽装不下它的四层信息。 -->
   <el-card
     v-loading="loading"
     class="page-block"

@@ -60,6 +60,8 @@ async function submit(): Promise<void> {
       </h1>
     </div>
 
+    <!-- 刻意不走 SectionCard（03 §35 登记在案的例外）：本页的卡片是"整页唯一、无标题"的登录面板，
+         SectionCard 的语义是"标题 + 右侧操作"，在这里两个槽都是空的——用它反而要多写两个空槽。 -->
     <el-card
       class="login__card page-block"
       shadow="never"
