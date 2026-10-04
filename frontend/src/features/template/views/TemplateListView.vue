@@ -130,10 +130,7 @@ function draftTagType(row: TemplateSummary): 'warning' | 'info' {
     title="评估模板"
   />
 
-  <SectionCard
-    title="模板列表"
-    delay="0.1s"
-  >
+  <SectionCard title="模板列表">
     <template #actions>
       <el-button
         v-if="canWrite"

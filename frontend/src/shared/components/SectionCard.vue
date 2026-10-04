@@ -11,22 +11,19 @@
  */
 withDefaults(
   defineProps<{
-    /** 卡片标题（全局皮肤会把它渲染成小号大写的 eyebrow 形态） */
+    /** 卡片标题（全局皮肤会把它渲染成小号、宽字距的 eyebrow 形态） */
     title: string
-    /** 入场延迟（如 `0.1s`），与 PageHeader 的 `delay` 同义 */
+    /** 入场延迟，与 PageHeader 的 `delay` 同义；默认 `0.1s`——页头之后的第二拍 */
     delay?: string
-    /** 是否给卡片本身加入场动画；同页只有一个区块时可关掉 */
-    animate?: boolean
   }>(),
-  { delay: '0s', animate: true },
+  { delay: '0.1s' },
 )
 </script>
 
 <template>
   <el-card
-    class="section-card"
-    :class="{ 'page-block': animate }"
-    :style="animate ? { animationDelay: delay } : undefined"
+    class="section-card page-block"
+    :style="{ animationDelay: delay }"
   >
     <template #header>
       <div class="section-head">

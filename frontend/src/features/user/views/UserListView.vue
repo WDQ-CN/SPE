@@ -182,10 +182,7 @@ async function submitReset(): Promise<void> {
     title="用户管理"
   />
 
-  <SectionCard
-    title="用户列表"
-    delay="0.1s"
-  >
+  <SectionCard title="用户列表">
     <template #actions>
       <el-button
         type="primary"

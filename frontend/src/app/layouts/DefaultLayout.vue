@@ -183,33 +183,9 @@ function logout(): void {
   border-bottom: 1px solid rgb(255 255 255 / 8%);
 }
 
-/* 菜单在暗底上的取值：改的是 Element Plus 自己的 CSS 变量，
-   而不是逐个覆盖它的内部类——变量是 EP 的公开契约，升级时不易碎。 */
-.layout__aside :deep(.el-menu) {
-  --el-menu-bg-color: transparent;
-  --el-menu-text-color: rgb(255 255 255 / 55%);
-  --el-menu-hover-bg-color: rgb(255 255 255 / 8%);
-  --el-menu-active-color: #fff;
-  --el-menu-border-color: transparent;
-
-  padding: 8px;
-  border-right: none;
-}
-
-.layout__aside :deep(.el-menu-item) {
-  height: 42px;
-  margin-bottom: 4px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
-  border-radius: 0.75rem;
-}
-
-/* 激活项 = Sentra 的"白 pill"语言（那里是 bg-black text-white，这里反相） */
-.layout__aside :deep(.el-menu-item.is-active) {
-  font-weight: 600;
-  color: #fff;
-  background: rgb(255 255 255 / 14%);
-}
+/* 菜单在暗底上的取值（那组 `--el-menu-*` 覆盖）已提到 `app/styles/base.css`：
+   它描述的是"EP 菜单在暗色导航里的取值"，属**全局主题**而不是本布局私有，
+   放全局后任何暗底导航都能复用（03 §35 第 6 条）。 */
 
 /* ---- 暗壳：顶栏 ---- */
 .layout__header {

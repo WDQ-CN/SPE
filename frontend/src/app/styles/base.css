@@ -105,14 +105,16 @@ html .el-card {
   box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
 }
 
-/* 卡片标题栏做"eyebrow 化"：小号、大写、宽字距、灰——与首页 .home__card-title 同一形态 */
+/* 卡片标题栏做"eyebrow 化"：小号、宽字距、灰——与首页 .home__card-title 同一形态。
+   ⚠️ **刻意不加 `text-transform: uppercase`**：卡片标题里可能出现英文编码（如供应商
+   `E2E-W3-001`）或单位，强制大写会让"界面上看到的"与"库里的真实值"不一致
+   （视觉 ≠ 数据）。大写只留给本来就是全大写的 `.page-eyebrow`（03 §35 第 4 条）。 */
 html .el-card__header {
   padding: 16px 20px;
   font-size: 12px;
   font-weight: 600;
   color: rgb(0 0 0 / 55%);
   letter-spacing: 0.08em;
-  text-transform: uppercase;
   border-bottom: 1px solid rgb(0 0 0 / 6%);
 }
 
@@ -136,9 +138,11 @@ html .el-table th.el-table__cell {
   letter-spacing: 0.04em;
 }
 
-/* ---- 输入类控件：圆角统一 ---- */
+/* ---- 输入类控件：圆角统一（含下拉框——EP 2.14 的 select 是独立的 wrapper，
+      漏了它会与输入框出现两种圆角，03 §35 第 2 条）---- */
 html .el-input__wrapper,
-html .el-textarea__inner {
+html .el-textarea__inner,
+html .el-select__wrapper {
   border-radius: 10px;
 }
 
@@ -163,6 +167,37 @@ html .el-pagination.is-background .el-pager li,
 html .el-pagination.is-background .btn-prev,
 html .el-pagination.is-background .btn-next {
   border-radius: 8px;
+}
+
+/* ---- 暗壳里的导航菜单（2026-10-04 从 DefaultLayout 提出；03 §35 第 6 条）----
+   EP 的 el-menu 默认是白底黑字，放在 #000 的侧栏上不可读。这里改的是 **EP 自己的
+   CSS 变量**（公开契约，比逐个覆盖内部类稳），集中一处后任何暗底导航都能复用。
+   ⚠️ `.layout__aside` 由 `app/layouts/DefaultLayout.vue` 提供——全局样式依赖组件类名是
+   有意为之（它是"暗壳"的唯一标识）；改名时两处要一起改。 */
+html .layout__aside .el-menu {
+  --el-menu-bg-color: transparent;
+  --el-menu-text-color: rgb(255 255 255 / 55%);
+  --el-menu-hover-bg-color: rgb(255 255 255 / 8%);
+  --el-menu-active-color: #fff;
+  --el-menu-border-color: transparent;
+
+  padding: 8px;
+  border-right: none;
+}
+
+html .layout__aside .el-menu-item {
+  height: 42px;
+  margin-bottom: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  border-radius: 0.75rem;
+}
+
+/* 激活项 = Sentra 的"白 pill"语言（设计稿里是 bg-black text-white，这里反相） */
+html .layout__aside .el-menu-item.is-active {
+  font-weight: 600;
+  color: #fff;
+  background: rgb(255 255 255 / 14%);
 }
 
 /* ============================================================================

@@ -159,10 +159,7 @@ onMounted(() => void list.load())
     title="评估任务"
   />
 
-  <SectionCard
-    title="任务列表"
-    delay="0.1s"
-  >
+  <SectionCard title="任务列表">
     <template #actions>
       <el-button
         type="primary"

@@ -44,10 +44,7 @@ onMounted(load)
     title="我的待办"
   />
 
-  <SectionCard
-    title="待办清单"
-    delay="0.1s"
-  >
+  <SectionCard title="待办清单">
     <template #actions>
       <el-button
         link

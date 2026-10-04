@@ -24,7 +24,9 @@ export default defineConfig(({ mode }) => {
         // 自家通用组件也自动导入（2026-10-04）：`shared/components` 下的组件（如 PageHeader）
         // 各页直接用、不写 import —— 否则"抽组件"只解决了一半问题，每个页面仍要重复一行 import，
         // 而且新增页面时漏掉 import 是编译期错误（比样式漏改好，但依然是重复）。
-        dirs: ['src/shared/components'],
+        // ⚠️ 必须把 unplugin 的默认目录 `src/components` 一并列上：这个选项是**覆盖**而非追加，
+        // 只写一个会让"放在默认目录里的组件不生效"（03 §35 第 5 条）。
+        dirs: ['src/shared/components', 'src/components'],
         dts: 'src/types/components.d.ts',
       }),
     ],

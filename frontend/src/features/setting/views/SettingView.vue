@@ -48,10 +48,7 @@ async function save(): Promise<void> {
     title="系统设置"
   />
 
-  <SectionCard
-    title="等级阈值"
-    delay="0.1s"
-  >
+  <SectionCard title="等级阈值">
     <el-alert
       v-if="loadError"
       class="page__error"

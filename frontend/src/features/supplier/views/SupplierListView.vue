@@ -129,10 +129,7 @@ async function toggleStatus(row: SupplierSummary): Promise<void> {
     title="供应商档案"
   />
 
-  <SectionCard
-    title="供应商列表"
-    delay="0.1s"
-  >
+  <SectionCard title="供应商列表">
     <template #actions>
       <el-button
         type="primary"
