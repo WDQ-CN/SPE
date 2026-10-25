@@ -9,30 +9,34 @@ import { canAccess, visibleMenus } from './menu'
  * 「菜单里看不到、但直接输地址就进去了」——手工点界面试不出来，只有把矩阵写成用例才守得住。
  */
 describe('侧边菜单可见性（01 §7）', () => {
-  it('ADMIN 能看到六个入口（评估任务在 P3 加入；评分单是隐藏入口）', () => {
+  it('ADMIN 能看到八个入口（P4 加入我的审批与结果报表）', () => {
     expect(visibleMenus(['ADMIN']).map((menu) => menu.path)).toEqual([
       '/',
       '/suppliers',
       '/templates',
       '/tasks',
+      '/approvals',
+      '/results',
       '/users',
       '/settings',
     ])
   })
 
-  it('MANAGER 能看到首页、供应商、模板、评估任务与我的待办（01 §7）', () => {
+  it('MANAGER 能看到首页、供应商、模板、评估任务、我的待办、我的审批与结果报表', () => {
     expect(visibleMenus(['MANAGER']).map((menu) => menu.path)).toEqual([
       '/',
       '/suppliers',
       '/templates',
       '/tasks',
       '/my',
+      '/approvals',
+      '/results',
     ])
   })
 
-  it('EVALUATOR 只有首页与我的待办；VIEWER 只有首页', () => {
+  it('EVALUATOR 只有首页与我的待办；VIEWER 只有首页与结果报表', () => {
     expect(visibleMenus(['EVALUATOR']).map((menu) => menu.path)).toEqual(['/', '/my'])
-    expect(visibleMenus(['VIEWER']).map((menu) => menu.path)).toEqual(['/'])
+    expect(visibleMenus(['VIEWER']).map((menu) => menu.path)).toEqual(['/', '/results'])
   })
 
   it('没有任何角色时只有首页（首页对所有已登录用户开放）', () => {
@@ -82,6 +86,22 @@ describe('入口级访问判定', () => {
     // 登录页、将来的公开页不在菜单表里，越权判定始终由后端负责（4xxx + ACCESS_DENIED 审计）
     expect(canAccess('/login', ['VIEWER'])).toBe(true)
     expect(canAccess('/some/future/page', [])).toBe(true)
+  })
+
+  it('P4 子路径按前缀继承入口权限：审批详情、任务结果、报告详情', () => {
+    expect(canAccess('/approvals/12', ['MANAGER'])).toBe(true)
+    expect(canAccess('/approvals/12', ['ADMIN'])).toBe(true)
+    expect(canAccess('/approvals/12', ['EVALUATOR'])).toBe(false)
+    expect(canAccess('/approvals/12', ['VIEWER'])).toBe(false)
+
+    expect(canAccess('/results/12', ['VIEWER'])).toBe(true)
+    expect(canAccess('/results/12', ['MANAGER'])).toBe(true)
+    expect(canAccess('/results/12', ['EVALUATOR'])).toBe(false)
+
+    // 报告详情对任意已登录角色开放入口；"本人参与过"的判据在后端第二层（01 §7）
+    expect(canAccess('/reports/12', ['EVALUATOR'])).toBe(true)
+    expect(canAccess('/reports/12', ['VIEWER'])).toBe(true)
+    expect(canAccess('/reports/12', ['ADMIN'])).toBe(true)
   })
 
   it('首页不会被前缀匹配吃掉：它只做精确匹配', () => {

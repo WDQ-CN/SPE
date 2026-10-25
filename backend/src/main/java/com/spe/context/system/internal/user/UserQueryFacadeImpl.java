@@ -53,6 +53,15 @@ public class UserQueryFacadeImpl implements UserQueryFacade {
     return sysUserMapper.findEnabledIdsByDepartmentAndRoles(department, roles);
   }
 
+  @Override
+  @Transactional(readOnly = true)
+  public List<Long> findEnabledIdsByRoles(Collection<Role> roles) {
+    if (roles == null || roles.isEmpty()) {
+      return List.of();
+    }
+    return sysUserMapper.findEnabledIdsByRoles(roles);
+  }
+
   private static UserBrief toBrief(SysUser user) {
     return new UserBrief(
         user.getId(),

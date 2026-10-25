@@ -35,6 +35,12 @@ const MENUS: MenuItem[] = [
   { path: '/tasks', title: '评估任务', roles: ['ADMIN', 'MANAGER'] },
   // 01 §7：我的待办 = 评估人与采购经理（管理员与只读用户不参与打分）
   { path: '/my', title: '我的待办', roles: ['MANAGER', 'EVALUATOR'] },
+  // 01 §7：审批入口 = ADMIN/MANAGER（真正的授权在 Service 的"当前节点是不是我"，15 §E8）
+  { path: '/approvals', title: '我的审批', roles: ['ADMIN', 'MANAGER'] },
+  // 01 §7：结果列表/评估报告 = ADMIN / MANAGER / VIEWER；评估人从"我的待办"进入自己参与过的报告
+  { path: '/results', title: '结果报表', roles: ['ADMIN', 'MANAGER', 'VIEWER'] },
+  // 报告详情：评估人只能看本人参与过的（后端第二层判），入口对任意已登录角色登记为隐藏页
+  { path: '/reports', title: '评估报告', roles: [], hidden: true },
   // 打分页：从待办/详情点进去，不进菜单，但必须登记才能让守卫按前缀拦住越权角色
   { path: '/sheets', title: '评分单', roles: ['MANAGER', 'EVALUATOR'], hidden: true },
   // 01 §7：用户、系统设置 = 仅 ADMIN

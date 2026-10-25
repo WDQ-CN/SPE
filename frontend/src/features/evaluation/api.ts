@@ -1,17 +1,21 @@
 import { http } from '@/app/http'
 import type { PageResult } from '@/shared/types/result'
 import type {
+  ApprovalTodoView,
   ImportReport,
   MySheetView,
   NotificationSummary,
   PublishResult,
+  ResultTaskSummary,
   SheetBrief,
   SheetPreview,
   SheetScoreView,
   SubmitResult,
   TaskDetail,
   TaskProgress,
+  TaskResults,
   TaskSummary,
+  TaskSupplierReport,
 } from '@/shared/types/dto'
 import type { EvalTaskStatus } from '@/shared/types/enums'
 
@@ -38,16 +42,25 @@ export interface TaskDraftPayload {
   name: string
   year: number
   quarter: number
+  /** 所选模板；与 templateVersionId 一并提交，后端校验归属一致（03 §41.2 的 P1-17） */
+  templateId: number
   templateVersionId: number
   deadline: string
   supplierIds: number[]
   approverIds: number[]
 }
 
-/** 打分格子的入参（后端 `SaveScoresRequest.Entry`） */
+/**
+ * 打分格子的入参（后端 `SaveScoresRequest.Entry`）。
+ *
+ * ⚠️ `rawValue` 为 `null` 表示**清空这一格**（03 §38 的 P2-15；后端 `ScoreWriter` 会删掉这行），
+ * 而"这一格整个不在数组里"是另一种语义：**不动它**。两者混不起——把 null 当"不传"就是
+ * "删值→保存→刷新后旧值复活"那条用户可见的错行为；反过来把"不传"当 null 会让暂存把没碰过的格子全删掉。
+ * 试算（`previewScores`）用不到清空语义，它只关心有值的候选。
+ */
 export interface ScoreEntryPayload {
   indicatorId: number
-  rawValue: number
+  rawValue: number | null
 }
 
 export function listTasks(query: TaskQuery): Promise<PageResult<TaskSummary>> {
@@ -139,4 +152,48 @@ export function getUnreadCount(): Promise<number> {
 
 export function markAllRead(): Promise<number> {
   return http.post<number>('/notifications/read-all')
+}
+
+// ---------- P4 审批与结果（02 §4；视图只从这里调端点） ----------
+
+/** 我的审批待办（过滤在后端：当前节点是我 + 状态在审批中） */
+export function listMyApprovals(
+  page: number,
+  size: number,
+): Promise<PageResult<ApprovalTodoView>> {
+  return http.get<PageResult<ApprovalTodoView>>('/my/approvals', { page, size })
+}
+
+/** 通过：`version` 必须是列表/报告里读到的版本；非本节点 → 4003，已流转 → 3001 */
+export function approveTaskSupplier(taskSupplierId: number, version: number): Promise<void> {
+  return http.post<void>(`/task-suppliers/${taskSupplierId}/approve`, { version })
+}
+
+/** 驳回：意见必填（前端先拦，后端 2029 兜底） */
+export function rejectTaskSupplier(
+  taskSupplierId: number,
+  version: number,
+  comment: string,
+): Promise<void> {
+  return http.post<void>(`/task-suppliers/${taskSupplierId}/reject`, { version, comment })
+}
+
+/** 结果报表入口：只列已有已生效评估单的任务（VIEWER 可读，不暴露任务管理面） */
+export function listResultTasks(query: {
+  page: number
+  size: number
+  status?: EvalTaskStatus
+  keyword?: string
+}): Promise<PageResult<ResultTaskSummary>> {
+  return http.get<PageResult<ResultTaskSummary>>('/results/tasks', query)
+}
+
+/** 任务级结果列表（只含已生效评估单） */
+export function getTaskResults(taskId: number): Promise<TaskResults> {
+  return http.get<TaskResults>(`/tasks/${taskId}/results`)
+}
+
+/** 评估报告：`SNAPSHOT`（已生效）或 `TRIAL`（未生效试算）见响应里的 `scoreMode` */
+export function getTaskSupplierReport(taskSupplierId: number): Promise<TaskSupplierReport> {
+  return http.get<TaskSupplierReport>(`/task-suppliers/${taskSupplierId}/report`)
 }

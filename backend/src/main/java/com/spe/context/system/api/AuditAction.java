@@ -51,5 +51,16 @@ public enum AuditAction {
   SHEET_SUBMIT,
   /** Excel 导入（01 E3）：detail 记批次号、写入格数、跳过格数、错误数——**不记内容**。 */
   SHEET_IMPORT,
+  /** 审批通过（T5）：detail 记评估单、节点序号、轮次（15 §E10）。 */
+  APPROVAL_APPROVE,
+  /** 审批驳回（T5）：detail 记评估单、节点序号、轮次与**意见摘要**（用户输入，按 06 §2.8 截断）。 */
+  APPROVAL_REJECT,
+  /**
+   * 定稿（T3）：detail 记总分、总等级、维度数，**并带 `taskCompleted`**（完单 SQL 影响行数是否为 1）。
+   *
+   * <p>「任务自动完成」不单独设动作码（2026-10-04 评审裁定，15 §E10）：它是定稿的后果，且无条件写审计
+   * 会造出假的"完成"记录（已 COMPLETED 时重跑完单 SQL 影响 0 行）。
+   */
+  TASK_SUPPLIER_FINALIZE,
   ACCESS_DENIED
 }

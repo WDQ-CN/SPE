@@ -3,6 +3,8 @@ package com.spe.context.evaluation.internal.scoring;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.context.AnalysisContext;
 import com.alibaba.excel.event.AnalysisEventListener;
+import com.alibaba.excel.exception.ExcelAnalysisException;
+import com.alibaba.excel.exception.ExcelCommonException;
 import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
 import com.spe.context.evaluation.api.ScoreSource;
@@ -24,12 +26,14 @@ import com.spe.context.template.api.IndicatorSnapshot;
 import com.spe.context.template.api.TemplateSnapshot;
 import com.spe.context.template.api.TemplateSnapshotFacade;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -56,6 +60,12 @@ public class ScoreImportService {
 
   /** 模板第一列的标题：用**编码**定位供应商（导入是即时对照，编码改过就按新编码填）。 */
   public static final String SUPPLIER_CODE_HEADER = "供应商编码";
+
+  /**
+   * 逐格错误明细的内存上限（P5）：一个百万行 × 13 列的 xlsx 可以产生千万条错误，
+   * 在"整批不写"之前先把内存撑爆。保留前 1000 条明细，总数仍然如实统计并写进 message。
+   */
+  static final int MAX_ERRORS = 1000;
 
   private final EvalTaskMapper taskMapper;
   private final TaskSupplierMapper taskSupplierMapper;
@@ -86,6 +96,8 @@ public class ScoreImportService {
   public byte[] buildTemplate(long taskId, long operatorId) {
     EvalTask task = requireTask(taskId);
     requireParticipant(taskId, operatorId);
+    // 一次取回本任务的评估单（P2-4：suppliersOf 与下面的行构造共用，不再各查一遍）
+    List<TaskSupplier> taskSuppliers = taskSupplierMapper.findByTaskId(taskId);
     TemplateSnapshot snapshot = templateSnapshotFacade.requirePublished(task.getTemplateVersionId());
     List<String> headers = new ArrayList<>();
     headers.add(SUPPLIER_CODE_HEADER);
@@ -94,10 +106,10 @@ public class ScoreImportService {
         headers.add(indicator.code());
       }
     }
-    Map<Long, SupplierBrief> suppliers = suppliersOf(taskId);
+    Map<Long, SupplierBrief> suppliers = suppliersOf(taskSuppliers);
     List<List<String>> head = headers.stream().map(List::of).toList();
     List<List<Object>> rows = new ArrayList<>();
-    for (TaskSupplier taskSupplier : taskSupplierMapper.findByTaskId(taskId)) {
+    for (TaskSupplier taskSupplier : taskSuppliers) {
       SupplierBrief supplier = suppliers.get(taskSupplier.getSupplierId());
       List<Object> row = new ArrayList<>();
       row.add(supplier == null ? String.valueOf(taskSupplier.getSupplierId()) : supplier.code());
@@ -120,24 +132,45 @@ public class ScoreImportService {
   public ImportReport importScores(long taskId, InputStream in, String batchNo, long operatorId) {
     EvalTask task = requireTask(taskId);
     requireParticipant(taskId, operatorId);
+    // 取数收敛（03 §38 的 P2-4）：原来 `suppliersOf` 与 `ImportContext.of` **各查一次** task_supplier，
+    // 而且后者还按评估单**逐个**查评分单（1+N，SQL 条数 = 1 + 供应商数）。
+    // 现在两条查询就够：task_supplier 一次、sheet 一次（SheetMapper.findByTaskId 本就是为看板准备的）
+    List<TaskSupplier> taskSuppliers = taskSupplierMapper.findByTaskId(taskId);
     ImportContext context =
         ImportContext.of(
-            task, taskSupplierMapper, sheetMapper, templateSnapshotFacade, suppliersOf(taskId), operatorId);
+            task,
+            taskSuppliers,
+            sheetMapper.findByTaskId(taskId),
+            templateSnapshotFacade,
+            suppliersOf(taskSuppliers),
+            operatorId);
     Collector collector = new Collector(context);
     try {
       EasyExcel.read(in).sheet(0).headRowNumber(1).registerReadListener(collector).doRead();
     } catch (RuntimeException ex) {
-      // 不是可解析的 xlsx / 表头缺失：这一层失败属于"文件级"错误（2026），格子级错误走 errors 列表
+      // ⚠️ P2-6（03 §38）：这一层原先是 `catch (RuntimeException)` ⇒ 一律翻成 2026「文件无法解析」，
+      // 于是 Collector 里的空指针/越界/非法状态也被洗成"用户文件坏了"，**掩盖真缺陷**、还让 5001 永远不出现。
+      // 现在反过来：只认"文件级解析失败"那一小撮，其余**原样上浮**（认不出来 ⇒ 落 5001，那是它应得的信号）。
+      if (!isFileLevelParseFailure(ex)) {
+        throw ex;
+      }
+      // 文件本身读不出内容（坏 zip、表头缺失、类型转换不了）：这是"文件级"错误（2026），
+      // 格子级错误走 errors 列表，两层的口径不同
+      log.warn("Excel 导入文件无法解析：taskId={}，批次={}", taskId, batchNo, ex);
       throw new BizException(ErrorCode.IMPORT_FILE_INVALID, "文件无法解析为 xlsx：如不确定请重新下载导入模板");
     }
 
-    if (!collector.errors.isEmpty()) {
+    if (collector.totalErrors > 0) {
       // 全或无：有任何一个格子不合法就整批不写（01 E3 的"逐格校验"+"批次号覆盖一次完整导入"）
-      throw new BizException(ErrorCode.IMPORT_CELL_INVALID, summarize(collector.errors));
+      throw new BizException(ErrorCode.IMPORT_CELL_INVALID, summarize(collector));
     }
     int written = 0;
     for (Map.Entry<Long, Map<Long, BigDecimal>> entry : collector.valuesBySheet.entrySet()) {
-      written += scoreWriter.save(entry.getKey(), entry.getValue(), ScoreSource.IMPORT, batchNo, operatorId);
+      // ⚠️ 清空集合恒为空：01 §6.6/§6.7 规定"Excel 里的空格视为该格未填"，**不是**"删掉这一格"。
+      // P2-15 的"显式 null = 清空"只属于手工打分那条 PUT（前端有 touchedIds 能区分"从没填"与"填过又清空"），
+      // 表格文件里区分不了，所以这里一条都不删。
+      written +=
+          scoreWriter.save(entry.getKey(), entry.getValue(), List.of(), ScoreSource.IMPORT, batchNo, operatorId);
     }
     ImportReport report = new ImportReport(batchNo, written, collector.skippedCells);
     auditFacade.record(
@@ -146,7 +179,7 @@ public class ScoreImportService {
         taskId,
         Map.of("batch", batchNo, "written", report.writtenCells(), "skipped", report.skippedCells()));
     log.info(
-        "Excel 导入完成：taskId={}，批次={}，写入 {} 格，跳过 {} 格，错误 {} 条",
+        "Excel 导入完成：taskId={}，批次={}，写入 {} 格，跳过 {} 格",
         taskId,
         batchNo,
         report.writtenCells(),
@@ -154,10 +187,54 @@ public class ScoreImportService {
     return report;
   }
 
+  /**
+   * 「文件级解析失败」的判据（03 §38 的 P2-6 的核心；包私有以便单测直接问它）。
+   *
+   * <p>两条规则，**顺序不能反**：
+   * <ol>
+   *   <li>cause 链里出现我们自己的代码缺陷（空指针 / 越界 / 非法状态 / 类型转换）⇒ 这不是文件问题。
+   *       ⚠️ 必须看链而不是只看外层：EasyExcel 会把 listener 抛出的异常也包进
+   *       {@code ExcelAnalysisException}，"换个 catch 的类型"判不出这一层。
+   *   <li>否则只要链里含 EasyExcel 的解析异常或 IO 失败 ⇒ 认定是文件级失败，才配得上"文件无法解析"这句话。
+   * </ol>
+   * 两条都不沾的第三条路返回 false ⇒ 调用方**原样上浮**成 5001：宁多一个 5001，不可把代码缺陷洗成用户错误。
+   */
+  static boolean isFileLevelParseFailure(Throwable ex) {
+    if (anyCauseMatches(ex, ScoreImportService::isCodeDefect)) {
+      return false;
+    }
+    return anyCauseMatches(
+        ex,
+        cursor ->
+            cursor instanceof ExcelAnalysisException
+                || cursor instanceof ExcelCommonException
+                || cursor instanceof IOException);
+  }
+
+  private static boolean isCodeDefect(Throwable cursor) {
+    return cursor instanceof NullPointerException
+        || cursor instanceof IndexOutOfBoundsException
+        || cursor instanceof IllegalStateException
+        || cursor instanceof ClassCastException;
+  }
+
+  /** 顺着 cause 链找一次（遇到自引用的 cause 就停，避免死循环）。 */
+  private static boolean anyCauseMatches(Throwable ex, Predicate<Throwable> matcher) {
+    for (Throwable cursor = ex; cursor != null; cursor = cursor.getCause()) {
+      if (matcher.test(cursor)) {
+        return true;
+      }
+      if (cursor.getCause() == cursor) {
+        break;
+      }
+    }
+    return false;
+  }
+
   /** 把逐格错误拼成一条可读的 message（最多 10 条，其余折叠计数）——01 E3 的"可多条、带行列定位"。 */
-  private static String summarize(List<ImportReport.CellError> errors) {
+  private static String summarize(Collector collector) {
     StringBuilder sb = new StringBuilder("导入内容有误：");
-    errors.stream()
+    collector.errors.stream()
         .limit(10)
         .forEach(
             error ->
@@ -168,8 +245,11 @@ public class ScoreImportService {
                     .append(" ")
                     .append(error.message())
                     .append("；"));
-    if (errors.size() > 10) {
-      sb.append("……共 ").append(errors.size()).append(" 条");
+    if (collector.totalErrors > 10) {
+      sb.append("……共 ").append(collector.totalErrors).append(" 条");
+    }
+    if (collector.truncated) {
+      sb.append("（错误过多，仅保留前 ").append(MAX_ERRORS).append(" 条明细）");
     }
     return sb.toString();
   }
@@ -191,9 +271,9 @@ public class ScoreImportService {
     }
   }
 
-  private Map<Long, SupplierBrief> suppliersOf(long taskId) {
-    List<Long> supplierIds =
-        taskSupplierMapper.findByTaskId(taskId).stream().map(TaskSupplier::getSupplierId).toList();
+  /** 由已取回的评估单推供应商集合（P2-4：不再自己查 task_supplier，避免同一个任务被读两遍）。 */
+  private Map<Long, SupplierBrief> suppliersOf(List<TaskSupplier> taskSuppliers) {
+    List<Long> supplierIds = taskSuppliers.stream().map(TaskSupplier::getSupplierId).toList();
     Map<Long, SupplierBrief> byId = new LinkedHashMap<>();
     if (!supplierIds.isEmpty()) {
       supplierQueryFacade.findByIds(supplierIds).forEach(brief -> byId.put(brief.id(), brief));
@@ -212,8 +292,8 @@ public class ScoreImportService {
 
     static ImportContext of(
         EvalTask task,
-        TaskSupplierMapper taskSupplierMapper,
-        SheetMapper sheetMapper,
+        List<TaskSupplier> taskSuppliers,
+        List<Sheet> sheetsOfTask,
         TemplateSnapshotFacade facade,
         Map<Long, SupplierBrief> suppliers,
         long operatorId) {
@@ -230,12 +310,12 @@ public class ScoreImportService {
       suppliers.values().forEach(brief -> supplierIdByCode.put(brief.code(), brief.id()));
 
       Map<Long, TaskSupplier> taskSupplierBySupplierId = new LinkedHashMap<>();
+      taskSuppliers.forEach(
+          taskSupplier -> taskSupplierBySupplierId.put(taskSupplier.getSupplierId(), taskSupplier));
+      // 评分单**一次取回**后在内存里按 (评估单, 维度) 建索引（P2-4：原先是 1+N 的逐评估单查询）
       Map<String, Sheet> sheets = new LinkedHashMap<>();
-      for (TaskSupplier taskSupplier : taskSupplierMapper.findByTaskId(task.getId())) {
-        taskSupplierBySupplierId.put(taskSupplier.getSupplierId(), taskSupplier);
-        for (Sheet sheet : sheetMapper.findByTaskSupplierId(taskSupplier.getId())) {
-          sheets.put(taskSupplier.getId() + "-" + sheet.getDimensionId(), sheet);
-        }
+      for (Sheet sheet : sheetsOfTask) {
+        sheets.put(sheet.getTaskSupplierId() + "-" + sheet.getDimensionId(), sheet);
       }
       return new ImportContext(
           indicatorsByCode,
@@ -254,8 +334,19 @@ public class ScoreImportService {
     private final Map<Integer, String> headers = new LinkedHashMap<>();
     private final List<ImportReport.CellError> errors = new ArrayList<>();
     private final Map<Long, Map<Long, BigDecimal>> valuesBySheet = new LinkedHashMap<>();
+    private int totalErrors;
+    private boolean truncated;
     private int skippedCells;
     private int rowNumber;
+
+    private void error(int row, String column, String message) {
+      totalErrors++;
+      if (errors.size() < MAX_ERRORS) {
+        errors.add(new ImportReport.CellError(row, column, message));
+      } else {
+        truncated = true;
+      }
+    }
 
     private Collector(ImportContext context) {
       this.context = context;
@@ -271,7 +362,7 @@ public class ScoreImportService {
             }
             if (!context.indicatorsByCode().containsKey(header.trim())) {
               // 未知列直接报错：静默忽略会让整列数据"消失"，而用户以为导进去了
-              errors.add(new ImportReport.CellError(1, header, "表头里的指标编码不在该任务的模板版本里"));
+              error(1, header, "表头里的指标编码不在该任务的模板版本里");
             }
           });
     }
@@ -281,17 +372,17 @@ public class ScoreImportService {
       rowNumber = analysisContext.readRowHolder().getRowIndex() + 1;
       String supplierCode = row.get(0);
       if (supplierCode == null || supplierCode.isBlank()) {
-        errors.add(new ImportReport.CellError(rowNumber, SUPPLIER_CODE_HEADER, "供应商编码为空"));
+        error(rowNumber, SUPPLIER_CODE_HEADER, "供应商编码为空");
         return;
       }
       Long supplierId = context.supplierIdByCode().get(supplierCode.trim());
       if (supplierId == null) {
-        errors.add(new ImportReport.CellError(rowNumber, SUPPLIER_CODE_HEADER, "该供应商不在本任务内"));
+        error(rowNumber, SUPPLIER_CODE_HEADER, "该供应商不在本任务内");
         return;
       }
       TaskSupplier taskSupplier = context.taskSupplierBySupplierId().get(supplierId);
       if (taskSupplier == null) {
-        errors.add(new ImportReport.CellError(rowNumber, SUPPLIER_CODE_HEADER, "该供应商还没有评估单"));
+        error(rowNumber, SUPPLIER_CODE_HEADER, "该供应商还没有评估单");
         return;
       }
 
@@ -310,14 +401,14 @@ public class ScoreImportService {
             Sheet sheet =
                 context.sheetByTaskSupplierAndDimension().get(taskSupplier.getId() + "-" + dimensionId);
             if (sheet == null) {
-              errors.add(new ImportReport.CellError(rowNumber, header, "该指标对应的评分单不存在"));
+              error(rowNumber, header, "该指标对应的评分单不存在");
               return;
             }
             if (sheet.getAssigneeId() == null || sheet.getAssigneeId() != context.operatorId()) {
               // 04-096：导入是**任务级**的（模板含全部列），但写入只能落在**指派给自己**的维度上。
               // 这里报错而不是像"待指派/已提交"那样静默跳过——"填了别人的格子"多半是拿错了表，
               // 咽下去就变成静默失效（CLAUDE 默认约定第 1 条）。
-              errors.add(new ImportReport.CellError(rowNumber, header, "该指标不在指派给你的评分单里"));
+              error(rowNumber, header, "该指标不在指派给你的评分单里");
               return;
             }
             if (!SheetStatus.SCORING.name().equals(sheet.getStatus().name())) {
@@ -328,14 +419,14 @@ public class ScoreImportService {
             try {
               value = new BigDecimal(raw.trim());
             } catch (NumberFormatException ex) {
-              errors.add(new ImportReport.CellError(rowNumber, header, "不是合法数字：" + raw));
+              error(rowNumber, header, "不是合法数字：" + raw);
               return;
             }
             try {
               // 与打分页同一个策略：边界与精度只写一份（01 §6.6）
               ScoreStrategies.of(indicator).toHundred(value, indicator);
             } catch (IllegalArgumentException ex) {
-              errors.add(new ImportReport.CellError(rowNumber, header, ex.getMessage()));
+              error(rowNumber, header, ex.getMessage());
               return;
             }
             valuesBySheet

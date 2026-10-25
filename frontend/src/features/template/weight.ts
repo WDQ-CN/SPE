@@ -80,7 +80,15 @@ export interface TemplateWeightReport {
    */
   invalidTargets: string[]
   /**
-   * 能否发布：有维度、维度合计合规、每个维度内合计合规、没有空维度、且没有非法目标值。
+   * 版本内重复的指标编码（对应后端 `TEMPLATE_INDICATOR_CODE_DUPLICATE(2014)`）。
+   *
+   * <p>补上这一类才真的"与后端发布校验五类逐条对应"（03 §38 的 P2-18：原先声明五类、实现只有四类）。
+   * ⚠️ 判定的**作用域是版本、不是维度**——后端唯一键是 `uk_indicator_version_code(template_version_id, code)`，
+   * 跨维度重复同样会被拒；只按维度内查重会漏。
+   */
+  duplicateCodes: string[]
+  /**
+   * 能否发布：有维度、维度合计合规、每个维度内合计合规、没有空维度、没有非法目标值、编码不重复。
    *
    * <p>与后端发布校验的五类逐条对应。**不合规只是禁用「发布」，不影响保存**——这正是 12 §E4 的取向：
    * 草稿允许合计 ≠ 100 的中间态，否则用户想把 40 改成 30 时会先被拦住、根本改不动。
@@ -105,6 +113,8 @@ export function checkTemplateWeights(
   const emptyDimensions: string[] = []
   const indicatorIssues: { dimensionName: string; check: WeightCheck }[] = []
   const invalidTargets: string[] = []
+  const seenCodes = new Set<string>()
+  const duplicateCodes: string[] = []
 
   for (const dimension of dimensions) {
     if (dimension.indicators.length === 0) {
@@ -119,6 +129,15 @@ export function checkTemplateWeights(
       if (indicator.scoreMode === 'TARGET' && (indicator.targetValue ?? 0) <= 0) {
         invalidTargets.push(`${dimension.name}/${indicator.code ?? '未命名指标'}`)
       }
+      // 编码查重跨维度进行（后端唯一键的作用域是版本，不是维度）
+      if (indicator.code) {
+        const code = indicator.code.trim()
+        if (code && seenCodes.has(code)) {
+          duplicateCodes.push(code)
+        } else if (code) {
+          seenCodes.add(code)
+        }
+      }
     }
   }
 
@@ -127,11 +146,13 @@ export function checkTemplateWeights(
     indicatorIssues,
     emptyDimensions,
     invalidTargets,
+    duplicateCodes: [...new Set(duplicateCodes)],
     publishable:
       dimensions.length > 0 &&
       dimensionCheck.valid &&
       indicatorIssues.length === 0 &&
       emptyDimensions.length === 0 &&
-      invalidTargets.length === 0,
+      invalidTargets.length === 0 &&
+      duplicateCodes.length === 0,
   }
 }

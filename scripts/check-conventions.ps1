@@ -362,6 +362,89 @@ if ($migScanned -and $privHits.Count -eq 0) {
   }
 }
 
+# ---------------------------------------------------------------- 7) 迁移脚本合入后不可修改
+Say ''
+Say '=== 7) 迁移脚本的不可变性（06 §1.3 边界条款 / 03 §38 的 P1-13）==='
+# 比对"引入提交里的 blob"与"HEAD 里的 blob"。⚠️ 两个前提：
+# ① 只看**已提交**的内容 —— 工作区未提交的改动看不见，所以变异验证必须先临时提交（在临时分支上）才测得出来；
+# ② HEAD 里没有该路径 ⇒ 它是**新增未提交**的脚本（如 V14），跳过比对而不是报错，
+#    否则门禁自己会崩成"路径不存在"，长得像被抓到但其实没有。
+# ⚠️ 豁免清单是这条检查的**必要组成部分**：V9 历史上真的被改过（04-077 记录当时 dev 库 success=0，
+#    走 repair 重做，不存在已成功应用旧校验和的环境）。没有这张表，门禁装上那天基线就是红的，
+#    于是"两个门禁 0 FAIL"与"V9 不动"两句话互相矛盾。清单外的一切不一致都必须红。
+$immutableExemptions = @{
+  'V9__backfill_qualitative_standard.sql' =
+    'e25c9db + 4f7f21b：合入后改写过；当时 dev 库 success=0，按 04-077 以 flyway repair 重做 ⇒ 无已成功应用旧校验和的库'
+}
+$immutableChecked = 0
+$immutableChanged = @()
+$immutableExemptHits = @()
+foreach ($file in $migrationFiles) {
+  $rel = (Rel $file.FullName).Replace('\', '/')
+  $headOid = (& git -C $root rev-parse --quiet --verify "HEAD:$rel" 2>$null)
+  if (-not $headOid) { continue }   # 新增未提交：没有"合入后的历史"可比
+  $addCommit = (& git -C $root log --format='%H' --diff-filter=A -- $rel 2>$null | Select-Object -Last 1)
+  if (-not $addCommit) { continue }
+  # 比的是**两个提交里的 blob id**（git 的对象名已经是内容哈希，不必再算一次 SHA256 ——
+  # 那样还会与 `git hash-object` 的工作树换行转换打架，本项目 .gitattributes 钉了 LF）。
+  # ⚠️ 踩过的坑：`git show <commit> -- <path>` 打的是**该路径的 diff**、不是文件内容，
+  #    拿它和工作树比会让 13 个脚本全部判"被改写"（首轮实测就是这样，11 条假 FAIL）。
+  $oidAtAdd = (& git -C $root rev-parse --quiet --verify "$($addCommit):$rel" 2>$null)
+  $oidAtHead = (& git -C $root rev-parse --quiet --verify "HEAD:$rel" 2>$null)
+  if (-not $oidAtAdd -or -not $oidAtHead) { continue }
+  $immutableChecked++
+  if ($oidAtAdd.Trim() -ne $oidAtHead.Trim()) {
+    if ($immutableExemptions.ContainsKey($file.Name)) {
+      $immutableExemptHits += $file.Name
+    } else {
+      $immutableChanged += "$rel（引入提交 $addCommit 与 HEAD 的内容不一致）"
+    }
+  }
+}
+if (-not (RequireScanned 'migration-immutable' $immutableChecked '已提交到 HEAD 的迁移脚本')) {
+  # 已经判过 FAIL，不再重复
+} elseif ($immutableChanged.Count -gt 0) {
+  foreach ($c in $immutableChanged) {
+    Fail 'migration-immutable' "$c —— 已合入的迁移被改写：真实环境下次启动会 FlywayValidateException（checksum mismatch）⇒ 后端起不来（06 §1.3）"
+  }
+} else {
+  Pass 'migration-immutable' "（比对 $immutableChecked 个已合入脚本，改动 $($immutableChanged.Count) 处；豁免命中 $($immutableExemptHits.Count) 处：$($immutableExemptHits -join ', ')）"
+  # 豁免清单自己也要有正例：清单里登记的脚本若已被**删掉**，说明例外表在空转（把 V9 从表里删掉应变红）
+  foreach ($name in $immutableExemptions.Keys) {
+    if ($immutableExemptHits -notcontains $name) {
+      Warn 'migration-immutable-exempt-unused' "豁免清单里的 $name 没有被用到 —— 该脚本已不存在，或比对逻辑没跑到它（清单会藏住真违规）"
+    }
+  }
+}
+
+# ---------------------------------------------------------------- 8) 上传体积上限两处必须一致
+Say ''
+Say '=== 8) 上传上限的一致性（03 §38 的 P1-7；CLAUDE 第 3 条的机械化）==='
+# nginx 的 client_max_body_size 与 Boot 的 max-file-size 是同一事实的两处副本，而 nginx 没有
+# "从文档取值"的机制 ⇒ 唯一能落地的形态就是**比对这两个数**（06 §2.6 写"两处只引用不复制"做不到）。
+$nginxConfPath = Join-Path $root 'frontend\nginx.conf'
+$appYmlPath = Join-Path $root 'backend\src\main\resources\application.yml'
+$nginxMb = -1
+$bootMb = -1
+if (Test-Path $nginxConfPath) {
+  $nginxText = [System.IO.File]::ReadAllText($nginxConfPath)
+  $m = [regex]::Match($nginxText, 'client_max_body_size\s+(\d+)\s*m')
+  if ($m.Success) { $nginxMb = [int]$m.Groups[1].Value }
+}
+if (Test-Path $appYmlPath) {
+  $ymlText = [System.IO.File]::ReadAllText($appYmlPath)
+  $m2 = [regex]::Match($ymlText, 'max-file-size:\s*\$\{[A-Z_]+:(\d+)MB\}')
+  if (-not $m2.Success) { $m2 = [regex]::Match($ymlText, 'max-file-size:\s*(\d+)MB') }
+  if ($m2.Success) { $bootMb = [int]$m2.Groups[1].Value }
+}
+if ($nginxMb -lt 0 -or $bootMb -lt 0) {
+  Fail 'upload-limits' "scan-empty：没读到两处的上限值（nginx=$nginxMb MB，Boot=$bootMb MB）—— 判定不可信，不代表一致（04-071）"
+} elseif ($nginxMb -ne $bootMb) {
+  Fail 'upload-limits' "nginx client_max_body_size=${nginxMb}m 与 spring.servlet.multipart.max-file-size=${bootMb}MB 不一致 —— 小的一方先返回，用户看到的错误码由它决定（03 §38 P1-7）"
+} else {
+  Pass 'upload-limits' "（两处都是 ${nginxMb}MB：nginx 与 Boot 一致）"
+}
+
 # ---------------------------------------------------------------- 汇总
 Say ''
 if ($script:failures.Count -gt 0) {

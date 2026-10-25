@@ -7,6 +7,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noMethods;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.spe.common.event.DomainEvent;
 import com.tngtech.archunit.base.DescribedPredicate;
 import com.tngtech.archunit.core.domain.Dependency;
@@ -124,13 +125,27 @@ class ArchitectureTest {
    * <p>为什么需要机械化保证：安全链只要求「已认证」，细粒度权限全靠方法上的 `@PreAuthorize`。
    * 新增一个 Controller 时忘了写它**不会有任何报错**——只是任何已登录用户都能访问：越权静默发生，
    * 前端隐藏菜单与路由守卫都拦不住直接调接口。把「默认拒绝」变成规则，漏写即测试变红（03 §18）。
+   *
+   * <p>⚠️ 2026-10-17（03 §38 的 P2-12）：选取器从 `haveSimpleNameEndingWith("Controller")` 改成
+   * **按注解选取**。旧的写法下，一个叫 `XxxWeb` 的 `@RestController` 能过 R-E 却逃过本条——
+   * 而本条要防的正是"漏写注解静默越权"。夹具 `TaskWebEndpoint` 钉住这一点。
    */
   @ArchTest
   static final ArchRule controllersDeclareClassLevelAuthorization =
-      classes().that().haveSimpleNameEndingWith("Controller")
-          .and(notPublicEndpoint())
+      classes().that(annotatedAsController()).and(notPublicEndpoint())
           .should().beAnnotatedWith(PreAuthorize.class)
           .because("端点默认拒绝：漏一个 @PreAuthorize 就是一处越权（06 §8 第 10 条）");
+
+  /** 两条 R-H 共用的选取器：什么算 Controller 由**注解**决定，不由类名决定（P2-12）。 */
+  private static DescribedPredicate<JavaClass> annotatedAsController() {
+    return new DescribedPredicate<>("带 @RestController 或 @Controller") {
+      @Override
+      public boolean test(JavaClass javaClass) {
+        return javaClass.isAnnotatedWith(RestController.class)
+            || javaClass.isAnnotatedWith(Controller.class);
+      }
+    };
+  }
 
   /** 免鉴权端点白名单：登录接口本身必须放行（否则永远登不进来），ping 是健康探针。 */
   private static final Set<String> PUBLIC_CONTROLLERS = Set.of("AuthController", "PingController");
@@ -152,7 +167,7 @@ class ArchitectureTest {
    */
   @ArchTest
   static final ArchRule requestBodyParametersAreValidated =
-      methods().that().areDeclaredInClassesThat().haveSimpleNameEndingWith("Controller")
+      methods().that().areDeclaredInClassesThat(annotatedAsController())
           .and().arePublic()
           .should(validateRequestBodyParameters())
           .because("外部输入必须过校验（06 §8 第 11 条）");
@@ -177,6 +192,22 @@ class ArchitectureTest {
   static final ArchRule contextsAreFreeOfCycles =
       slices().matching("com.spe.context.(*)..").should().beFreeOfCycles()
           .because("依赖方向静态单向、无环（05 §5.1）");
+
+  /**
+   * R-I 只增不改的表不给自己留后门（03 §38 的 P2-3）：{@code approval} 包的 Mapper 一旦继承
+   * {@link BaseMapper}，就白送 {@code updateById}/{@code deleteById}——类注释里那句"不提供任何
+   * UPDATE/DELETE"便只剩自觉在守（CLAUDE 默认约定第 1 条：声明了就要有机械保证）。
+   *
+   * <p>为什么不用"禁止调用 updateById"那种写法：调用点的目标所有者会被解析成 {@code BaseMapper}
+   * 本身，ArchUnit 无法区分"调的是哪一张表的 Mapper"，那条规则会**永远抓不到本次要防的东西**——
+   * 是假守卫（06 §8 第 29 条点名的形态）。所以从结构上断掉继承关系。
+   */
+  @ArchTest
+  static final ArchRule appendOnlyMappersDoNotInheritBaseMapper =
+      noClasses().that().resideInAPackage("..internal.approval..")
+          .and().haveSimpleNameEndingWith("Mapper")
+          .should().beAssignableTo(BaseMapper.class)
+          .because("只增不改的表（02 §3.3）不继承通用写方法");
 
   /** 取包名所属的上下文名；不在 context 包下返回 null。 */
   private static String contextOf(String packageName) {

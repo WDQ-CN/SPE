@@ -74,6 +74,36 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '评分' },
       },
       {
+        path: 'approvals',
+        name: 'approvals',
+        component: () => import('@/features/evaluation/views/MyApprovalsView.vue'),
+        meta: { title: '我的审批' },
+      },
+      {
+        path: 'approvals/:id',
+        name: 'approval-detail',
+        component: () => import('@/features/evaluation/views/ApprovalDetailView.vue'),
+        meta: { title: '审批' },
+      },
+      {
+        path: 'results',
+        name: 'results',
+        component: () => import('@/features/evaluation/views/ResultTasksView.vue'),
+        meta: { title: '结果报表' },
+      },
+      {
+        path: 'results/:id',
+        name: 'task-results',
+        component: () => import('@/features/evaluation/views/TaskResultsView.vue'),
+        meta: { title: '任务结果' },
+      },
+      {
+        path: 'reports/:id',
+        name: 'report',
+        component: () => import('@/features/evaluation/views/TaskSupplierReportView.vue'),
+        meta: { title: '评估报告' },
+      },
+      {
         path: 'users',
         name: 'users',
         component: () => import('@/features/user/views/UserListView.vue'),

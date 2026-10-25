@@ -48,7 +48,10 @@ class GlobalExceptionHandlerValidationTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value(ErrorCode.BAD_REQUEST.code()))
         .andExpect(jsonPath("$.data").doesNotExist())
-        .andExpect(jsonPath("$.message").value(containsString("name")));
+        // P2-14：响应体只留人话文案，字段路径 `name` 不许出现（它以前就在，且被这条用例钉着）
+        .andExpect(jsonPath("$.message").value(containsString("名称不能为空")))
+        .andExpect(
+            jsonPath("$.message").value(org.hamcrest.Matchers.not(containsString("name"))));
   }
 
   @Test
@@ -58,11 +61,14 @@ class GlobalExceptionHandlerValidationTest {
         .perform(post("/probe/constraint"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value(ErrorCode.BAD_REQUEST.code()))
-        .andExpect(jsonPath("$.message").value(containsString("不能为空")));
+        .andExpect(jsonPath("$.message").value(containsString("名称不能为空")))
+        // 同一条口径：propertyPath（"name"）只进日志，不进响应体
+        .andExpect(
+            jsonPath("$.message").value(org.hamcrest.Matchers.not(containsString("name"))));
   }
 
-  /** 校验探针用的载荷。 */
-  record ProbePayload(@NotBlank(message = "不能为空") String name) {
+  /** 校验探针用的载荷（文案自带主语，正是 P2-14 之后 DTO 文案的要求）。 */
+  record ProbePayload(@NotBlank(message = "名称不能为空") String name) {
   }
 
   /** 仅用于触发参数校验的探针 Controller，不参与生产代码。 */

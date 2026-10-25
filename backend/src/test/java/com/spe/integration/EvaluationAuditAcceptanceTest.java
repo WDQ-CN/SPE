@@ -44,6 +44,7 @@ class EvaluationAuditAcceptanceTest extends AbstractIntegrationTest {
     long evaluatorId = userIdOf("w5-audit-eval-" + year);
     long supplierId = insertSupplier("W5-AUDIT-" + year);
     long versionId = publishedDefaultVersionId();
+    long templateId = publishedDefaultTemplateId();
     long approverId = userIdOf(ADMIN_USERNAME);
 
     // ① TASK_CREATE
@@ -58,6 +59,7 @@ class EvaluationAuditAcceptanceTest extends AbstractIntegrationTest {
                                 "name", "W5 留痕任务-" + year,
                                 "year", year,
                                 "quarter", 1,
+                                "templateId", templateId,
                                 "templateVersionId", versionId,
                                 "deadline", LocalDate.of(year, 12, 31).toString(),
                                 "supplierIds", List.of(supplierId),
@@ -75,6 +77,7 @@ class EvaluationAuditAcceptanceTest extends AbstractIntegrationTest {
                         "name", "W5 留痕任务-" + year + "（改）",
                         "year", year,
                         "quarter", 1,
+                        "templateId", templateId,
                         "templateVersionId", versionId,
                         "deadline", LocalDate.of(year, 12, 31).toString(),
                         "supplierIds", List.of(supplierId),
@@ -142,8 +145,17 @@ class EvaluationAuditAcceptanceTest extends AbstractIntegrationTest {
         .isGreaterThanOrEqualTo(1L);
     assertThat(actionCount("TASK_UPDATE", taskId)).as("TASK_UPDATE").isGreaterThanOrEqualTo(1L);
     assertThat(actionCount("TASK_PUBLISH", taskId)).as("TASK_PUBLISH").isGreaterThanOrEqualTo(1L);
-    assertThat(actionCount("SHEET_ASSIGN", taskSupplierIdOf(taskId)))
-        .as("SHEET_ASSIGN 的 target 是评估单（四张评分单四次改派）")
+    assertThat(actionCount("SHEET_ASSIGN", taskId))
+        .as("SHEET_ASSIGN 的 target 是**任务**（P2-9：原先写的是 TASK + 评估单 id，按任务查会串）；"
+            + "四张评分单四次改派，评估单 id 在 detail 里")
+        .isGreaterThanOrEqualTo(4L);
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from audit_log where action = 'SHEET_ASSIGN'"
+                    + " and target_type = 'TASK' and target_id = ? and detail like '%taskSupplierId%'",
+                Long.class,
+                taskId))
+        .as("detail 必须带得回评估单 id，否则这条留痕定位不到改的是哪一张评估单")
         .isGreaterThanOrEqualTo(4L);
     assertThat(actionCount("SHEET_SUBMIT", taskSupplierIdOf(taskId)))
         .as("SHEET_SUBMIT 的 target 是评估单")
@@ -215,6 +227,15 @@ class EvaluationAuditAcceptanceTest extends AbstractIntegrationTest {
     Long id =
         jdbcTemplate.queryForObject(
             "select v.id from template_version v join template t on t.id = v.template_id"
+                + " where t.name = '季度绩效默认模板' and v.version_no = 1 and v.status = 'PUBLISHED'",
+            Long.class);
+    return id == null ? -1 : id;
+  }
+
+  private long publishedDefaultTemplateId() {
+    Long id =
+        jdbcTemplate.queryForObject(
+            "select t.id from template_version v join template t on t.id = v.template_id"
                 + " where t.name = '季度绩效默认模板' and v.version_no = 1 and v.status = 'PUBLISHED'",
             Long.class);
     return id == null ? -1 : id;

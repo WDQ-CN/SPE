@@ -2,6 +2,7 @@ package com.spe.context.evaluation.internal.scoring;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.context.AnalysisContext;
@@ -148,6 +149,41 @@ class ScoreImportServiceIntegrationTest extends AbstractIntegrationTest {
         .isInstanceOf(BizException.class)
         .hasMessageContaining("最多两位小数");
     assertThat(fixture.scoreRowCount()).isZero();
+  }
+
+  @Test
+  @DisplayName("P5 导入错误明细有上限：>1000 条时只保留前 1000 条并提示，整批仍不写")
+  void importErrorsAreCappedInMemory() {
+    Fixture fixture = publishedTask(1);
+    List<String> headers = List.of(ScoreImportService.SUPPLIER_CODE_HEADER, "IQC_PASS_RATE");
+    List<List<Object>> rows = new ArrayList<>();
+    for (int i = 0; i < 1200; i++) {
+      rows.add(List.of(fixture.supplierCode(0), "abc"));
+    }
+
+    BizException failure =
+        catchThrowableOfType(
+            () -> importXlsx(fixture.taskId(), xlsx(headers, rows), "BATCH-CAP"),
+            BizException.class);
+
+    assertThat(failure).as("逐格错误仍走 2027").isNotNull();
+    assertThat(failure.errorCode()).isEqualTo(ErrorCode.IMPORT_CELL_INVALID);
+    assertThat(failure.getMessage())
+        .as("总数如实统计，明细只保留前 1000 条")
+        .contains("共 1200 条")
+        .contains("仅保留前 " + ScoreImportService.MAX_ERRORS + " 条明细");
+    assertThat(fixture.scoreRowCount()).as("有错仍整批不写").isZero();
+
+    List<List<Object>> small = List.of(
+        List.of(fixture.supplierCode(0), "abc"), List.of(fixture.supplierCode(0), "def"));
+    BizException smallFailure =
+        catchThrowableOfType(
+            () -> importXlsx(fixture.taskId(), xlsx(headers, small), "BATCH-SMALL"),
+            BizException.class);
+    assertThat(smallFailure).isNotNull();
+    assertThat(smallFailure.getMessage())
+        .as("1000 条以内不出现截断提示")
+        .doesNotContain("仅保留前");
   }
 
   @Test
@@ -432,12 +468,18 @@ class ScoreImportServiceIntegrationTest extends AbstractIntegrationTest {
             "select v.id from template_version v join template t on t.id = v.template_id"
                 + " where t.name = '季度绩效默认模板' and v.version_no = 1 and v.status = 'PUBLISHED'",
             Long.class);
+    Long templateId =
+        jdbcTemplate.queryForObject(
+            "select t.id from template_version v join template t on t.id = v.template_id"
+                + " where t.name = '季度绩效默认模板' and v.version_no = 1 and v.status = 'PUBLISHED'",
+            Long.class);
     long taskId =
         taskService.createDraft(
             new TaskDraftCommand(
                 "W4 导入任务-" + suffix,
                 year,
                 1,
+                versionId == null ? -1 : templateId,
                 versionId == null ? -1 : versionId,
                 LocalDate.of(year, 12, 31),
                 supplierIds,

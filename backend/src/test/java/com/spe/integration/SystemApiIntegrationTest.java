@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.spe.context.system.api.Role;
 import com.spe.context.system.api.UserQueryFacade;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
@@ -121,6 +122,57 @@ class SystemApiIntegrationTest extends AbstractIntegrationTest {
     assertThat(rows).isNotEmpty();
     assertThat(rows.get(0).get("operator_id")).isEqualTo(managerId);
     assertThat(rows.get(0).get("operator_name")).isEqualTo("manager_user");
+  }
+
+  @Test
+  @DisplayName("P0-1 可选人员端点：MANAGER 取得到、不含管理面字段；非法角色 2001；EVALUATOR/匿名被拒")
+  void userOptionsServeManagerPickers() throws Exception {
+    String adminToken = login(ADMIN_USERNAME, ADMIN_PASSWORD);
+    long evaluatorId = createUser(adminToken, "option_evaluator", Role.EVALUATOR);
+    createUser(adminToken, "option_manager", Role.MANAGER);
+    String managerToken = login("option_manager", DEFAULT_PASSWORD);
+    String evaluatorToken = login("option_evaluator", DEFAULT_PASSWORD);
+
+    // ① 正例：MANAGER 拿得到刚建出来的评估人。**必须断"拿到了"**——只断"没报错"的话，
+    //    SQL 写错、角色过滤太严、表被清空都会照样绿（04-070 的判据形状）。
+    //    ⚠️ 只查 EVALUATOR：端点有 200 行硬上限（18 §6），共享测试库被 e2e 累积后
+    //    EVALUATOR+MANAGER 会超过上限、新用户被截断；单一角色的正例不受这个干扰。
+    String body =
+        mockMvc
+            .perform(
+                authed(get("/api/user-options").param("roles", "EVALUATOR"), managerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(0))
+            .andReturn()
+            .getResponse()
+            .getContentAsString(StandardCharsets.UTF_8);
+    assertThat(body).as("实际响应：%s", body).contains("\"id\":" + evaluatorId);
+    // ② 目录面而不是管理面：不能漏出 username，也不能漏出守卫 UPDATE 要用的 version
+    assertThat(body).as("实际响应：%s", body).doesNotContain("username").doesNotContain("version");
+
+    // ③ 目录面的通用能力：不传/传全角色都能取到对应集合（审批链前端固定传 MANAGER,ADMIN）
+    mockMvc
+        .perform(authed(get("/api/user-options").param("roles", "ADMIN,VIEWER"), managerToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.code").value(0))
+        .andExpect(jsonPath("$.data.length()").value(org.hamcrest.Matchers.greaterThan(0)));
+
+    // ④ roles 白名单：非枚举值 → 2001，且不外泄枚举/内部形状
+    mockMvc
+        .perform(authed(get("/api/user-options").param("roles", "NOT_A_ROLE"), managerToken))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value(2001))
+        .andExpect(jsonPath("$.message").value("角色取值不在允许范围内"));
+
+    // ⑤ 权限边界（18 §6 点 2 的裁决：只放 ADMIN,MANAGER）
+    mockMvc
+        .perform(authed(get("/api/user-options"), evaluatorToken))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value(4001));
+    mockMvc
+        .perform(get("/api/user-options"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value(1001));
   }
 
   @Test
@@ -338,6 +390,20 @@ class SystemApiIntegrationTest extends AbstractIntegrationTest {
     assertThat(userQueryFacade.isEnabled(999_999L)).isFalse();
     assertThat(userQueryFacade.findByIds(List.of(id, userIdOf(ADMIN_USERNAME)))).hasSize(2);
     assertThat(userQueryFacade.findByIds(List.of())).isEmpty();
+  }
+
+  @Test
+  @DisplayName("UserQueryFacade：findEnabledIdsByRoles 只返回在职的指定角色（评估生效通知采购经理）")
+  void userQueryFacadeFindsEnabledIdsByRoles() throws Exception {
+    String adminToken = login(ADMIN_USERNAME, ADMIN_PASSWORD);
+    long managerId = createUser(adminToken, "facade_manager", Role.MANAGER);
+    long evaluatorId = createUser(adminToken, "facade_evaluator", Role.EVALUATOR);
+
+    List<Long> managers = userQueryFacade.findEnabledIdsByRoles(List.of(Role.MANAGER));
+
+    assertThat(managers).as("刚建的经理必须在结果里").contains(managerId);
+    assertThat(managers).as("评估人不是采购经理").doesNotContain(evaluatorId);
+    assertThat(userQueryFacade.findEnabledIdsByRoles(List.of())).isEmpty();
   }
 
   @Test

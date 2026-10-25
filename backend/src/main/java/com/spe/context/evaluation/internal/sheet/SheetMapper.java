@@ -111,11 +111,36 @@ public interface SheetMapper extends BaseMapper<Sheet> {
           + " WHERE ts.task_id = #{taskId} AND s.assignee_id = #{assigneeId}")
   long countMineInTask(@Param("taskId") long taskId, @Param("assigneeId") long assigneeId);
 
+  /** 报告可见性（01 §7）：评估人只能看「本人参与过」的评估单——按评估单收敛的参与判据。 */
+  @Select(
+      "SELECT COUNT(*) FROM sheet WHERE task_supplier_id = #{taskSupplierId}"
+          + " AND assignee_id = #{assigneeId}")
+  long countByTaskSupplierIdAndAssignee(
+      @Param("taskSupplierId") long taskSupplierId, @Param("assigneeId") long assigneeId);
+
   /** 提交（13 §E9 第 3 步）：评分中 → 已提交，0 行 ⇒ 3001（并发或状态不允许由调用方区分）。 */
   @Update(
       "UPDATE sheet SET status = 'SUBMITTED', version = version + 1"
           + " WHERE id = #{id} AND status = 'SCORING' AND version = #{version}")
   int markSubmitted(@Param("id") long id, @Param("version") int version);
+
+  /**
+   * 驳回解锁（T5，15 §E5）：把该评估单里**已提交**的评分单放回「评分中」，逐个 +version。
+   *
+   * <p>`status='SUBMITTED'` 是守卫而不是过滤：未提交的评分单本来就可写，动它只会白白让前端手里的
+   * 版本失效。返回行数应等于"刚才已提交的张数"（判据 3 直接断言这个数）。
+   */
+  @Update(
+      "UPDATE sheet SET status = 'SCORING', version = version + 1"
+          + " WHERE task_supplier_id = #{taskSupplierId} AND status = 'SUBMITTED'")
+  int unlockSubmittedByTaskSupplier(@Param("taskSupplierId") long taskSupplierId);
+
+  /** 本评估单涉及的评估人（已提交/未提交都算）：驳回通知的收件人（05 §5.3）。 */
+  @Select(
+      "SELECT DISTINCT assignee_id FROM sheet"
+          + " WHERE task_supplier_id = #{taskSupplierId} AND assignee_id IS NOT NULL"
+          + " ORDER BY assignee_id")
+  List<Long> findDistinctAssigneeIds(@Param("taskSupplierId") long taskSupplierId);
 
   /**
    * 该评估单里**还没有提交**的评分单（13 §E9 第 4 步 / §E11：这一读必须是**当前读**）。

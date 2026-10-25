@@ -125,13 +125,25 @@ async function ensureSupplier(context: { api: Api; headers: Record<string, strin
 /** 建一个**全新周期**的任务并发布，把质量/交付两张评分单改派给对应的评估人。 */
 async function seedTask(
   context: { api: Api; headers: Record<string, string> },
+  managerId: number,
   qualityId: number,
   deliveryId: number,
 ): Promise<Seed> {
   const supplierId = await ensureSupplier(context)
-  const listed = await context.api.get('/api/tasks?page=1&size=100', { headers: context.headers })
-  const tasks: { year: number }[] = (await listed.json()).data.list
-  const used = new Set(tasks.map((task) => task.year))
+  // J4 是"同一供应商同一周期只能一个非取消任务"，而本 spec 复用同一个供应商 ⇒ 周期必须全局唯一。
+  // 不能只扫第一页（04-042）：任务超过 100 条后，旧年份从第一页消失，会挑中已用过的年份 → 发布 2019。
+  const used = new Set<number>()
+  for (let page = 1; ; page += 1) {
+    const listed = await context.api.get(`/api/tasks?page=${page}&size=100`, {
+      headers: context.headers,
+    })
+    const body = await listed.json()
+    const tasks: { year: number }[] = body.data.list
+    tasks.forEach((task) => used.add(task.year))
+    if (tasks.length < 100 || page * 100 >= body.data.total) {
+      break
+    }
+  }
   let year = 2035
   while (used.has(year)) {
     year += 1
@@ -149,10 +161,12 @@ async function seedTask(
       name: `${TASK_PREFIX} ${year}Q1`,
       year,
       quarter: 1,
+      templateId,
       templateVersionId: versionId,
       deadline: `${year}-12-31`,
       supplierIds: [supplierId],
-      approverIds: [qualityId],
+      // 审批人必须是 MANAGER/ADMIN（01 §3 口径，2026-10-25 裁决）：评估人不能进审批链
+      approverIds: [managerId],
     },
   })
   const createdBody = await created.json()
@@ -210,10 +224,10 @@ test.describe('P3 评估流程（M3：两个部门协同完成一个供应商的
     const admin = await adminApi()
     const qualityId = await ensureUser(admin, QUALITY_USERNAME, 'EVALUATOR', 'QUALITY')
     const deliveryId = await ensureUser(admin, DELIVERY_USERNAME, 'EVALUATOR', 'DELIVERY')
-    await ensureUser(admin, MANAGER_USERNAME, 'MANAGER', 'PURCHASE')
+    const managerId = await ensureUser(admin, MANAGER_USERNAME, 'MANAGER', 'PURCHASE')
     // 建任务/发布/改派是 MANAGER 的权限（01 §7）：admin 的令牌做这些会 403/4001
     const manager = await loginAs(MANAGER_USERNAME)
-    const seed = await seedTask(manager, qualityId, deliveryId)
+    const seed = await seedTask(manager, managerId, qualityId, deliveryId)
 
     const problems = watchConsole(page)
     await login(page, QUALITY_USERNAME, PASSWORD)
@@ -264,14 +278,71 @@ test.describe('P3 评估流程（M3：两个部门协同完成一个供应商的
     expect(problems.all, '控制台问题').toEqual([])
   })
 
+  /**
+   * P2-15（03 §38）的用户可见形态：**删值 → 保存 → 提示已保存 → 刷新后旧值复活**。
+   *
+   * <p>判据写成两步正例：填过并保存后刷新**看得见**那个值，清空并保存后刷新**看不见**。
+   * 少了前一步，"看不见"可能只是因为压根没写进去（那正是当年这个 bug 藏住的原因）。
+   */
+  test('评估人：清空一格再保存 ⇒ 刷新后这格确实是空的（P2-15 的删值进契约）', async ({ page }) => {
+    const admin = await adminApi()
+    const qualityId = await ensureUser(admin, QUALITY_USERNAME, 'EVALUATOR', 'QUALITY')
+    const deliveryId = await ensureUser(admin, DELIVERY_USERNAME, 'EVALUATOR', 'DELIVERY')
+    const managerId = await ensureUser(admin, MANAGER_USERNAME, 'MANAGER', 'PURCHASE')
+    const manager = await loginAs(MANAGER_USERNAME)
+    const seed = await seedTask(manager, managerId, qualityId, deliveryId)
+    const taskName = `${TASK_PREFIX} ${seed.year}Q1`
+
+    const problems = watchConsole(page)
+    await login(page, QUALITY_USERNAME, PASSWORD)
+    // ⚠️ `support.login()` 只点到按钮、不等登录完成（第一条用例靠这句菜单断言等到认证态）。
+    // 少了它，紧随其后的 `page.goto('/my')` 会**把在飞的登录请求掐掉**——浏览器落在登录页，
+    // 待办自然找不到行（本用例第一版就是这么红的，红的是用例自己的竞态，不是产品）。
+    await expect(menuItem(page, '我的待办')).toBeVisible()
+
+    await openSheet(page, '质量', taskName)
+    const firstCell = page.locator('.el-table__row input').first()
+    await expect(firstCell).toBeVisible()
+    await firstCell.fill('98.50')
+    await firstCell.press('Tab')
+    await page.getByRole('button', { name: '保存' }).click()
+    await expect(page.locator('.el-message').first()).toContainText('已保存')
+
+    await openSheet(page, '质量', taskName)
+    await expect(
+      page.locator('.el-table__row input').first(),
+      '前置正例：保存过的值刷新后必须在',
+    ).toHaveValue('98.50') // ⚠️ `el-input-number` 的 `:precision=2` 会把 98.5 显示成 98.50
+
+    await page.locator('.el-table__row input').first().fill('')
+    await page.locator('.el-table__row input').first().press('Tab')
+    await page.getByRole('button', { name: '保存' }).click()
+    await expect(page.locator('.el-message').first()).toContainText('已保存')
+
+    await openSheet(page, '质量', taskName)
+    await expect(
+      page.locator('.el-table__row input').first(),
+      '清空已经落库——旧值复活就是 P2-15 的那个 bug',
+    ).toHaveValue('')
+
+    // 与提交口径的一致性：这格空着 ⇒ 本地闸门就把它算成"未填"，提交被拒（不数具体格数，
+    // 因为本用例只填过一格，其余三格同样是未填）
+    await page.getByRole('button', { name: '提交' }).click()
+    await page.getByRole('button', { name: '确定' }).click()
+    await expect(page.getByText('未填写')).toBeVisible()
+
+    expect(problems.csp, 'CSP 违规').toEqual([])
+    expect(problems.all, '控制台问题').toEqual([])
+  })
+
   test('采购经理：任务详情看板与评分单清单（含改派入口）', async ({ page }) => {
     const admin = await adminApi()
     const qualityId = await ensureUser(admin, QUALITY_USERNAME, 'EVALUATOR', 'QUALITY')
     const deliveryId = await ensureUser(admin, DELIVERY_USERNAME, 'EVALUATOR', 'DELIVERY')
-    await ensureUser(admin, MANAGER_USERNAME, 'MANAGER', 'PURCHASE')
+    const managerId = await ensureUser(admin, MANAGER_USERNAME, 'MANAGER', 'PURCHASE')
     // 建任务/发布/改派是 MANAGER 的权限（01 §7）：admin 的令牌做这些会 403/4001
     const manager = await loginAs(MANAGER_USERNAME)
-    const seed = await seedTask(manager, qualityId, deliveryId)
+    const seed = await seedTask(manager, managerId, qualityId, deliveryId)
 
     const problems = watchConsole(page)
     await login(page, MANAGER_USERNAME, PASSWORD)
@@ -296,11 +367,11 @@ test.describe('P3 评估流程（M3：两个部门协同完成一个供应商的
     const admin = await adminApi()
     const qualityId = await ensureUser(admin, QUALITY_USERNAME, 'EVALUATOR', 'QUALITY')
     const deliveryId = await ensureUser(admin, DELIVERY_USERNAME, 'EVALUATOR', 'DELIVERY')
-    await ensureUser(admin, MANAGER_USERNAME, 'MANAGER', 'PURCHASE')
+    const managerId = await ensureUser(admin, MANAGER_USERNAME, 'MANAGER', 'PURCHASE')
     await ensureUser(admin, VIEWER_USERNAME, 'VIEWER', 'OTHER')
     // 建任务/发布/改派是 MANAGER 的权限（01 §7）：admin 的令牌做这些会 403/4001
     const manager = await loginAs(MANAGER_USERNAME)
-    const seed = await seedTask(manager, qualityId, deliveryId)
+    const seed = await seedTask(manager, managerId, qualityId, deliveryId)
 
     const problems = watchConsole(page)
     await login(page, VIEWER_USERNAME, PASSWORD)

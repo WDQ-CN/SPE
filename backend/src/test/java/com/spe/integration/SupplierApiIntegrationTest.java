@@ -117,6 +117,30 @@ class SupplierApiIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
+  @DisplayName("W6 LIKE 转义：% 与 _ 按字面匹配，不再是通配符（P2-37）")
+  void keywordWildcardsAreEscaped() throws Exception {
+    String token = login(ADMIN_USERNAME, ADMIN_PASSWORD);
+    createSupplier(token, "W3T-LIT-001", "W6 100% 达成", "电子");
+    createSupplier(token, "W3T-LIT-002", "W6 1000 达成", "电子");
+    createSupplier(token, "W3T-LIT-003", "W6 A_B 公司", "电子");
+    createSupplier(token, "W3T-LIT-004", "W6 AXB 公司", "电子");
+
+    // 未转义时 % 会同时命中 "W6 1000 达成"
+    mockMvc
+        .perform(authed(get("/api/suppliers").param("keyword", "100% 达成"), token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.total").value(1))
+        .andExpect(jsonPath("$.data.list[0].code").value("W3T-LIT-001"));
+
+    // 未转义时 _ 会同时命中 "W6 AXB 公司"
+    mockMvc
+        .perform(authed(get("/api/suppliers").param("keyword", "A_B 公司"), token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.total").value(1))
+        .andExpect(jsonPath("$.data.list[0].code").value("W3T-LIT-003"));
+  }
+
+  @Test
   @DisplayName("空 category 参数不过滤：category IS NULL 的行必须留在结果里（拼空通配会吃掉它）")
   void emptyCategoryParamKeepsNullCategoryRows() throws Exception {
     String token = login(ADMIN_USERNAME, ADMIN_PASSWORD);

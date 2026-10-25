@@ -77,15 +77,33 @@ class SupplierServiceTest {
   }
 
   @Test
-  @DisplayName("启停：守卫 UPDATE 影响 0 行 → 3001，且不写审计（业务失败不留成功痕迹）")
+  @DisplayName("启停：守卫 UPDATE 0 行且供应商**存在** → 3001，且不写审计（业务失败不留成功痕迹）")
   void statusChangeConflictReturnsConflictWithoutAudit() {
     when(supplierMapper.updateStatusAndVersion(7L, SupplierStatus.DISABLED, SupplierStatus.ENABLED, 3))
         .thenReturn(0);
+    // P2-7：0 行之后要按"存不存在"分类，所以这条用例钉住"存在"那一半
+    when(supplierMapper.findById(7L))
+        .thenReturn(Optional.of(supplier(7L, SupplierStatus.ENABLED, 2, "原料")));
 
     assertThatThrownBy(() -> supplierService.changeStatus(7L, SupplierStatus.DISABLED, 3))
         .isInstanceOf(BizException.class)
         .extracting(ex -> ((BizException) ex).errorCode())
         .isEqualTo(ErrorCode.CONCURRENT_CONFLICT);
+    verifyNoInteractions(auditFacade);
+  }
+
+  /** P2-7（03 §38）：不存在的供应商不该拿到 3001——那会让前端提示"已被他人改动"、用户反复重试。 */
+  @Test
+  @DisplayName("启停：守卫 UPDATE 0 行且供应商不存在 → 2008，不是 3001")
+  void statusChangeOfMissingSupplierReturnsNotFound() {
+    when(supplierMapper.updateStatusAndVersion(7L, SupplierStatus.DISABLED, SupplierStatus.ENABLED, 3))
+        .thenReturn(0);
+    when(supplierMapper.findById(7L)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> supplierService.changeStatus(7L, SupplierStatus.DISABLED, 3))
+        .isInstanceOf(BizException.class)
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.SUPPLIER_NOT_FOUND);
     verifyNoInteractions(auditFacade);
   }
 

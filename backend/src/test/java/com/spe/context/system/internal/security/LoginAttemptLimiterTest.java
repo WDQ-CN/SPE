@@ -90,6 +90,23 @@ class LoginAttemptLimiterTest {
   }
 
   @Test
+  @DisplayName("成功登录清零只作用于账号维度：IP 计数不得被他人的成功登录抹掉（P1-5）")
+  void successResetDoesNotClearIpCounter() {
+    // 场景：攻击者在同一个 IP 上对**别的账号**连续失败，逼近 IP 维度阈值；
+    // 期间一个正常用户成功登录。原先 reset() 把 IP 键也删了 ⇒ 攻击者的累计被清零、锁不死。
+    for (int i = 0; i < IP_LIMIT - 1; i++) {
+      limiter.recordFailure("attacked-" + i, IP);
+    }
+    assertThat(limiter.recordFailure("attacked-last", IP)).as("最后一次失败应触发 IP 维度锁定").isTrue();
+
+    limiter.reset("innocent-user", IP);
+
+    assertThat(limiter.isLocked("another-account", IP))
+        .as("他人成功登录不得清空 IP 维度的累计（单机拓扑下那是全局 key）")
+        .isTrue();
+  }
+
+  @Test
   @DisplayName("窗口过后自动解锁（不需要人工清理）")
   void lockExpiresAfterWindow() {
     for (int i = 0; i < ACCOUNT_LIMIT; i++) {

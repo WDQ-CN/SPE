@@ -24,7 +24,15 @@ public record LoginLimiterProperties(
     Integer maxFailuresPerAccount, Integer maxFailuresPerIp, Duration window, Integer maxEntries) {
 
   public static final int DEFAULT_MAX_FAILURES_PER_ACCOUNT = 5;
-  public static final int DEFAULT_MAX_FAILURES_PER_IP = 20;
+
+  /**
+   * IP 维度阈值。⚠️ 与 `application.yml` 的 `LOGIN_MAX_FAILURES_PER_IP` 默认值是同一事实的两处副本
+   * （CLAUDE 第 3 条的待收敛项），改一处必须改另一处。
+   *
+   * <p>20 → 200（03 §38 的 P1-5）：单机 Compose 拓扑下经 nginx 的所有客户端在容器侧是同一个对端地址，
+   * "每 IP 20 次"实际是**全局 20 次**——收得太紧等于给任何客户端一个"一键锁死所有人"的开关。
+   */
+  public static final int DEFAULT_MAX_FAILURES_PER_IP = 200;
   public static final Duration DEFAULT_WINDOW = Duration.ofMinutes(15);
   public static final int DEFAULT_MAX_ENTRIES = 100_000;
 

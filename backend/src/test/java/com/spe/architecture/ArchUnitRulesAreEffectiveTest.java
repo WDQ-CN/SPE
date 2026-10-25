@@ -35,6 +35,8 @@ class ArchUnitRulesAreEffectiveTest {
               "com.spe.context.analytics.fixture",
               "com.spe.context.evaluation.fixture",
               "com.spe.context.evaluation.internal.scoring.calculator.fixture",
+              // R-I 的夹具必须在 ..internal.approval.. 包下才会被那条规则的选取器命中
+              "com.spe.context.evaluation.internal.approval.fixture",
               // R-H 的两条规则针对 Controller 命名，夹具单独放在这里（不属任何上下文，
               // 因此不会被 R-A/R-E/R-F/R-G 命中，一个夹具只违反自己那一条）
               "com.spe.architecture.fixture");
@@ -134,9 +136,24 @@ class ArchUnitRulesAreEffectiveTest {
   }
 
   @Test
+  @DisplayName("R-H 按注解选取：类名不以 Controller 结尾的 @RestController 也照样抓（P2-12）")
+  void rHCatchesAnnotatedControllerThatIsNotNamedController() {
+    assertCatches(
+        ArchitectureTest.controllersDeclareClassLevelAuthorization, "TaskWebEndpoint");
+  }
+
+  @Test
   @DisplayName("R-H 能捕获用了 @RequestBody 但没带 @Valid 的参数")
   void rHCatchesUnvalidatedRequestBody() {
     assertCatches(
         ArchitectureTest.requestBodyParametersAreValidated, "UnvalidatedRequestBodyController");
+  }
+
+  @Test
+  @DisplayName("R-I 能捕获只增不改表的 Mapper 继承 BaseMapper（03 §38 的 P2-3）")
+  void rICatchesAppendOnlyMapperInheritingBaseMapper() {
+    assertCatches(
+        ArchitectureTest.appendOnlyMappersDoNotInheritBaseMapper,
+        "AppendOnlyMapperExtendsBaseMapper");
   }
 }

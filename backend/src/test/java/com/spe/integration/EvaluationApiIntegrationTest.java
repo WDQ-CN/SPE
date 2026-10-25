@@ -26,11 +26,11 @@ import org.springframework.test.web.servlet.MvcResult;
  * <p>与 Service 层用例的分工：这里证明的是"**接口可用 + 权限正确 + 序列化形状正确**"，
  * 而不是重复业务规则（那些在 W3/W4 的用例里）。
  */
-@org.springframework.context.annotation.Import(
-    EvaluationApiIntegrationTest.SqlCounterConfig.class)
+@org.springframework.context.annotation.Import(com.spe.integration.support.StatementRecorderConfig.class)
 class EvaluationApiIntegrationTest extends AbstractIntegrationTest {
 
-  @org.springframework.beans.factory.annotation.Autowired private SqlCounter sqlCounter;
+  @org.springframework.beans.factory.annotation.Autowired
+  private com.spe.integration.support.StatementRecorder statementRecorder;
 
   private static final AtomicInteger SEQ = new AtomicInteger(2121);
   private static final String PASSWORD = "Passw0rd!";
@@ -45,6 +45,7 @@ class EvaluationApiIntegrationTest extends AbstractIntegrationTest {
     long evaluatorId = userIdOf("w5-eval-" + year);
     long supplierId = insertSupplier("W5-" + year);
     long versionId = publishedDefaultVersionId();
+    long templateId = publishedDefaultTemplateId();
 
     // ① 创建草稿（01 J1）
     MvcResult created =
@@ -57,6 +58,7 @@ class EvaluationApiIntegrationTest extends AbstractIntegrationTest {
                             "name", "W5 任务-" + year,
                             "year", year,
                             "quarter", 1,
+                            "templateId", templateId,
                             "templateVersionId", versionId,
                             "deadline", LocalDate.of(year, 12, 31).toString(),
                             "supplierIds", List.of(supplierId),
@@ -221,6 +223,7 @@ class EvaluationApiIntegrationTest extends AbstractIntegrationTest {
                         "name", "不该建成",
                         "year", year,
                         "quarter", 2,
+                        "templateId", publishedDefaultTemplateId(),
                         "templateVersionId", publishedDefaultVersionId(),
                         "deadline", LocalDate.of(year, 12, 31).toString(),
                         "supplierIds", List.of(supplierId),
@@ -263,6 +266,73 @@ class EvaluationApiIntegrationTest extends AbstractIntegrationTest {
     MvcResult notFound =
         mockMvc.perform(authed(get("/api/tasks/99999999"), manager)).andExpect(status().isBadRequest()).andReturn();
     assertThat(code(notFound)).as("任务不存在 → 2018").isEqualTo(2018);
+  }
+
+  /**
+   * P1-9 的入参上限（01 的规模口径本身就是合法输入，所以这不是理论风险）。
+   *
+   * <p>⚠️ "message 里不得出现 `supplierIds` 这种内部字段路径"这半句是 **P2-14 的判据**：
+   * 在 P2-14 落地之前这条用例会红在 `doesNotContain`，那正是"先红后绿"的那条红。
+   */
+  @Test
+  @DisplayName("集合入参有上限：501 家供应商 / 11 级审批链都挡在 DTO（2001），文案不外泄内部形状")
+  void collectionInputsAreCappedAtDtoLevel() throws Exception {
+    int year = SEQ.getAndIncrement();
+    String admin = login(ADMIN_USERNAME, ADMIN_PASSWORD);
+    String manager = createUserAndLogin(admin, "w5-cap-mgr-" + year, "MANAGER", "PURCHASE");
+
+    MvcResult tooManySuppliers =
+        mockMvc
+            .perform(
+                authed(
+                    json(
+                        post("/api/tasks"),
+                        Map.of(
+                            "name", "上限用例-" + year,
+                            "year", year,
+                            "quarter", 1,
+                            "templateId", publishedDefaultTemplateId(),
+                            "templateVersionId", publishedDefaultVersionId(),
+                            "deadline", LocalDate.of(year, 12, 31).toString(),
+                            "supplierIds", java.util.stream.LongStream.rangeClosed(1, 501).boxed().toList(),
+                            "approverIds", List.of(userIdOf(ADMIN_USERNAME)))),
+                    manager))
+            .andExpect(status().isBadRequest())
+            .andReturn();
+    assertThat(code(tooManySuppliers)).as("超上限是形状问题 ⇒ 2001").isEqualTo(2001);
+    String supplierMessage = message(tooManySuppliers);
+    assertThat(supplierMessage)
+        .as("文案要能自证是哪条限制（`{max}` 由常量插值出来）")
+        .contains("500")
+        .contains("供应商");
+    assertThat(supplierMessage)
+        .as("P2-14：响应体不得外泄字段路径/对象名（实际=%s）", supplierMessage)
+        .doesNotContain("supplierIds")
+        .doesNotContain("CreateTaskRequest");
+
+    MvcResult tooManyApprovers =
+        mockMvc
+            .perform(
+                authed(
+                    json(
+                        post("/api/tasks"),
+                        Map.of(
+                            "name", "审批链上限-" + year,
+                            "year", year,
+                            "quarter", 1,
+                            "templateId", publishedDefaultTemplateId(),
+                            "templateVersionId", publishedDefaultVersionId(),
+                            "deadline", LocalDate.of(year, 12, 31).toString(),
+                            "supplierIds", List.of(insertSupplier("W5-CAP-" + year)),
+                            "approverIds",
+                                java.util.stream.LongStream.rangeClosed(1, 11).boxed().toList())),
+                    manager))
+            .andExpect(status().isBadRequest())
+            .andReturn();
+    assertThat(code(tooManyApprovers)).isEqualTo(2001);
+    String approverMessage = message(tooManyApprovers);
+    assertThat(approverMessage).contains("10").contains("审批链");
+    assertThat(approverMessage).as("P2-14 同一条口径").doesNotContain("approverIds");
   }
 
   @Test
@@ -359,60 +429,10 @@ class EvaluationApiIntegrationTest extends AbstractIntegrationTest {
         .isEqualTo(small);
   }
 
-  // ---------- MyBatis 语句计数（E14 的证据） ----------
+  // ---------- MyBatis 语句计数（E14 的证据）----------
 
-  @org.springframework.boot.test.context.TestConfiguration(proxyBeanMethods = false)
-  static class SqlCounterConfig {
-
-    @org.springframework.context.annotation.Bean
-    SqlCounter sqlCounter() {
-      return new SqlCounter();
-    }
-  }
-
-  /**
-   * MyBatis 插件：每次语句执行计数一次（只在本测试类的上下文里生效）。
-   *
-   * <p>必须声明 `@Intercepts`——MyBatis 在 `openSession` 时会检查它，缺了直接抛
-   * `PluginException: No @Intercepts annotation was found`（第一次跑就是这么红的）。这里同时挂
-   * `query`（4 参）与 `update`，覆盖"读 + 写"两类调用。
-   */
-  @org.apache.ibatis.plugin.Intercepts({
-    @org.apache.ibatis.plugin.Signature(
-        type = org.apache.ibatis.executor.Executor.class,
-        method = "update",
-        args = {org.apache.ibatis.mapping.MappedStatement.class, Object.class}),
-    @org.apache.ibatis.plugin.Signature(
-        type = org.apache.ibatis.executor.Executor.class,
-        method = "query",
-        args = {
-          org.apache.ibatis.mapping.MappedStatement.class,
-          Object.class,
-          org.apache.ibatis.session.RowBounds.class,
-          org.apache.ibatis.session.ResultHandler.class
-        })
-  })
-  static class SqlCounter implements org.apache.ibatis.plugin.Interceptor {
-
-    private final java.util.concurrent.atomic.AtomicInteger count =
-        new java.util.concurrent.atomic.AtomicInteger();
-
-    @Override
-    public Object intercept(org.apache.ibatis.plugin.Invocation invocation) throws Throwable {
-      count.incrementAndGet();
-      return invocation.proceed();
-    }
-
-    @Override
-    public Object plugin(Object target) {
-      return org.apache.ibatis.plugin.Plugin.wrap(target, this);
-    }
-
-    @Override
-    public void setProperties(java.util.Properties properties) {
-      // 无需配置
-    }
-  }
+  // 计数器本体已提到 `com.spe.integration.support.StatementRecorder`：新加的用例（发布的分片批次计数）
+  // 也要数同一件事，两处各写一份就是 CLAUDE 默认约定第 3 条点名的漂移。
 
   // ---------- 工具 ----------
 
@@ -423,7 +443,7 @@ class EvaluationApiIntegrationTest extends AbstractIntegrationTest {
    * （没有存储过程、没有多语句）。
    */
   private long statementCount() {
-    return sqlCounter.count.get();
+    return statementRecorder.totalCount();
   }
 
   private String createUserAndLogin(String adminToken, String username, String role, String department)
@@ -462,6 +482,7 @@ class EvaluationApiIntegrationTest extends AbstractIntegrationTest {
                                 "name", "W5 任务-" + year,
                                 "year", year,
                                 "quarter", 1,
+                                "templateId", publishedDefaultTemplateId(),
                                 "templateVersionId", publishedDefaultVersionId(),
                                 "deadline", LocalDate.of(year, 12, 31).toString(),
                                 "supplierIds", suppliers,
@@ -479,6 +500,15 @@ class EvaluationApiIntegrationTest extends AbstractIntegrationTest {
     Long id =
         jdbcTemplate.queryForObject(
             "select v.id from template_version v join template t on t.id = v.template_id"
+                + " where t.name = '季度绩效默认模板' and v.version_no = 1 and v.status = 'PUBLISHED'",
+            Long.class);
+    return id == null ? -1 : id;
+  }
+
+  private long publishedDefaultTemplateId() {
+    Long id =
+        jdbcTemplate.queryForObject(
+            "select t.id from template_version v join template t on t.id = v.template_id"
                 + " where t.name = '季度绩效默认模板' and v.version_no = 1 and v.status = 'PUBLISHED'",
             Long.class);
     return id == null ? -1 : id;
@@ -574,6 +604,14 @@ class EvaluationApiIntegrationTest extends AbstractIntegrationTest {
         .readTree(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
         .path("code")
         .asInt();
+  }
+
+  /** 响应体里的 `message`（P2-14 判据要看它的**内容**，不能只断言"有错误码"）。 */
+  private String message(MvcResult result) throws Exception {
+    return objectMapper
+        .readTree(result.getResponse().getContentAsString(StandardCharsets.UTF_8))
+        .path("message")
+        .asText();
   }
 
   private long dataAsLong(MvcResult result) throws Exception {

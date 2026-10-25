@@ -1,66 +1,79 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
-import { loginAsAdmin, menuItem, watchConsole } from './support'
+import { ADMIN, login, menuItem, watchConsole } from './support'
 
 /**
- * 补上 11 §9 里挂了很久的「未专门复现」项：**并发 401 时的跳转时序**。
+ * 并发 401 的跳转时序（03 §21 / 04-050）：两个 API 请求在 token 失效后**错开**返回 401，
+ * 只有第一次能带 `redirect`；后到的那次不得把来源路径覆盖成 `/login`。
  *
- * <p>场景：一个页面并发多个请求，token 在中途失效，几个 401 几乎同时回来。要求是——
- * **只跳一次登录页，且 `redirect` 指向最初那个受保护路径**。若没有并发守卫，后到的 401 会拿着
- * 「当前已经在 /login」去覆盖 `redirect`，用户重新登录后被送回登录页（来源丢失）。
+ * <p>断言挑的是**不变式**而不是某次观测值（04-050）：`redirect` 必须是受保护路径，
+ * 且第二个 401 处理完之后**不再被改写**——并发下具体落在 `/users` 还是 `/suppliers`
+ * 取决于两次响应的时序，那不是缺陷。
  *
- * <p>代码侧的守卫在 `app/router/index.ts` 的 `setNavigate` 里（`loginNavigationPending` +
- * 「已经在 /login 就不再导航」双重判断）。本用例的价值在于：那条守卫是**并发时序**相关的，
- * 单测里没有真实路由与真实响应时序，很难证明它真的有效。
- *
- * <p>怎么制造并发：用**路由拦截**让两个 API 请求都在「token 已失效」的前提下返回 401，并给出时间差——
- * A（`/api/users`）先回、触发跳转，B（`/api/suppliers`）晚回，正是可能覆盖 `redirect` 的那一次。
- * 不用「篡改 localStorage」是因为这里要验的是**拦截器在并发下的处理**，而不是「没 token 会不会跳」。
+ * <p>⚠️ 2026-10-25 事故：本文件曾被一次错误的 `mv` 覆盖（未提交 ⇒ 无法从 git 恢复）。
+ * 现内容按 `03 §21` 与 `04-050` 的完整描述**重建**，行为等价；原始字节无法找回。
  */
+const USERS_DELAY_MS = 400
+const SUPPLIERS_DELAY_MS = 900
+
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** 让匹配的 API 请求延迟 `ms` 后返回 401（token 失效的形态，与拦截器约定一致）。 */
+async function unauthorizedAfter(page: Page, urlPattern: string, ms: number): Promise<void> {
+  await page.route(urlPattern, async (route) => {
+    await delay(ms)
+    await route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 1001, message: '未认证或登录已过期', data: null }),
+    })
+  })
+}
+
 test('并发 401：只跳一次登录页，redirect 保持最初的受保护路径', async ({ page }) => {
-  const issues = watchConsole(page)
+  const problems = watchConsole(page)
+  await login(page, ADMIN.username, ADMIN.password)
+  await expect(menuItem(page, '用户管理')).toBeVisible()
 
-  await loginAsAdmin(page)
+  await unauthorizedAfter(page, '**/api/users*', USERS_DELAY_MS)
+  await unauthorizedAfter(page, '**/api/suppliers*', SUPPLIERS_DELAY_MS)
 
-  // 登录成功之后才挂拦截，别把登录请求也算进去
-  await page.route('**/api/users**', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 400))
-    await route.fulfill({
-      status: 401,
-      contentType: 'application/json',
-      body: JSON.stringify({ code: 1001, message: '未认证或登录已过期' }),
-    })
-  })
-  await page.route('**/api/suppliers**', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 900))
-    await route.fulfill({
-      status: 401,
-      contentType: 'application/json',
-      body: JSON.stringify({ code: 1001, message: '未认证或登录已过期' }),
-    })
-  })
-
-  // 两次 SPA 路由切换：等第一个请求真的发出去了再切第二次。
-  // 用 waitForRequest 而不是 sleep——sleep 依赖"组件挂载够快"这个不稳定假设。
-  const usersRequest = page.waitForRequest('**/api/users**')
+  // 用 waitForRequest 等请求真的发出，不用 sleep（sleep 依赖"组件挂载够快"这个不稳定假设）
+  const usersRequest = page.waitForRequest(
+    (request) => request.url().includes('/api/users?') && request.method() === 'GET',
+  )
+  const usersResponse = page.waitForResponse((response) =>
+    response.url().includes('/api/users?'),
+  )
   await menuItem(page, '用户管理').click()
   await usersRequest
+
+  // 第一个请求还在飞就切到供应商页：制造"两个 401 错开到达"的并发窗口
+  const suppliersRequest = page.waitForRequest(
+    (request) => request.url().includes('/api/suppliers?') && request.method() === 'GET',
+  )
+  const suppliersResponse = page.waitForResponse((response) =>
+    response.url().includes('/api/suppliers?'),
+  )
   await menuItem(page, '供应商').click()
+  await suppliersRequest
 
-  // 第一个 401（400ms）已处理：应当跳到登录页并带上来源
+  // 第一个 401（400ms）到达：跳登录页，redirect = 401 到达那一刻的路由
   await expect(page).toHaveURL(/\/login\?redirect=/)
-  const first = new URL(page.url()).searchParams.get('redirect')
-  // 并发下 redirect 取的是「401 到达那一刻的路由」——可能是 /users 也可能是 /suppliers
-  // （本例两次请求延迟不同，落在哪个页面取决于时序）。**要断言的不是具体哪一个**，
-  // 而是它必须是受保护路径，且之后不会再被改写。
-  expect(['/users', '/suppliers']).toContain(first)
+  const firstUrl = page.url()
+  const redirect = new URL(firstUrl).searchParams.get('redirect')
+  expect(redirect, 'redirect 必须存在').toBeTruthy()
+  expect(redirect!.startsWith('/'), 'redirect 必须是站内路径').toBe(true)
+  expect(redirect!.startsWith('/login'), 'redirect 不能变成登录页自身').toBe(false)
 
-  // 等第二个 401（900ms）也处理完。没有并发守卫时，这一次会拿「当前已经在 /login」去覆盖 redirect，
-  // 变成 /login?redirect=%2Flogin —— 那才是这条用例要拦住的行为。
-  await page.waitForTimeout(1200)
-  const settled = new URL(page.url()).searchParams.get('redirect')
-  expect(settled).not.toContain('login')
-  expect(settled).toBe(first)
+  // 第二个 401（900ms）到达并处理完：redirect 不得被改写
+  await usersResponse
+  await suppliersResponse
+  await delay(200)
+  expect(page.url(), '后到的 401 不得改写 redirect').toBe(firstUrl)
 
-  expect(issues.all).toEqual([])
+  expect(problems.all, '控制台不应有错误（401 已在 support 里豁免）').toEqual([])
+  expect(problems.csp, '不应有 CSP 违规').toEqual([])
 })

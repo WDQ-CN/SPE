@@ -16,7 +16,11 @@ import type {
  *
  * <p>集中放在 `shared/types` 而不是各 feature 里，是因为它们跨越 feature 边界：
  * 用户页与将来的审批页都要看 `UserSummary`，供应商页与将来的任务页都要看 `SupplierSummary`。
- * 字段契约由 `dto.spec.ts` 用固定样例断言（后端加字段而前端不知道，是这类项目最常见的漂移）。
+ * <p>⚠️ 这里曾经写着"字段契约由 `dto.spec.ts` 用固定样例断言"——**那个文件不存在**（03 §38 的 P2-18）。
+ * 留着这句话比没有更糟：它让人以为这 30+ 个接口有契约网。现状是**零 DTO 级测试**，
+ * 后端改字段名既不编译失败也不测试失败（`effectiveVersion` 全前端零消费就是同一缺口的另一面）。
+ * 已作为登记项列入 `11 §9`；要补就得补**真判据**（对照后端真实响应，而不是手写两份一样的样本——
+ * 后者改一边就绿，属假覆盖），随各上下文消费时逐个补。
  */
 
 /** 分页请求参数（`page` 从 1 开始，与后端 `PageQuery` 一致；收敛规则在后端，前端不重复实现） */
@@ -34,6 +38,19 @@ export interface UserSummary {
   department: Department
   status: UserStatus
   version: number
+}
+
+/**
+ * 可选人员（后端 `UserOption`，02 §4 / 03 §38 P0-1）：审批链与改派两个选择器的数据源。
+ *
+ * <p>刻意**不含** `username`/`status`/`version`：MANAGER 只需要"选谁"，管理面（含启停要回传的版本号）
+ * 仍留在 `/api/users` 那条 ADMIN-only 的边界后面。
+ */
+export interface UserOption {
+  id: number
+  name: string
+  role: Role
+  department: Department
 }
 
 /** 供应商列表行（后端 `SupplierSummary`）：`category` 可空（10 §E10） */
@@ -323,5 +340,126 @@ export interface NotificationSummary {
   title: string
   content: string
   isRead: boolean
+  createdAt: string
+}
+
+// ---------- P4 审批与结果（02 §4 / 15 §E8/E15；字段名与后端 record 逐字对齐） ----------
+
+/** 我的审批待办（后端 `ApprovalTodoView`）：`version` 是审批动作的乐观锁前置条件 */
+export interface ApprovalTodoView {
+  taskSupplierId: number
+  taskId: number
+  taskName: string
+  year: number
+  quarter: number
+  deadline: string
+  supplierId: number
+  supplierCode: string | null
+  supplierName: string | null
+  status: TaskSupplierStatus
+  currentNode: number
+  round: number
+  version: number
+}
+
+/** 结果报表入口的任务行（后端 `ResultTaskSummary`）：只含已有已生效评估单的任务 */
+export interface ResultTaskSummary {
+  taskId: number
+  taskName: string
+  year: number
+  quarter: number
+  deadline: string
+  status: EvalTaskStatus
+  resultCount: number
+}
+
+/** 任务级结果列表（后端 `TaskResults`）：只含已生效评估单 */
+export interface TaskResults {
+  taskId: number
+  taskName: string
+  year: number
+  quarter: number
+  rows: TaskResultRow[]
+}
+
+export interface TaskResultRow {
+  taskSupplierId: number
+  supplierId: number
+  supplierCode: string | null
+  supplierName: string | null
+  totalScore: number | null
+  totalGrade: string | null
+  dimensions: DimensionScore[]
+}
+
+export interface DimensionScore {
+  dimensionId: number
+  dimensionName: string
+  weight: number
+  score: number | null
+  grade: string | null
+}
+
+/**
+ * 评估报告（后端 `TaskSupplierReport`）。
+ *
+ * ⚠️ `scoreMode` 是两套口径的唯一标记：`SNAPSHOT` = 已生效读定稿快照，`TRIAL` = 未生效降级试算
+ * （15 §E15）。前端必须把 TRIAL 在界面上明确标出来，不能把试算分当定稿分展示（01 R1）。
+ */
+export interface TaskSupplierReport {
+  taskSupplierId: number
+  taskId: number
+  taskName: string
+  year: number
+  quarter: number
+  deadline: string
+  supplierId: number
+  supplierCode: string | null
+  supplierName: string | null
+  status: TaskSupplierStatus
+  currentNode: number
+  round: number
+  version: number
+  scoreMode: 'SNAPSHOT' | 'TRIAL'
+  totalScore: number | null
+  totalGrade: string | null
+  complete: boolean
+  /** 当前登录人是否就是当前节点的审批人（后端判定，`03 §41.3` 的 P2-27）；决定按钮显隐 */
+  actableNow: boolean
+  dimensions: ReportDimension[]
+  timeline: ApprovalTimelineEntry[]
+}
+
+export interface ReportDimension {
+  dimensionId: number
+  dimensionName: string
+  weight: number
+  score: number | null
+  grade: string | null
+  complete: boolean
+  indicators: ReportIndicator[]
+}
+
+export interface ReportIndicator {
+  indicatorId: number
+  code: string
+  name: string
+  weight: number
+  type: IndicatorType
+  scoreMode: ScoreMode | null
+  rawValue: number | null
+  scoreValue: number | null
+  unit: string | null
+  source: string | null
+}
+
+/** 审批时间线条目（后端 `TimelineEntry`）：按 `(round, seq)` 平铺，前端按轮分组渲染 */
+export interface ApprovalTimelineEntry {
+  round: number
+  seq: number
+  approverId: number
+  approverName: string | null
+  action: string
+  comment: string | null
   createdAt: string
 }

@@ -69,14 +69,33 @@ class UserServiceTest {
   }
 
   @Test
-  @DisplayName("启停：守卫 UPDATE 影响 0 行 → 3001，且不写审计（10 §3 W2 红线）")
+  @DisplayName("启停：守卫 UPDATE 0 行且账号**存在** → 3001，且不写审计（10 §3 W2 红线）")
   void statusChangeConflictReturnsConflict() {
     when(sysUserMapper.updateStatusAndVersion(7L, UserStatus.DISABLED, UserStatus.ENABLED, 3)).thenReturn(0);
+    // P2-7：0 行之后要拿"存不存在"分类，所以这条用例必须把"存在"这一半钉住
+    when(sysUserMapper.findById(7L)).thenReturn(Optional.of(user(7L, UserStatus.ENABLED, 2)));
 
     assertThatThrownBy(() -> userService.changeStatus(7L, UserStatus.DISABLED, 3))
         .isInstanceOf(BizException.class)
         .extracting(ex -> ((BizException) ex).errorCode())
         .isEqualTo(ErrorCode.CONCURRENT_CONFLICT);
+    verifyNoInteractions(auditFacade);
+  }
+
+  /**
+   * P2-7（03 §38）：账号根本不存在时返回 3001 是**说谎**——前端会提示"数据已被他人改动，请刷新"，
+   * 用户对着一个不存在的 id 反复重试。同类 {@code resetPassword}（0 行 → 2006）本来就是另一套口径。
+   */
+  @Test
+  @DisplayName("启停：守卫 UPDATE 0 行且账号不存在 → 2006，不是 3001")
+  void statusChangeOfMissingAccountReturnsNotFound() {
+    when(sysUserMapper.updateStatusAndVersion(7L, UserStatus.DISABLED, UserStatus.ENABLED, 3)).thenReturn(0);
+    when(sysUserMapper.findById(7L)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> userService.changeStatus(7L, UserStatus.DISABLED, 3))
+        .isInstanceOf(BizException.class)
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.USER_NOT_FOUND);
     verifyNoInteractions(auditFacade);
   }
 

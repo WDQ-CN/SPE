@@ -18,8 +18,16 @@ import org.springframework.stereotype.Component;
  * `AUTH_LOGIN_FAILED` 审计——攻击顺带把 `audit_log` 撑大。
  *
  * <p><b>为什么是两个维度</b>：只按「账号 + IP」做复合键会被轻松绕过——换一个 IP 就能继续猜同一个账号。
- * 故分成两个独立计数：① 账号维度挡「多 IP 爆破同一账号」；② IP 维度（阈值更宽，因为公司 NAT 后
- * 多个正常用户会共用一个出口 IP）挡「同一 IP 撞库多个账号」。
+ * 故分成两个独立计数：① 账号维度挡「多 IP 爆破同一账号」；② IP 维度挡「同一 IP 撞库多个账号」。
+ *
+ * <p>⚠️ **IP 维度在本机的真实语义是"全局熔断"，不是"每个客户端一档"**（03 §38 的 P1-5）：
+ * 单机 Docker Compose 下经 nginx 的请求在容器侧恒为同一个网桥地址，所有真实客户端共用一个 key；
+ * 而 `forward-headers-strategy` 已改为 `none`（P1-4：采信 XFF 换不到真实 IP，只换来伪造面），
+ * 所以这个维度只能当"整体异常时先挡一阵"的兜底，阈值因此从 20 放宽到 200。
+ * 搬到能拿到真实源 IP 的环境时，这一档可以收紧回来——但必须先解决下面的伪造问题。
+ *
+ * <p><b>成功登录只清账号维度</b>：原先连 IP 键一起删，等于"任何人撞中一次真口令就重置全局计数"。
+ * IP 计数让窗口自然衰减（{@link #reset}）。
  *
  * <p><b>算法</b>（P1 收口后的优化，见 03 §18）：早期实现每次失败都 `removeIf` 扫全表清理过期条目，
  * 于是成本是「每次 O(条目数)」——攻击者用**海量互不相同的账号名**灌注，就能把总成本推成 O(n²)，
@@ -148,10 +156,12 @@ public class LoginAttemptLimiter {
     rejected.increment();
   }
 
-  /** 登录成功：清掉该账号与来源 IP 两个维度的计数。 */
+  /** 登录成功：**只清账号维度**的计数，来源 IP 维度让其窗口自然衰减（理由见下）。 */
   public void reset(String username, String clientIp) {
+    // ⚠️ **只清账号维度**（03 §38 的 P1-5）。原先这里连 IP 键一起删，而在单机部署下经 nginx 的
+    // 所有客户端在容器侧塌缩成同一个对端地址——于是"任一次成功登录"就把**全局**的失败计数清零，
+    // 攻击者偶尔撞中一个真口令就能续命整个锁定期。IP 计数让窗口自然衰减。
     attempts.remove(ACCOUNT_PREFIX + nullSafe(username));
-    attempts.remove(IP_PREFIX + nullSafe(clientIp));
   }
 
   /** 当前条目数：Gauge 的数据来源（可直接观测封顶与摊还清理是否在工作）。 */

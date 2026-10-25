@@ -7,11 +7,10 @@ import com.spe.common.web.ErrorCode;
 import com.spe.context.template.api.IndicatorType;
 import com.spe.context.template.api.TemplateVersionStatus;
 import com.spe.integration.AbstractIntegrationTest;
+import com.spe.integration.support.LockWaitProbe;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -180,7 +179,7 @@ class TemplateConcurrencyIntegrationTest extends AbstractIntegrationTest {
       // 普通读也照样绿**（假绿）。现在改成**有判据的等待**：轮询 processlist，直到看见那条语句**真的停在
       // 锁上**（同一条语句在相隔 100ms 的两次采样里都还在执行中）；**超时即失败**——"没复现出并发场景"
       // 本身不该默默放行。
-      String parked = awaitParkedStatement(java.time.Duration.ofSeconds(15));
+      String parked = lockWaits().awaitBlockedStatement(java.time.Duration.ofSeconds(15));
       assertThat(parked)
           .as(
               "发布线程必须被挡在**版本行的锁定读**上（`findByIdForUpdate`）。若这里看到的是"
@@ -252,7 +251,7 @@ class TemplateConcurrencyIntegrationTest extends AbstractIntegrationTest {
               });
 
       // 有判据地等：必须**观察到第二个事务真的被锁挡住**才继续。没观察到 = 并发场景没复现出来 = 失败。
-      String parked = awaitParkedStatement(java.time.Duration.ofSeconds(15));
+      String parked = lockWaits().awaitBlockedStatement(java.time.Duration.ofSeconds(15));
       assertThat(parked)
           .as("第二个复制必须被锁挡住（否则两个事务没有真正重叠，本用例退化成串行）")
           .contains("for update");
@@ -310,56 +309,12 @@ class TemplateConcurrencyIntegrationTest extends AbstractIntegrationTest {
   // ------------------------------------- "有判据的等待"（03 §31.7.14 的 P2-8 修在这里）
 
   /**
-   * 等"**另一个连接确实被锁挡住**"这件事发生，返回那条被挡住的语句（小写、空白已压缩）。
-   *
-   * <p>判据是"**同一条语句在相隔 100ms 的两次采样里都还停在 processlist 上**"——跑得快的语句不可能被
-   * 连续两次采样抓到。这不是"睡够 500ms 就该好了"那种猜测（03 §31.7.14 的 P2-8）。
-   * 超时**抛错**（失败，不是默默放行）：没复现出并发场景时用例必须响亮地红，而不是退化成串行后假装通过。
-   *
-   * <p>⚠️ 为什么是 `SHOW FULL PROCESSLIST` 而不是 `performance_schema.data_lock_waits`：实测测试容器的
-   * 账号权限只有 `GRANT USAGE ON *.*` + `GRANT ALL ON spe.*`，`performance_schema.*` 一律
-   * `SELECT command denied`、`information_schema.innodb_trx` 要 PROCESS 权限 —— processlist 是这个账号
-   * **唯一**能看到的"谁在等锁"视图（同账号的其它连接可见，且 `SHOW FULL` 不截断 `Info`）。
+   * 探针本体在 `com.spe.integration.support.LockWaitProbe`（发布的串行化用例也要它，两处各写一份
+   * 就会有一份先腐烂）。判据：轮询 `SHOW FULL PROCESSLIST`，直到同一条语句在相隔 100ms 的两次采样里
+   * 都还停在那里；超时**抛错**，不退化成"串行跑完假装通过"。
    */
-  private String awaitParkedStatement(java.time.Duration timeout) throws InterruptedException {
-    Long myConnectionId = jdbcTemplate.queryForObject("SELECT CONNECTION_ID()", Long.class);
-    long deadline = System.nanoTime() + timeout.toNanos();
-    String previous = null;
-    while (System.nanoTime() < deadline) {
-      String current = parkedStatement(myConnectionId);
-      if (current != null && current.equals(previous)) {
-        return current;
-      }
-      previous = current;
-      Thread.sleep(100); // 等待的**轮询间隔**：判据见方法注释，不是"睡够就算好了"
-    }
-    throw new AssertionError(
-        "超时（"
-            + timeout.toSeconds()
-            + "s）没等到任何连接被锁挡住——并发场景没复现出来，用例已退化成串行，不能算通过。"
-            + "最后一次采样看到的是："
-            + previous);
-  }
-
-  /** 当前被挡住的语句（排除我们自己的采样连接与采样语句本身）；没有则返回 null。 */
-  private String parkedStatement(Long excludeConnectionId) {
-    for (Map<String, Object> row : jdbcTemplate.queryForList("SHOW FULL PROCESSLIST")) {
-      Object id = row.get("Id");
-      if (excludeConnectionId != null
-          && id instanceof Number
-          && ((Number) id).longValue() == excludeConnectionId) {
-        continue; // 我们自己的采样语句
-      }
-      Object info = row.get("Info");
-      if (info == null) {
-        continue;
-      }
-      String sql = info.toString().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
-      if (!sql.startsWith("show ") && !sql.contains("processlist")) {
-        return sql;
-      }
-    }
-    return null;
+  private LockWaitProbe lockWaits() {
+    return new LockWaitProbe(jdbcTemplate);
   }
 
   // ---------------------------------------------------------------- 12 §E5 的并发意图（P2 深审加）

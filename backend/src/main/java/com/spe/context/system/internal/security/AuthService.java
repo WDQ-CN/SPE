@@ -77,7 +77,8 @@ public class AuthService {
       throw new BizException(ErrorCode.LOGIN_FAILED);
     }
 
-    // 成功即清零：正常用户偶尔输错一次不会被记账
+    // 成功只清**账号**维度（03 §38 的 P1-5）：正常用户偶尔输错一次不会被记账；
+    // 而 IP 计数让窗口自然衰减——在本机拓扑下它是全局 key，任何人撞中一次真口令就清零等于续命
     loginAttemptLimiter.reset(username, clientIp);
 
     Set<String> roles = Set.of(user.getRole().name());
@@ -133,10 +134,25 @@ public class AuthService {
    * 又不让持续爆破把 `audit_log` 撑大。
    */
   private void recordFailureAndMaybeLock(String attemptedUsername, String clientIp) {
-    recordLoginFailure(attemptedUsername);
-    if (loginAttemptLimiter.recordFailure(attemptedUsername, clientIp)) {
-      auditFacade.recordForOperator(
-          null, attemptedUsername, AuditAction.AUTH_LOGIN_BLOCKED, null, null, null);
+    // ⚠️ 顺序：**先计数、后留痕**（03 §38 的 P1-8）。原先是反的——审计一抛异常（表故障、列宽、
+    // 约束），`recordFailure` 就永不执行：留痕失败连带把限流一起关掉，且异常上浮成 5001
+    // （不再是统一的 1002，等于给攻击者"这里出事了"的信号）。
+    boolean locked = loginAttemptLimiter.recordFailure(attemptedUsername, clientIp);
+    // 两条审计写**都要**包（只包第一条的话，进入锁定那一次照样 5001）。包的范围只限 auditFacade，
+    // **不得顺手吞掉 BizException**。留痕失败降级为 ERROR 日志是安全边界的让渡（01 SM5 依赖审计
+    // 完整性），经用户裁决（18 §6 点 8）；不引入异步（06 §2.8 红线）。
+    try {
+      recordLoginFailure(attemptedUsername);
+    } catch (RuntimeException auditFailure) {
+      log.error("登录失败留痕写入失败，已降级为日志：账号={} ip={}", attemptedUsername, clientIp, auditFailure);
+    }
+    if (locked) {
+      try {
+        auditFacade.recordForOperator(
+            null, attemptedUsername, AuditAction.AUTH_LOGIN_BLOCKED, null, null, null);
+      } catch (RuntimeException auditFailure) {
+        log.error("进入锁定的留痕写入失败，已降级为日志：账号={} ip={}", attemptedUsername, clientIp, auditFailure);
+      }
       log.warn("登录失败次数达到上限，账号临时锁定：账号={} ip={}", attemptedUsername, clientIp);
     }
   }

@@ -157,11 +157,17 @@ class TaskPublishedListenerIntegrationTest extends AbstractIntegrationTest {
             "select v.id from template_version v join template t on t.id = v.template_id"
                 + " where t.name = '季度绩效默认模板' and v.version_no = 1 and v.status = 'PUBLISHED'",
             Long.class);
+    Long templateId =
+        jdbcTemplate.queryForObject(
+            "select t.id from template_version v join template t on t.id = v.template_id"
+                + " where t.name = '季度绩效默认模板' and v.version_no = 1 and v.status = 'PUBLISHED'",
+            Long.class);
     return taskService.createDraft(
         new TaskDraftCommand(
             "任务-" + year,
             year,
             1,
+            versionId == null ? -1 : templateId,
             versionId == null ? -1 : versionId,
             LocalDate.of(year, 12, 31),
             List.of(supplier),

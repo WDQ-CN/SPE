@@ -12,7 +12,11 @@ import com.spe.context.system.api.Department;
 import com.spe.context.system.api.Role;
 import com.spe.context.system.api.UserStatus;
 import com.spe.context.system.internal.security.PasswordPolicy;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,8 +51,38 @@ public class UserService {
     return PageResult.of(rows, sysUserMapper.countAll(), query.page(), query.size());
   }
 
-  /** 新增用户：账号唯一校验走 2xxx，DB 唯一键是最后防线（06 §4）。 */
-  @Transactional
+  /** 选择器的单次上限（配合 `SysUserMapper.findEnabledOptions` 那条**登记例外**：不分页，但必须硬截断）。 */
+  private static final int OPTION_LIMIT = 200;
+
+  /**
+   * 可选人员（02 §4 / 03 §38 的 P0-1）：在职、按 id 升序、只出目录面字段。
+   *
+   * <p>角色白名单在**这里**校验，不靠"前端只会传对的值"：`roles` 决定的是"谁能看到谁"，
+   * 不能由 query 任意扩大。非法取值 → 2001 + 固定文案（不外泄枚举/内部形状，P2-14 同一条口径）。
+   */
+  @Transactional(readOnly = true)
+  public List<UserOption> options(Collection<String> roleNames) {
+    List<String> roles = new ArrayList<>();
+    if (roleNames != null) {
+      for (String name : roleNames) {
+        if (name == null || name.isBlank()) {
+          continue;
+        }
+        try {
+          roles.add(Role.valueOf(name.trim().toUpperCase(Locale.ROOT)).name());
+        } catch (IllegalArgumentException notARole) {
+          throw new BizException(ErrorCode.BAD_REQUEST, "角色取值不在允许范围内");
+        }
+      }
+    }
+    List<SysUser> rows = sysUserMapper.findEnabledOptions(roles, OPTION_LIMIT);
+    if (rows.size() >= OPTION_LIMIT) {
+      log.warn("可选人员达到单次上限 {}，超出部分未返回（需要全量请用分页的用户管理接口）", OPTION_LIMIT);
+    }
+    return rows.stream().map(UserOption::of).toList();
+  }
+
+  /** 新增用户：账号唯一校验走 2xxx，DB 唯一键是最后防线（06 §4）。 */  @Transactional
   public UserSummary create(
       String username, String rawPassword, String name, Role role, Department department) {
     PasswordPolicy.validateOrThrow(rawPassword);
@@ -109,13 +143,20 @@ public class UserService {
 
   /**
    * 启停账号（01 A4/SM1）：目标状态的两态机 → 前置状态由 {@link UserStatus#other()} 推出，
-   * **不查当前状态**，一条守卫 UPDATE 完成判断与迁移；0 行（版本已变或已处于目标状态）→ 3xxx。
+   * **不查当前状态**，一条守卫 UPDATE 完成判断与迁移。
+   *
+   * <p>⚠️ 0 行有**两种**含义，必须分开（03 §38 的 P2-7）：账号不存在 ⇒ 2006，存在但版本/状态对不上 ⇒ 3001。
+   * 分类读发生在守卫 UPDATE **之后**、只负责把"0 行"拆开，不是 `06 §2.4` 禁的"先 SELECT 判断再 UPDATE"
+   * （那个的病是"判断基于快照、写不带条件"），与 `TaskService.updateDraft` 同形。
+   * 两条都给 3001 时，与同类 {@link #resetPassword}（0 行 → 2006）自相矛盾，前端会引导用户反复刷新重试。
    */
   @Transactional
   public void changeStatus(long id, UserStatus target, int version) {
     UserStatus expected = target.other();
     if (sysUserMapper.updateStatusAndVersion(id, target, expected, version) == 0) {
-      throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
+      throw sysUserMapper.findById(id).isEmpty()
+          ? new BizException(ErrorCode.USER_NOT_FOUND)
+          : new BizException(ErrorCode.CONCURRENT_CONFLICT);
     }
 
     auditFacade.record(

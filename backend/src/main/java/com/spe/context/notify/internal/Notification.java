@@ -9,8 +9,9 @@ import lombok.Data;
 /**
  * 站内通知实体（V12__notification.sql / 02 §3.2 / 13 §E16 的最小版）。
  *
- * <p>P3 只有一个生产来源：` TaskPublishedListener` 消费发布事件后给**被指派的评估人**各写一条。
- * 通知创建后不可修改（没有编辑入口），所以只有 `created_at` 没有 `updated_at`。
+ * <p>生产来源：P3 的 `TaskPublishedListener`（发布任务 → 被指派评估人）与 P4-W2 的四个审批链监听器
+ * （轮次开始 / 节点通过 / 驳回 / 定稿生效）。通知创建后不可修改（没有编辑入口），所以只有
+ * `created_at` 没有 `updated_at`。
  */
 @Data
 @TableName("notification")
@@ -21,7 +22,7 @@ public class Notification {
 
   private Long receiverId;
 
-  /** 类型常量（只增不改）：P3 只有 `TASK_PUBLISHED`。 */
+  /** 类型常量（只增不改）：P3 `TASK_PUBLISHED` + P4 四个审批链类型，见 `NotificationService`。 */
   private String type;
 
   private String title;

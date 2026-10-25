@@ -22,8 +22,8 @@ const ROLE_CASES = [
   {
     username: 'e2e-w5-manager',
     role: 'MANAGER',
-    // P2-W4 起「评估模板」对 MANAGER 可见；P3-W6 起再加「评估任务」（建/改/发布）与「我的待办」
-    menus: ['首页', '供应商', '评估模板', '评估任务', '我的待办'],
+    // P2-W4 起「评估模板」；P3-W6 起「评估任务」与「我的待办」；P4-W6 起「我的审批」「结果报表」
+    menus: ['首页', '供应商', '评估模板', '评估任务', '我的待办', '我的审批', '结果报表'],
   },
   {
     username: 'e2e-w5-evaluator',
@@ -34,7 +34,20 @@ const ROLE_CASES = [
   {
     username: 'e2e-w5-viewer',
     role: 'VIEWER',
-    menus: ['首页'],
+    // P4-W6 起 VIEWER 多了「结果报表」（01 §7：结果列表/评估报告只读）
+    menus: ['首页', '结果报表'],
+  },
+  /**
+   * ADMIN 是第四项（03 §38 的 P1-12：标题一直写"四角色"，但 `ROLE_CASES` 只有三项，
+   * 于是下面那句 `if (spec.role === 'ADMIN')` 从写下到现在**一次没跑过**）。
+   * 用独立的探针账号而不是种子的 `admin`——用例结尾会把它停用，停掉 `admin` 会把整个库锁死。
+   */
+  {
+    username: 'e2e-w5-admin',
+    role: 'ADMIN',
+    // 01 §7：用户与系统设置仅 ADMIN；供应商/模板/任务是 ADMIN 可见（模板与任务是"只读"那一列）；
+    // P4-W6 起再加「我的审批」「结果报表」
+    menus: ['首页', '供应商', '评估模板', '评估任务', '我的审批', '结果报表', '用户管理', '系统设置'],
   },
 ] as const
 
@@ -128,6 +141,9 @@ async function login(page: Page, username: string, password: string): Promise<vo
 }
 
 test('M1 判据 1：四角色可登录，且菜单按 01 §7 渲染', async ({ page }) => {
+  // 正例断言：四项齐全才算"四角色"。标题与数组长度差一项的病一直没被抓住，
+  // 因为 e2e 目录不在类型检查范围内（03 §38 的 P1-12）
+  expect(ROLE_CASES.map((spec) => spec.role)).toEqual(['MANAGER', 'EVALUATOR', 'VIEWER', 'ADMIN'])
   const context = await adminApi()
 
   try {

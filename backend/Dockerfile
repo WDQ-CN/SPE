@@ -6,7 +6,9 @@
 FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /build
 COPY pom.xml .
-RUN mvn -B -q dependency:go-offline
+# ⚠️ 用 dependency:resolve 而不是 dependency:go-offline（04-108）：后者会解析**整套插件依赖**
+# （site/javadoc 的 flexmark 等几百个小 pom），在慢链路上可卡十几分钟；这里只需要项目依赖。
+RUN mvn -B -q -DskipTests dependency:resolve
 COPY src ./src
 # 质量门由本地 `mvn test` 承担（06 §5）；镜像构建跳过测试以缩短构建时间
 RUN mvn -B -q -DskipTests package

@@ -63,6 +63,26 @@ public enum ErrorCode {
   IMPORT_FILE_INVALID(2026, "文件无法解析为 xlsx，请重新下载导入模板", HttpStatus.BAD_REQUEST),
   /** 逐格校验失败：message 里带**行列定位**，可多条（01 E3）。有它 ⇒ **整批不写**，避免半截批次。 */
   IMPORT_CELL_INVALID(2027, "导入内容有误", HttpStatus.BAD_REQUEST),
+  /** 评估单不存在（P4 审批/报告/定稿的入口校验，15 §E9）。 */
+  TASK_SUPPLIER_NOT_FOUND(2028, "评估单不存在", HttpStatus.BAD_REQUEST),
+  /** 驳回必须带意见（01 FR-P1；15 §E9）。 */
+  APPROVAL_COMMENT_REQUIRED(2029, "驳回时必须填写意见", HttpStatus.BAD_REQUEST),
+
+  /**
+   * 上传体积超过 `spring.servlet.multipart.max-file-size`（03 §38 的 P1-7，裁决点 4 采纳）。
+   *
+   * <p>不复用 2026（"文件无法解析为 xlsx"）：那个文案会说谎——文件是好的，只是太大。
+   * ⚠️ 它是 2xxx 段里**第一个**带 413 的码：`ErrorCodeTest` 的分段合法集合因此从 `{400}` 扩成
+   * `{400, 413}`，`06 §2.6` 的分段表同步（1xxx 早有 401+429 的同族先例）。
+   */
+  IMPORT_FILE_TOO_LARGE(2030, "上传文件超过大小限制", HttpStatus.PAYLOAD_TOO_LARGE),
+  /**
+   * 模板版本不属于所选模板（`21 §3.W1-2`）。
+   *
+   * <p>不复用 2010（"模板版本不存在或未发布"）：版本是好的，只是不属于这个模板——两者都是前端参数错误，
+   * 但文案要说真话（与 2030 不复用 2026 同一条原则）。
+   */
+  TEMPLATE_VERSION_MISMATCH(2031, "模板版本不属于所选模板", HttpStatus.BAD_REQUEST),
   CONCURRENT_CONFLICT(3001, "数据已被他人改动，请刷新后重试", HttpStatus.CONFLICT),
   FORBIDDEN(4001, "无权限执行该操作", HttpStatus.FORBIDDEN),
   /**
@@ -72,6 +92,13 @@ public enum ErrorCode {
    * 按"表单回显"处理，把越权显示成"参数有误"。
    */
   SHEET_NOT_ACCESSIBLE(4002, "无权访问该评分单", HttpStatus.FORBIDDEN),
+  /**
+   * 这一单不在我当前的审批节点上（01 §3 经 2026-10-25 裁决：审批人只限 MANAGER/ADMIN ⇒
+   * 角色决定入口、**节点才决定授权**）。
+   *
+   * <p>与 {@link #SHEET_NOT_ACCESSIBLE} 同族归 4xxx（15 §E9）：参数合法，是"这单不归你审"。
+   */
+  APPROVAL_NOT_YOUR_NODE(4003, "当前节点不属于你，无法审批", HttpStatus.FORBIDDEN),
   INTERNAL_ERROR(5001, "系统异常，请稍后重试", HttpStatus.INTERNAL_SERVER_ERROR);
 
   private final int code;

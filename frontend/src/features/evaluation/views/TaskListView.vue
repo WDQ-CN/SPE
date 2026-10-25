@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 // ElMessage 由 unplugin-auto-import 按需注入；ElMessageBox 不在它的白名单里，需显式引入
 import { ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 
+import { useAuthStore } from '@/features/auth/store'
 import {
   createTask,
   listTasks,
@@ -12,11 +13,16 @@ import {
 } from '@/features/evaluation/api'
 import { listSuppliers } from '@/features/supplier/api'
 import { listPublishedVersions, listTemplates } from '@/features/template/api'
-import { listUsers } from '@/features/user/api'
+import { listUserOptions } from '@/features/user/api'
 import { usePagedList } from '@/shared/composables/usePagedList'
 import { useSubmit } from '@/shared/composables/useSubmit'
 import { EVAL_TASK_STATUS_LABEL } from '@/shared/labels'
-import type { PublishedVersionBrief, SupplierSummary, TaskSummary, UserSummary } from '@/shared/types/dto'
+import type {
+  PublishedVersionBrief,
+  SupplierSummary,
+  TaskSummary,
+  UserOption,
+} from '@/shared/types/dto'
 import type { EvalTaskStatus } from '@/shared/types/enums'
 
 /**
@@ -32,6 +38,9 @@ import type { EvalTaskStatus } from '@/shared/types/enums'
  * 在本页重抄一份 `/api/tasks`？不——那样端点会散成两份，改一处漏一处。
  */
 const router = useRouter()
+const auth = useAuthStore()
+// 写端点 MANAGER-only（01 §7）；ADMIN 能进本页看列表，但不该看到点了必 403 的按钮（03 §41.3 的 P2-38）
+const canManage = computed(() => auth.roles.includes('MANAGER'))
 
 const keyword = ref('')
 const status = ref<EvalTaskStatus | ''>('')
@@ -46,10 +55,31 @@ const list = usePagedList<TaskSummary>((page, size) =>
 
 const dialogVisible = ref(false)
 const submit = useSubmit()
+/** 发布是列表级的写操作：闸门与错误回显同样走 useSubmit（03 §38 的 P1-14——原来没有防重复闸门）。 */
+const publish = useSubmit()
+const publishingId = ref<number | null>(null)
 const templates = ref<{ id: number; name: string }[]>([])
 const versions = ref<PublishedVersionBrief[]>([])
 const suppliers = ref<SupplierSummary[]>([])
-const users = ref<UserSummary[]>([])
+const users = ref<UserOption[]>([])
+/**
+ * 下拉数据源哪一路失败了（03 §38 的 P0-1）。原来一个 403 会把三段一起打断、用户只见一句"无权限"；
+ * 改成 `allSettled` 后又不能让失败彻底无声 ⇒ 这里**点名是哪一路**，一行文案由三路共用（第 3 条：单点定义）。
+ */
+const failedOptions = ref<string[]>([])
+const optionsError = computed(() =>
+  failedOptions.value.length > 0
+    ? `${failedOptions.value.join('、')}选项加载失败，请重试或联系管理员`
+    : '',
+)
+function markOptionFailed(label: string): void {
+  if (!failedOptions.value.includes(label)) {
+    failedOptions.value.push(label)
+  }
+}
+function clearOptionFailed(label: string): void {
+  failedOptions.value = failedOptions.value.filter((item) => item !== label)
+}
 
 const form = reactive({
   name: '',
@@ -63,6 +93,8 @@ const form = reactive({
 })
 
 const supplierLoading = ref(false)
+/** 模板切换的迟到响应守卫（03 §41.2 的 P1-17）：慢网下先选 A 再选 B 时，A 的晚到列表不得覆盖 B。 */
+let templateChangeSeq = 0
 
 async function openDialog(): Promise<void> {
   dialogVisible.value = true
@@ -74,12 +106,27 @@ async function openDialog(): Promise<void> {
   form.supplierIds = []
   form.approverIds = []
   versions.value = []
-  const [templatePage, userPage] = await Promise.all([
+  failedOptions.value = []
+  // allSettled 而不是 all：一个分支失败（03 §38 的 P0-1 就是这个场景）不能把另外两路一起打断——
+  // 但也不能只靠 allSettled 就完事：失败必须**在界面上说是哪一路失败了**，否则 P0 只是变成静默 P2
+  const [templateResult, userResult] = await Promise.allSettled([
     listTemplates({ page: 1, size: 100 }),
-    listUsers({ page: 1, size: 100 }),
+    // 审批人限 MANAGER/ADMIN（01 §3 经 2026-10-25 用户裁决收窄，21 §3.W1-1）：
+    // 不传 roles 会把评估人/查看者放进候选，选中后任务会卡死在无人能审的节点（03 §41.1）
+    listUserOptions(['MANAGER', 'ADMIN']),
   ])
-  templates.value = templatePage.list.map((item) => ({ id: item.id, name: item.name }))
-  users.value = userPage.list
+  if (templateResult.status === 'fulfilled') {
+    templates.value = templateResult.value.list.map((item) => ({ id: item.id, name: item.name }))
+  } else {
+    templates.value = []
+    markOptionFailed('评估模板')
+  }
+  if (userResult.status === 'fulfilled') {
+    users.value = userResult.value
+  } else {
+    users.value = []
+    markOptionFailed('审批链')
+  }
   // 供应商走**远程搜索**（见 searchSuppliers 的注释），不再一次拉 100 家
   await searchSuppliers('')
 }
@@ -106,14 +153,30 @@ async function searchSuppliers(keyword: string): Promise<void> {
       .forEach((item) => merged.set(item.id, item))
     page.list.forEach((item) => merged.set(item.id, item))
     suppliers.value = [...merged.values()]
+    clearOptionFailed('供应商')
+  } catch {
+    // 原来这里是**未接住的 rejection**：远程搜索一失败就往上抛，界面上什么都不会出现
+    suppliers.value = suppliers.value.filter((item) => form.supplierIds.includes(item.id))
+    markOptionFailed('供应商')
   } finally {
     supplierLoading.value = false
   }
 }
 
 async function onTemplateChange(templateId: number): Promise<void> {
+  const seq = ++templateChangeSeq
   form.templateVersionId = null
-  versions.value = await listPublishedVersions(templateId)
+  try {
+    const published = await listPublishedVersions(templateId)
+    if (seq === templateChangeSeq) {
+      versions.value = published
+    }
+  } catch {
+    if (seq === templateChangeSeq) {
+      versions.value = []
+      markOptionFailed('模板版本')
+    }
+  }
 }
 
 async function onCreate(): Promise<void> {
@@ -121,6 +184,7 @@ async function onCreate(): Promise<void> {
     name: form.name,
     year: form.year,
     quarter: form.quarter,
+    templateId: form.templateId ?? 0,
     templateVersionId: form.templateVersionId ?? 0,
     deadline: form.deadline,
     supplierIds: form.supplierIds,
@@ -137,17 +201,28 @@ async function onCreate(): Promise<void> {
 }
 
 async function onPublish(row: TaskSummary): Promise<void> {
-  await ElMessageBox.confirm(
-    '发布后将为每个供应商的每个维度生成评分单并自动指派，任务进入「进行中」。发布日期与指派不可撤销。',
-    '确认发布',
-    { type: 'warning' },
-  )
-  const result = await publishTask(row.id, row.version)
-  ElMessage.success(
-    `已发布：${result.supplierCount} 个供应商共 ${result.sheetCount} 张评分单，` +
-      `自动指派 ${result.assignedCount} 张、待指派 ${result.unassignedCount} 张`,
-  )
-  await list.reload()
+  try {
+    await ElMessageBox.confirm(
+      '发布后将为每个供应商的每个维度生成评分单并自动指派，任务进入「进行中」。发布日期与指派不可撤销。',
+      '确认发布',
+      { type: 'warning' },
+    )
+  } catch {
+    // 用户点「取消」不是失败：原先这里是**未接住的 rejection**（03 §38 P1-10 的同族形态）
+    return
+  }
+  publishingId.value = row.id
+  // run() 自带防重复闸门：确认框关闭到响应返回之间再点一次，不会再拿**旧 version** 打第二遍
+  // ——那会落 3001，而拦截器对 3xxx 会 refreshCurrentView()，连对话框一起重挂（03 §38 的 P1-14）
+  await publish.run(async () => {
+    const result = await publishTask(row.id, row.version)
+    ElMessage.success(
+      `已发布：${result.supplierCount} 个供应商共 ${result.sheetCount} 张评分单，` +
+        `自动指派 ${result.assignedCount} 张、待指派 ${result.unassignedCount} 张`,
+    )
+    await list.reload()
+  })
+  publishingId.value = null
 }
 
 onMounted(() => void list.load())
@@ -162,12 +237,21 @@ onMounted(() => void list.load())
   <SectionCard title="任务列表">
     <template #actions>
       <el-button
+        v-if="canManage"
         type="primary"
         @click="openDialog"
       >
         新建任务
       </el-button>
     </template>
+
+    <el-alert
+      v-if="publish.errorMessage.value"
+      :title="publish.errorMessage.value"
+      type="error"
+      :closable="false"
+      show-icon
+    />
 
     <div class="filters">
       <el-input
@@ -253,9 +337,11 @@ onMounted(() => void list.load())
             详情
           </el-button>
           <el-button
-            v-if="row.status === 'DRAFT'"
+            v-if="canManage && row.status === 'DRAFT'"
             link
             type="primary"
+            :loading="publish.submitting.value && publishingId === row.id"
+            :disabled="publish.submitting.value"
             @click="onPublish(row as TaskSummary)"
           >
             发布
@@ -380,6 +466,14 @@ onMounted(() => void list.load())
           </div>
         </el-form-item>
       </el-form>
+
+      <el-alert
+        v-if="optionsError"
+        :title="optionsError"
+        type="error"
+        :closable="false"
+        show-icon
+      />
 
       <el-alert
         v-if="submit.errorMessage.value"

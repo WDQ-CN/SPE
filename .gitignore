@@ -39,3 +39,6 @@ playwright-report/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Qoder 本地工具元数据（repowiki 等，不入库）
+.qoder/

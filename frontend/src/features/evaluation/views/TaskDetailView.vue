@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import {
@@ -10,13 +10,14 @@ import {
 } from '@/features/evaluation/api'
 import { useAuthStore } from '@/features/auth/store'
 import { sheetPermissions } from '@/features/evaluation/sheet-status'
-import { listUsers } from '@/features/user/api'
+import { listUserOptions } from '@/features/user/api'
+import { useSubmit } from '@/shared/composables/useSubmit'
 import {
   EVAL_TASK_STATUS_LABEL,
   SHEET_STATUS_LABEL,
   TASK_SUPPLIER_STATUS_LABEL,
 } from '@/shared/labels'
-import type { SheetBrief, TaskDetail, TaskProgress, UserSummary } from '@/shared/types/dto'
+import type { SheetBrief, TaskDetail, TaskProgress, UserOption } from '@/shared/types/dto'
 
 /**
  * 任务详情：基本信息 + 进度看板 + 评分单清单（含指派调整）。
@@ -28,48 +29,114 @@ import type { SheetBrief, TaskDetail, TaskProgress, UserSummary } from '@/shared
  */
 const route = useRoute()
 const auth = useAuthStore()
-const taskId = Number(route.params.id)
+/**
+ * `taskId` 必须是响应式的（03 §38 存疑 5）。原先写成 `const taskId = Number(route.params.id)`，
+ * 站内一旦出现 `/tasks/1 → /tasks/2` 的直接跳转（P4 的"上一张/下一张"），页面会停在旧任务上——
+ * 与 TemplateEditorView 当年修过的是同一件事。
+ */
+const taskId = ref(Number(route.params.id))
 
 const detail = ref<TaskDetail | null>(null)
 const progress = ref<TaskProgress | null>(null)
 const sheets = ref<SheetBrief[]>([])
-const users = ref<UserSummary[]>([])
+const users = ref<UserOption[]>([])
 const loading = ref(false)
 const error = ref('')
+/** 改派是写操作：闸门 + 错误回显一律走 useSubmit（03 §38 的 P1-14——原来没有防重复闸门） */
+const assign = useSubmit()
 
 const assignVisible = ref(false)
 const assignTarget = ref<SheetBrief | null>(null)
 const assigneeId = ref<number | null>(null)
+/**
+ * 改派/加载选项的失败文案**只显示在对话框里**。不能复用页面顶部的 `error`：模板是
+ * `v-if="error"` + `v-else-if="detail"`，把改派的失败写进去会让整个详情页塌成一条横幅。
+ */
+const assignError = ref('')
+
+/**
+ * 两张表在 500 家供应商上限下整表渲染会明显卡顿（03 §41.3 的 P2-39）：
+ * 客户端分页（数据本来就已全量取回），默认 20 行。
+ */
+const progressPage = ref(1)
+const progressSize = ref(20)
+const pagedProgress = computed(() => {
+  const rows = progress.value?.rows ?? []
+  const from = (progressPage.value - 1) * progressSize.value
+  return rows.slice(from, from + progressSize.value)
+})
+const sheetsPage = ref(1)
+const sheetsSize = ref(20)
+const pagedSheets = computed(() => {
+  const from = (sheetsPage.value - 1) * sheetsSize.value
+  return sheets.value.slice(from, from + sheetsSize.value)
+})
+
+/** 迟到响应不得覆盖新的单子（同一族的竞态形态：03 §38 的 P1-10 打分页就是它）。 */
+let loadSeq = 0
 
 async function load(): Promise<void> {
+  const requested = taskId.value
+  const seq = ++loadSeq
   loading.value = true
   error.value = ''
   try {
     const [detailData, progressData, sheetData] = await Promise.all([
-      getTask(taskId),
-      getTaskProgress(taskId),
-      listTaskSheets(taskId),
+      getTask(requested),
+      getTaskProgress(requested),
+      listTaskSheets(requested),
     ])
+    if (seq !== loadSeq) {
+      return
+    }
     detail.value = detailData
     progress.value = progressData
     sheets.value = sheetData
   } catch (caught) {
+    if (seq !== loadSeq) {
+      return
+    }
     detail.value = null
     progress.value = null
     sheets.value = []
     error.value = caught instanceof Error ? caught.message : '加载失败'
   } finally {
-    loading.value = false
+    if (seq === loadSeq) {
+      loading.value = false
+    }
   }
 }
+
+watch(
+  () => route.params.id,
+  (next) => {
+    const parsed = Number(next)
+    if (Number.isNaN(parsed) || parsed === taskId.value) {
+      return
+    }
+    taskId.value = parsed
+    detail.value = null
+    progress.value = null
+    sheets.value = []
+    void load()
+  },
+)
 
 async function openAssign(row: SheetBrief): Promise<void> {
   assignTarget.value = row
   assigneeId.value = row.assigneeId
   assignVisible.value = true
+  assignError.value = ''
   if (users.value.length === 0) {
-    const page = await listUsers({ page: 1, size: 100 })
-    users.value = page.list
+    try {
+      // 改派的合法指派集合是 {EVALUATOR, MANAGER}（TaskService.requireEligibleAssignee），
+      // 与审批链的"限 MANAGER/ADMIN"不同 ⇒ 集合由**调用点**给，不在端点上写死
+      users.value = await listUserOptions(['EVALUATOR', 'MANAGER'])
+    } catch {
+      // 原先这里没有 catch：403/网络错误会变成**未接住的 rejection**，对话框照常打开但选项为空
+      users.value = []
+      assignError.value = '可指派人员加载失败，请重试或联系管理员'
+    }
   }
 }
 
@@ -78,10 +145,16 @@ async function confirmAssign(): Promise<void> {
   if (!target || assigneeId.value === null) {
     return
   }
-  await assignSheet(target.sheetId, assigneeId.value, target.version)
-  ElMessage.success('已改派')
-  assignVisible.value = false
-  await load()
+  const ok = await assign.run(async () => {
+    await assignSheet(target.sheetId, assigneeId.value as number, target.version)
+    ElMessage.success('已改派')
+    assignVisible.value = false
+    await load()
+  })
+  if (!ok) {
+    // 拦截器对 2xxx 刻意不弹全局提示，原话必须由页面显示（03 §38 的 P1-10 同一条口径）
+    assignError.value = assign.errorMessage.value
+  }
 }
 
 /**
@@ -136,7 +209,7 @@ onMounted(load)
       </SectionCard>
 
       <SectionCard title="进度看板">
-        <el-table :data="progress?.rows ?? []">
+        <el-table :data="pagedProgress">
           <el-table-column
             prop="supplierName"
             label="供应商"
@@ -155,7 +228,7 @@ onMounted(load)
             width="100"
           >
             <template #default="{ row }">
-              {{ row.currentNode ?? '—' }}
+              {{ row.currentNode > 0 ? row.currentNode : '—' }}
             </template>
           </el-table-column>
           <el-table-column
@@ -190,10 +263,18 @@ onMounted(load)
             </template>
           </el-table-column>
         </el-table>
+        <el-pagination
+          v-model:current-page="progressPage"
+          v-model:page-size="progressSize"
+          :total="progress?.rows.length ?? 0"
+          :page-sizes="[20, 50, 100]"
+          layout="total, sizes, prev, pager, next"
+          class="detail__pagination"
+        />
       </SectionCard>
 
       <SectionCard title="评分单与指派">
-        <el-table :data="sheets">
+        <el-table :data="pagedSheets">
           <el-table-column
             prop="supplierName"
             label="供应商"
@@ -243,6 +324,14 @@ onMounted(load)
             </template>
           </el-table-column>
         </el-table>
+        <el-pagination
+          v-model:current-page="sheetsPage"
+          v-model:page-size="sheetsSize"
+          :total="sheets.length"
+          :page-sizes="[20, 50, 100]"
+          layout="total, sizes, prev, pager, next"
+          class="detail__pagination"
+        />
       </SectionCard>
     </template>
 
@@ -266,12 +355,21 @@ onMounted(load)
           :value="item.id"
         />
       </el-select>
+      <el-alert
+        v-if="assignError"
+        :title="assignError"
+        type="error"
+        :closable="false"
+        show-icon
+      />
       <template #footer>
         <el-button @click="assignVisible = false">
           取消
         </el-button>
         <el-button
           type="primary"
+          :loading="assign.submitting.value"
+          :disabled="assign.submitting.value"
           @click="confirmAssign"
         >
           确定
@@ -280,4 +378,11 @@ onMounted(load)
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.detail__pagination {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+</style>
 

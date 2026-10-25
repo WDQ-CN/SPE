@@ -178,10 +178,33 @@ describe('模板整体权重报告', () => {
     // 报告结构里只有 publishable 一个"能不能"开关，页面据此只禁用发布按钮（12 §E4）
     expect(Object.keys(report).sort()).toEqual([
       'dimensions',
+      'duplicateCodes',
       'emptyDimensions',
       'indicatorIssues',
       'invalidTargets',
       'publishable',
     ])
+  })
+
+  it('版本内编码重复 ⇒ 不可发布且点名重复项（后端 2014 的前端半边，03 §38 的 P2-18）', () => {
+    // 作用域是**版本**而不是维度：后端唯一键是 uk_indicator_version_code(template_version_id, code)，
+    // 跨维度重复同样会被拒。只按维度内查重会漏这一类。
+    const report = checkTemplateWeights([
+      { name: '质量', weight: 50, indicators: [{ code: 'SAME_CODE', weight: 100 }] },
+      { name: '交付', weight: 50, indicators: [{ code: 'SAME_CODE', weight: 100 }] },
+    ])
+
+    expect(report.duplicateCodes).toEqual(['SAME_CODE'])
+    expect(report.publishable).toBe(false)
+  })
+
+  it('编码各不相同时不得因查重而变红（防把闸门收得过紧）', () => {
+    const report = checkTemplateWeights([
+      { name: '质量', weight: 50, indicators: [{ code: ' A ', weight: 100 }] },
+      { name: '交付', weight: 50, indicators: [{ code: 'B', weight: 100 }] },
+    ])
+
+    expect(report.duplicateCodes).toEqual([])
+    expect(report.publishable).toBe(true)
   })
 })

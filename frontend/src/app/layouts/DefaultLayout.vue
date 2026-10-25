@@ -30,6 +30,9 @@ async function loadRecent(): Promise<void> {
   try {
     const page = await listNotifications(1, 5)
     recent.value = page.list
+  } catch {
+    // 下拉失败不该把布局打断（03 §41.3 的 P2-31）：清空列表，错误由 onOpen/onReadAll 提示一次
+    recent.value = []
   } finally {
     recentLoading.value = false
   }
@@ -37,12 +40,20 @@ async function loadRecent(): Promise<void> {
 
 /** 点开下拉时同时刷新列表与角标（别人刚发布任务时这里能立刻看到） */
 async function onOpen(): Promise<void> {
-  await Promise.all([loadRecent(), notifications.refresh()])
+  try {
+    await Promise.all([loadRecent(), notifications.refresh()])
+  } catch {
+    ElMessage.error('站内通知加载失败')
+  }
 }
 
 async function onReadAll(): Promise<void> {
-  await notifications.readAll()
-  await loadRecent()
+  try {
+    await notifications.readAll()
+    await loadRecent()
+  } catch {
+    ElMessage.error('标记已读失败，请稍后重试')
+  }
 }
 
 onMounted(() => void notifications.refresh())

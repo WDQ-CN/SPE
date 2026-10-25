@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -31,6 +32,42 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Transactional
 class GlobalExceptionHandlerApiTest extends AbstractIntegrationTest {
+
+  @Test
+  @DisplayName("P1-6 未映射路径 → 404 + code 2001（不再是 ProblemDetail，且不泄漏内部结构）")
+  void unknownPathBecomesResult() throws Exception {
+    String token = login(ADMIN_USERNAME, ADMIN_PASSWORD);
+
+    mockMvc
+        .perform(authed(get("/api/no-such-endpoint"), token).accept(MediaType.APPLICATION_JSON))
+        .andExpect(status().isNotFound())
+        .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+        .andExpect(jsonPath("$.code").value(2001))
+        // 正例：message 里不得出现 Spring 的内部说明（"No static resource api/…" 会泄漏实现细节）
+        .andExpect(
+            jsonPath("$.message")
+                .value(
+                    org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("static resource"))));
+  }
+
+  @Test
+  @DisplayName("P1-6 406 的判据拆两条：协商失败只断状态码；未映射路径能回 JSON 时必须回 Result")
+  void notAcceptableKeepsStatusAndUnmappedPathAnswersJson() throws Exception {
+    // ① 406：只接受 text/plain 时服务端无法用客户端不要的类型答话，Spring 通常给空体 ⇒ **只断状态码**。
+    //    要求它也回 JSON 是物理上做不到的事；为了让用例绿去改 produces 或塞转换器特例，
+    //    等于"把协议改弯来迎合测试"。走 /api/ping（permitAll），避免与安全链的 401 抢先。
+    mockMvc.perform(get("/api/ping").accept(org.springframework.http.MediaType.TEXT_PLAIN))
+        .andExpect(status().isNotAcceptable());
+
+    // ② 404 + JSON：这条才是"覆写真的生效"的正例——删掉 handleNoResourceFoundException
+    //    它就退回 ProblemDetail（没有 code），用例立刻红。
+    String token = login(ADMIN_USERNAME, ADMIN_PASSWORD);
+    mockMvc
+        .perform(authed(get("/api/no-such-endpoint"), token).accept(MediaType.APPLICATION_JSON))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value(2001));
+  }
 
   @Test
   @DisplayName("缺少必填 query 参数 → 400 + code 2001（W3 新增的 DELETE 端点最容易走到这条）")

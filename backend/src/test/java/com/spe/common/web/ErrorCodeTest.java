@@ -29,10 +29,11 @@ class ErrorCodeTest {
   @DisplayName("每个错误码都携带与其分段匹配的 HTTP 状态（1xxx 允许 401 与 429）")
   void everyCodeCarriesMatchingHttpStatus() {
     // 1xxx 有两个合法状态：凭据类错误 401；登录限流 429（03 §16 的 SEC-5，语义是「稍后再试」而非「凭据错误」）
+    // 2xxx 有两个合法状态：一般参数错误 400；上传超限 413（03 §38 的 P1-7 / 18 §6 裁决点 4）
     Map<Integer, Set<Integer>> allowedBySegment =
         Map.of(
             1, Set.of(401, 429),
-            2, Set.of(400),
+            2, Set.of(400, 413),
             3, Set.of(409),
             4, Set.of(403),
             5, Set.of(500));

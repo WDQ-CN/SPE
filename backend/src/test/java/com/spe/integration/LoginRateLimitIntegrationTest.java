@@ -37,6 +37,35 @@ class LoginRateLimitIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
+  @DisplayName("P1-4 伪造的 X-Forwarded-For 不被采信：审计与限流用的都是对端地址")
+  void forgedForwardedForIsNotTrusted() throws Exception {
+    String peer = "198.18.0.78";
+    mockMvc
+        .perform(
+            json(
+                    post("/api/auth/login"),
+                    Map.of("username", "xff_probe_account", "password", "definitely-wrong"))
+                .header("X-Forwarded-For", "203.0.113.77")
+                .with(
+                    request -> {
+                      request.setRemoteAddr(peer);
+                      return request;
+                    }))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value(1002));
+
+    List<String> ips =
+        jdbcTemplate.queryForList(
+            "SELECT ip FROM audit_log WHERE action = 'AUTH_LOGIN_FAILED' AND operator_name = 'xff_probe_account'",
+            String.class);
+    // 两条都要：只有"不是伪造值"是负例，正则写错（读不到 ip、压根没留痕）也能通过；
+    // 加上"必须等于对端地址"才是正例（04-070 的判据形状）
+    assertThat(ips).as("失败留痕必须真的有行，且 ip 必须不是请求头里的伪造值").isNotEmpty();
+    assertThat(ips).noneMatch(ip -> "203.0.113.77".equals(ip));
+    assertThat(ips).allSatisfy(ip -> assertThat(ip).isEqualTo(peer));
+  }
+
+  @Test
   @DisplayName("连续失败到阈值 → 429 + 1003，并落一条 AUTH_LOGIN_BLOCKED")
   void repeatedFailuresGetRateLimited() throws Exception {
     for (int i = 0; i < 5; i++) {

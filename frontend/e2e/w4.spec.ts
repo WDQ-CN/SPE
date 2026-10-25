@@ -1,6 +1,15 @@
 import { expect, test } from '@playwright/test'
 
-import { ADMIN, FAILURE_PROBE, login, loginAsAdmin, menuItem, watchConsole } from './support'
+import {
+  ADMIN,
+  FAILURE_PROBE,
+  expectCspHeaderOn,
+  firstAssetUrl,
+  login,
+  loginAsAdmin,
+  menuItem,
+  watchConsole,
+} from './support'
 
 /**
  * P1-W4 的端到端验收：在真实 Chrome 里走一遍登录、菜单、三个页面，并盯住控制台。
@@ -19,22 +28,24 @@ import { ADMIN, FAILURE_PROBE, login, loginAsAdmin, menuItem, watchConsole } fro
 
 // 探针账号约定、控制台监视、登录与菜单定位统一放在 ./support（w5/w6 也用），见那里的注释
 
-test('admin 登录后落首页：菜单五项、身份正确、控制台无错误', async ({ page }) => {
+test('admin 登录后落首页：菜单八项、身份正确、控制台无错误', async ({ page }) => {
   const console_ = watchConsole(page)
 
   await loginAsAdmin(page)
 
   await expect(page).toHaveURL(/localhost:18081\/$/)
   const items = page.locator('.el-menu-item')
-  // P2-W4 起多一个「评估模板」；P3-W6 起又多一个「评估任务」（01 §7：ADMIN 只读 / MANAGER 建改发，
-  // 两者都可见入口）。「我的待办」只有 MANAGER/EVALUATOR 可见，ADMIN 看不到，故这里是 6 项。
-  await expect(items).toHaveCount(6)
+  // P2-W4 起多一个「评估模板」；P3-W6 起又多「评估任务」；P4-W6 起再加「我的审批」「结果报表」
+  // （01 §7：ADMIN 在审批链内可审批、结果报表只读；「我的待办」只有 MANAGER/EVALUATOR 可见）。
+  await expect(items).toHaveCount(8)
   await expect(items.nth(0)).toContainText('首页')
   await expect(items.nth(1)).toContainText('供应商')
   await expect(items.nth(2)).toContainText('评估模板')
   await expect(items.nth(3)).toContainText('评估任务')
-  await expect(items.nth(4)).toContainText('用户管理')
-  await expect(items.nth(5)).toContainText('系统设置')
+  await expect(items.nth(4)).toContainText('我的审批')
+  await expect(items.nth(5)).toContainText('结果报表')
+  await expect(items.nth(6)).toContainText('用户管理')
+  await expect(items.nth(7)).toContainText('系统设置')
 
   // 「系统管理员」在页头标签和首页信息卡里都会出现，getByText 会因命中多个而报 strict mode violation
   await expect(page.locator('.layout__user .el-tag')).toHaveText('系统管理员')
@@ -150,11 +161,18 @@ test('CSP 不拦自家资源：五个页面加载后无 CSP 违规（SEC-4 的�
   const console_ = watchConsole(page)
 
   await loginAsAdmin(page)
-  // P2-W4 的模板页也要纳入：它是唯一会渲染大量表格与对话框的页面
+
+  // ① 正例（03 §38 的 P1-11）：CSP 头**确实在响应里**，且逐路径各验一次——
+  //    nginx 的 add_header 是按 location 继承的，一个路径带了不代表另一个也带（04-032 的同一坑）。
+  //    原先这条只断言"console 里没有违规"，那是恒真负例：头整个消失时数组照样空、用例照样绿。
+  const asset = await firstAssetUrl(page)
+  await expectCspHeaderOn(page, ['/', '/index.html', asset])
+
   for (const name of ['供应商', '评估模板', '用户管理', '系统设置']) {
     await menuItem(page, name).click()
     await page.waitForLoadState('networkidle')
   }
 
+  // ② 反例：自家资源没有被 CSP 拦住
   expect(console_.csp, `CSP 违规：\n${console_.csp.join('\n')}`).toEqual([])
 })

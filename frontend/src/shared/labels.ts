@@ -100,3 +100,16 @@ export const SHEET_STATUS_LABEL: Record<SheetStatus, string> = {
   SCORING: '评分中',
   SUBMITTED: '已提交',
 }
+
+/** 审批动作（`approval_record.action`）：后端只写这两个值（15 §E2） */
+export const APPROVAL_ACTION_LABEL: Record<string, string> = {
+  APPROVE: '通过',
+  REJECT: '驳回',
+}
+
+/** 评分记录来源（`score.source`）：报告页的「来源」列（01 R3） */
+export const SCORE_SOURCE_LABEL: Record<string, string> = {
+  MANUAL: '手工录入',
+  IMPORT: 'Excel 导入',
+  API: '开放接口',
+}

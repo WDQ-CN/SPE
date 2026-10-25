@@ -1,7 +1,7 @@
 import { http } from '@/app/http'
 import type { PageResult } from '@/shared/types/result'
 import type { Department, Role, UserStatus } from '@/shared/types/enums'
-import type { PageParams, UserSummary } from '@/shared/types/dto'
+import type { PageParams, UserOption, UserSummary } from '@/shared/types/dto'
 
 /**
  * 用户管理接口（02 §4 / 01 SM1、A4），**仅 ADMIN**。
@@ -29,6 +29,20 @@ export interface UpdateUserPayload {
 
 export function listUsers(params: PageParams): Promise<PageResult<UserSummary>> {
   return http.get<PageResult<UserSummary>>('/users', params)
+}
+
+/**
+ * 可选人员（02 §4 / 03 §38 的 P0-1）：`roles` 留空 = 不过滤角色（目录面的通用能力）。
+ * 审批链选择器固定传 `MANAGER,ADMIN`（01 §3 经 2026-10-25 裁决收窄，`21 §3.W1-1`），
+ * 改派则按 `TaskService.requireEligibleAssignee` 的合法集合传 `EVALUATOR,MANAGER`。
+ *
+ * <p>⚠️ 传**逗号拼接的单个 query 值**而不是数组：axios 默认把数组序列化成 `roles[]=A`，
+ * 而后端 `@RequestParam(name="roles") List<String>` 认的是 `roles=A,B`。写错的表现是
+ * "过滤没生效/下拉里没人"，不报错——属 04-071 那一族的静默失效。
+ */
+export function listUserOptions(roles?: readonly Role[]): Promise<UserOption[]> {
+  const joined = roles && roles.length > 0 ? roles.join(',') : undefined
+  return http.get<UserOption[]>('/user-options', { roles: joined })
 }
 
 export function createUser(payload: CreateUserPayload): Promise<UserSummary> {

@@ -151,12 +151,18 @@ public class ScoringService {
     return new SheetPreview(sheetId, context.getDimensionId(), result);
   }
 
-  /** 暂存（01 E2）：走唯一写入口；审计不在这里写——13 §E20 的词表里"暂存"没有动作码，只有提交/导入有。 */
+  /**
+   * 暂存（01 E2）：走唯一写入口；审计不在这里写——13 §E20 的词表里"暂存"没有动作码，只有提交/导入有。
+   *
+   * @param clearIndicatorIds 要**清空**的格子（P2-15）。由 Controller 从请求里 `rawValue == null` 的那些拆出来，
+   *     所以这里的两条语义是分开的：**没在请求里** = 不动，**显式 null** = 删掉。
+   */
   @Transactional
-  public int saveScores(long sheetId, long operatorId, Map<Long, BigDecimal> values) {
+  public int saveScores(
+      long sheetId, long operatorId, Map<Long, BigDecimal> values, List<Long> clearIndicatorIds) {
     // 可见性 + 状态 + 当前读都在**写入口内**判（04-096 的单入口守卫）：
     // 原先这里先调一次 requireReadableSheet，而 Excel 导入那条路径没有——同一条不变量漏了一处。
-    return scoreWriter.save(sheetId, values, ScoreSource.MANUAL, null, operatorId);
+    return scoreWriter.save(sheetId, values, clearIndicatorIds, ScoreSource.MANUAL, null, operatorId);
   }
 
   /**
@@ -195,7 +201,11 @@ public class ScoringService {
     // 2) 该维度必须全部有值（缺哪个就把指标编码列进 message，01 E4 / 判据 4）
     TemplateSnapshot snapshot = templateSnapshotFacade.requirePublished(context.getTemplateVersionId());
     DimensionSnapshot dimension = dimensionOf(snapshot, context.getDimensionId());
-    Map<Long, BigDecimal> savedValues = rawValues(sheetId);
+    // ⚠️ 这一读必须是**当前读**（03 §38 的 P1-1）：:170 的映射读已经把本事务的 read view 钉在取锁之前，
+    //    用普通读会把"刚被别人导入/暂存的分值"看成旧值 ⇒ 可能以从未被校验过的内容定稿（04-057 同根因）。
+    //    锁模式取 X 而不是 S：本方法后面可能 correctValues 写这些行（04-076 为 S→X 升级付过代价）。
+    List<Score> savedRows = scoreMapper.findValuesForUpdate(sheetId);
+    Map<Long, BigDecimal> savedValues = rawValuesOf(savedRows);
     ScoreSheetResult result = ScoreCalculator.calculateSheet(dimension, savedValues, thresholds());
     if (!result.complete()) {
       throw new BizException(
@@ -203,7 +213,7 @@ public class ScoringService {
           "该维度还有指标未填写：" + String.join("、", result.missingCodes()));
     }
     // 3) E8 的第二道守卫：提交时重算，与库里的 score_value 比对（正常恒等；不等说明有人绕过快照）
-    int corrected = rewriteIfStale(sheetId, dimension, savedValues, result, operatorId);
+    int corrected = rewriteIfStale(sheetId, savedValues, result, savedRows, operatorId);
 
     // 4) 评分单守卫迁移
     if (sheetMapper.markSubmitted(sheetId, version) == 0) {
@@ -219,11 +229,24 @@ public class ScoringService {
         throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
       }
       taskSupplierStatus = "PENDING_APPROVAL";
-      // 6) 发事件：P3 有发布方、消费方在 P4（13 §E9 说明为什么这不是"声明了没人消费"）
+      // 6) 发事件：P3 有发布方、消费方在 P4（13 §E9 说明为什么这不是"声明了没人消费"）。
+      //    round 取 :174 已锁到的那一行（当前读；驳回时 T5 在同一条守卫 UPDATE 里 +1），**不写死 1**；
+      //    查不到第一级审批人**抛错、不发事件**——CLAUDE 默认约定第 8 条："查不到不许兜底值"，
+      //    兜成 uid=0 会让 W2 的监听器写出一行没人能收到的通知（03 §38 的 P1-3）。
       Long approverId = approvalNodeMapper.findFirstApproverId(context.getTaskId());
+      if (approverId == null) {
+        log.error(
+            "任务缺少 seq=1 的审批节点，无法发起审批轮次：taskId={} taskSupplierId={} round={}",
+            context.getTaskId(),
+            context.getTaskSupplierId(),
+            taskSupplier.getRound());
+        throw new BizException(
+            ErrorCode.USER_NOT_ELIGIBLE,
+            "任务的第一级审批节点不存在，请联系采购经理修正审批链：taskId=" + context.getTaskId());
+      }
       eventPublisher.publish(
           new ApprovalRoundStartedEvent(
-              context.getTaskSupplierId(), approverId == null ? 0L : approverId, 1));
+              context.getTaskSupplierId(), approverId, taskSupplier.getRound()));
     }
     auditFacade.record(
         AuditAction.SHEET_SUBMIT,
@@ -256,9 +279,9 @@ public class ScoringService {
     return byIndicator;
   }
 
-  private Map<Long, BigDecimal> rawValues(long sheetId) {
+  private Map<Long, BigDecimal> rawValuesOf(List<Score> rows) {
     Map<Long, BigDecimal> values = new LinkedHashMap<>();
-    for (Score score : scoreMapper.findBySheetId(sheetId)) {
+    for (Score score : rows) {
       if (score.getRawValue() != null) {
         values.put(score.getIndicatorId(), score.getRawValue());
       }
@@ -275,12 +298,13 @@ public class ScoringService {
    */
   private int rewriteIfStale(
       long sheetId,
-      DimensionSnapshot dimension,
       Map<Long, BigDecimal> savedValues,
       ScoreSheetResult recomputed,
+      List<Score> savedRows,
       long operatorId) {
+    // 复用提交前那次当前读的结果：再查一次不但多一条 SQL，还会重新落到同一个 read view 上
     Map<Long, BigDecimal> stored = new LinkedHashMap<>();
-    for (Score score : scoreMapper.findBySheetId(sheetId)) {
+    for (Score score : savedRows) {
       stored.put(score.getIndicatorId(), score.getScoreValue());
     }
     int stale = 0;

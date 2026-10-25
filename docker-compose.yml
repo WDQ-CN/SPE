@@ -14,7 +14,9 @@ services:
       TZ: UTC
     ports:
       # 宿主直连调试用（09 D3 与本地已有实例错开）
-      - "13306:3306"
+      # ⚠️ 绑回环而不是 0.0.0.0（03 §38 的 P1-4）：0.0.0.0 让任何远程者可绕过 nginx 直打后端，
+      # 而 13306 是数据库端口——它一旦可达，SEC 边界就只剩"MySQL 口令"这一层。
+      - "127.0.0.1:13306:3306"
     volumes:
       - spe-mysql-data:/var/lib/mysql
       # 最小权限账号的初始化脚本；**只在数据卷为空时执行**，已有卷需手工建号（见 11 §5.2）
@@ -49,8 +51,11 @@ services:
       # 容器内监听端口由镜像的 ENV SERVER_PORT=8080 固定（宿主映射见 ports）
       TZ: UTC
     ports:
-      # 直连后端调试用；与本地 `mvnw spring-boot:run` 同端口，二者不可同时占用
-      - "18080:8080"
+      # 直连后端调试用；与本地 `mvnw spring-boot:run` 同端口，二者不可同时占用。
+      # ⚠️ 绑回环（03 §38 的 P1-4）：发布到 0.0.0.0 时，任何远程者都能带任意 X-Forwarded-For
+      # 直打后端——在旧的 `forward-headers-strategy: framework` 下实测可伪造 audit_log.ip，
+      # 并让 IP 维度的登录限流一次都不触发（25 个伪造 IP × 25 个账号 ⇒ 0 次 429）。
+      - "127.0.0.1:18080:8080"
     depends_on:
       mysql:
         condition: service_healthy

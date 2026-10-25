@@ -103,7 +103,7 @@ onMounted(load)
       </el-table-column>
       <el-table-column
         label="操作"
-        width="100"
+        width="160"
       >
         <template #default="{ row }">
           <el-button
@@ -112,6 +112,13 @@ onMounted(load)
             @click="router.push({ name: 'sheet-scoring', params: { id: row.sheetId } })"
           >
             去打分
+          </el-button>
+          <el-button
+            link
+            type="primary"
+            @click="router.push({ name: 'report', params: { id: row.taskSupplierId } })"
+          >
+            报告
           </el-button>
         </template>
       </el-table-column>

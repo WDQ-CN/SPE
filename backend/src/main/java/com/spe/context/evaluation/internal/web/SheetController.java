@@ -14,7 +14,9 @@ import com.spe.context.evaluation.internal.web.dto.SaveScoresRequest;
 import com.spe.context.evaluation.internal.web.dto.SubmitSheetRequest;
 import jakarta.validation.Valid;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -62,13 +64,31 @@ public class SheetController {
     return Result.ok(scoringService.readSheet(id, operator.uid()));
   }
 
-  /** 暂存（01 E2）：只传本次改动的格子，写入走 ` ScoreWriter`。 */
+  /**
+   * 暂存（01 E2）：只传本次改动的格子，写入走 `ScoreWriter`。
+   *
+   * <p>请求里的 null 在这里**拆成两路**（P2-15）：有值的走 upsert，显式 null 的走清空。
+   * 不在 DTO 里保留 null 语义往下传，是因为同一个 `Map<Long, BigDecimal>` 还被试算与导入用着，
+   * 而那里的 null 是"未填"（01 §6.6），不是"删除"。
+   */
   @PutMapping("/{id}/scores")
   public Result<Integer> saveScores(
       @PathVariable long id,
       @Valid @RequestBody SaveScoresRequest request,
       @AuthenticationPrincipal AuthenticatedOperator operator) {
-    return Result.ok(scoringService.saveScores(id, operator.uid(), toValues(request)));
+    Map<Long, BigDecimal> values = new LinkedHashMap<>();
+    List<Long> clearIndicatorIds = new ArrayList<>();
+    request
+        .scores()
+        .forEach(
+            entry -> {
+              if (entry.rawValue() == null) {
+                clearIndicatorIds.add(entry.indicatorId());
+              } else {
+                values.put(entry.indicatorId(), entry.rawValue());
+              }
+            });
+    return Result.ok(scoringService.saveScores(id, operator.uid(), values, clearIndicatorIds));
   }
 
   /** 试算（缺口端点）：**不落库**，只算；分值与等级都可能为 null（E6 的不完整口径）。 */
@@ -89,11 +109,5 @@ public class SheetController {
       @Valid @RequestBody SubmitSheetRequest request,
       @AuthenticationPrincipal AuthenticatedOperator operator) {
     return Result.ok(scoringService.submit(id, operator.uid(), request.version()));
-  }
-
-  private static Map<Long, BigDecimal> toValues(SaveScoresRequest request) {
-    Map<Long, BigDecimal> values = new LinkedHashMap<>();
-    request.scores().forEach(entry -> values.put(entry.indicatorId(), entry.rawValue()));
-    return values;
   }
 }

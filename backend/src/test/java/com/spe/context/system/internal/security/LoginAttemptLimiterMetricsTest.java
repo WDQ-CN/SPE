@@ -77,12 +77,15 @@ class LoginAttemptLimiterMetricsTest {
   }
 
   @Test
-  @DisplayName("成功登录清掉条目，但 Counter 单调不回退（历史失败不该被后来的成功抹掉）")
+  @DisplayName("成功登录只清账号条目：IP 条目留着，Counter 单调不回退")
   void resetClearsGaugeButNotCounters() {
     limiter.recordFailure("a", "10.0.0.1");
     limiter.reset("a", "10.0.0.1");
 
-    assertThat(gauge(PREFIX + "tracked.keys")).as("计数条目被清掉").isZero();
+    // 一次失败会建**两个**条目（账号 + IP）。03 §38 的 P1-5 之后 reset 只清账号那一个：
+    // 本机拓扑下 IP 是全局 key，跟着成功登录一起清零等于给攻击者"撞中一次就续命"。
+    assertThat(gauge(PREFIX + "tracked.keys")).as("只剩 IP 条目").isEqualTo(1.0);
+    assertThat(limiter.isLocked("a", "10.0.0.1")).as("该账号的计数确实被清").isFalse();
     assertThat(count(PREFIX + "failures")).isEqualTo(1.0);
   }
 

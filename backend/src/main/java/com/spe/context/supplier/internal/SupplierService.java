@@ -2,6 +2,7 @@ package com.spe.context.supplier.internal;
 
 import com.spe.common.page.PageQuery;
 import com.spe.common.page.PageResult;
+import com.spe.common.sql.SqlKeywords;
 import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
 import com.spe.context.supplier.api.SupplierStatus;
@@ -38,11 +39,13 @@ public class SupplierService {
   @Transactional(readOnly = true)
   public PageResult<SupplierSummary> page(int page, int size, String keyword, String category) {
     PageQuery query = PageQuery.of(page, size);
+    // 用户输入按字面匹配（03 §41.3 的 P2-37）：`%`/`_` 是 LIKE 通配符，不转义会让搜索退化成全匹配
+    String like = keyword == null || keyword.isBlank() ? null : SqlKeywords.escapeLike(keyword.trim());
     var rows =
-        supplierMapper.findPage(keyword, category, query.offset(), query.size()).stream()
+        supplierMapper.findPage(like, category, query.offset(), query.size()).stream()
             .map(SupplierSummary::of)
             .toList();
-    return PageResult.of(rows, supplierMapper.countBy(keyword, category), query.page(), query.size());
+    return PageResult.of(rows, supplierMapper.countBy(like, category), query.page(), query.size());
   }
 
   /** 新增：编码唯一前置校验走 2xxx，DB 唯一键是最后防线（06 §4）。新建一律 `ENABLED`。 */
@@ -113,13 +116,20 @@ public class SupplierService {
 
   /**
    * 启停（01 S2）：前置状态由目标状态反推（{@link SupplierStatus#other()}），**不查当前状态**；
-   * 0 行（版本已变或已处于目标状态）→ 3xxx。0 行时不写审计——业务失败不留下成功痕迹。
+   * 0 行时不写审计——业务失败不留下成功痕迹。
+   *
+   * <p>⚠️ 0 行有**两种**含义，必须分开（03 §38 的 P2-7）：供应商不存在 ⇒ 2008，确实存在但版本/状态对不上
+   * ⇒ 3001。分类读发生在守卫 UPDATE **之后**、只负责把"0 行"拆开，不是 `06 §2.4` 禁的"先 SELECT 判断再
+   * UPDATE"（那个的病是"判断基于快照、写不带条件"），与 `TaskService.updateDraft` 同形。
+   * 两条都返回 3001 的表现是：前端提示"数据已被他人改动，请刷新"，用户对着一个不存在的目标反复重试。
    */
   @Transactional
   public void changeStatus(long id, SupplierStatus target, int version) {
     SupplierStatus expected = target.other();
     if (supplierMapper.updateStatusAndVersion(id, target, expected, version) == 0) {
-      throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
+      throw supplierMapper.findById(id).isEmpty()
+          ? new BizException(ErrorCode.SUPPLIER_NOT_FOUND)
+          : new BizException(ErrorCode.CONCURRENT_CONFLICT);
     }
 
     auditFacade.record(

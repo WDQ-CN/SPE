@@ -107,6 +107,11 @@ const publishHint = computed(() => {
   if (report.value.invalidTargets.length > 0) {
     return `以下"目标达成率"指标缺目标值（或不为正数）：${report.value.invalidTargets.join('、')}`
   }
+  if (report.value.duplicateCodes.length > 0) {
+    // 后端发布校验的第五类（2014，唯一键 uk_indicator_version_code）：
+    // 不在这儿说出来，就会出现"闸门禁了按钮却不告诉用户为什么"（03 §38 的 P2-18）
+    return `指标编码在版本内重复：${report.value.duplicateCodes.join('、')}（编码需在整个版本内唯一，跨维度也算）`
+  }
   if (!canWrite.value) {
     // P2-8：只读角色不该看到"可以发布"——文案与权限矛盾会误导（按钮本来就不渲染）
     return '当前角色为只读：可以查看权重口径，但不能修改或发布。'

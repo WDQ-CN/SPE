@@ -55,7 +55,11 @@ import SheetScoringView from './SheetScoringView.vue'
 
 enableAutoUnmount(afterEach)
 
-function sheetView(sheetId: number, dimensionName: string, rawValue: number): SheetScoreView {
+function sheetView(
+  sheetId: number,
+  dimensionName: string,
+  rawValue: number | null,
+): SheetScoreView {
   return {
     sheetId,
     taskId: 1,
@@ -127,5 +131,75 @@ describe('打分页：切评分单时的加载竞态（04-096）', () => {
 
     expect(wrapper.text(), 'B 的页面必须还是 B').toContain('交付')
     expect(wrapper.text(), 'A 的维度不许出现（否则保存会把 A 的值写进 B）').not.toContain('质量')
+  })
+})
+
+/**
+ * 暂存载荷的 null 语义（03 §38 的 P2-15，18 §6 裁决点 6）。
+ *
+ * <p>要分开的是两种长得一样的空格子：**被碰过又清空** ⇒ 发显式 `null`（后端删行），
+ * **从没填过** ⇒ 根本不在载荷里（后端不动它）。混起来的两种坏法方向相反：
+ * 把待删当未填 ⇒ "删值→保存→刷新后旧值复活"（本轮修的就是它），
+ * 把未填当待删 ⇒ 一次保存把整张没填完的单子清空。
+ */
+describe('打分页：清空格子的暂存语义（P2-15）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.previewScores.mockImplementation((sheetId: number) =>
+      Promise.resolve(emptyPreview(sheetId)),
+    )
+    mocks.saveScores.mockResolvedValue(1)
+  })
+
+  async function mountLoaded(sheet: SheetScoreView) {
+    mocks.getSheetScores.mockResolvedValue(sheet)
+    mocks.params.id = String(sheet.sheetId)
+    const wrapper = mount(SheetScoringView, {
+      global: { plugins: [createPinia(), ElementPlus] },
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  async function clickSave(wrapper: Awaited<ReturnType<typeof mountLoaded>>): Promise<void> {
+    const [target] = wrapper.findAll('button').filter((item) => item.text().includes('保存'))
+    // 先拿到正例：按钮真的渲染出来了（canEdit 被误关时这里红，而不是用例静默空跑）
+    expect(target, '保存按钮必须存在').toBeTruthy()
+    await target?.trigger('click')
+    await flushPromises()
+  }
+
+  function savedPayload() {
+    const call = mocks.saveScores.mock.calls[0]
+    expect(call, '点保存必须真的发出一次暂存请求').toBeTruthy()
+    return call?.[1]
+  }
+
+  it('填过又清空 ⇒ 载荷里是显式 null，而不是"这一格不见了"', async () => {
+    const wrapper = await mountLoaded(sheetView(2, '交付', 88))
+    const cell = wrapper.findComponent({ name: 'ElInputNumber' })
+    expect(cell.exists(), '评分格控件必须渲染').toBe(true)
+
+    // 模拟"清空这个输入框"：v-model 更新为 null，并触发 @change（格子就此被记进 touchedIds）
+    cell.vm.$emit('update:modelValue', null)
+    cell.vm.$emit('change', null)
+    await flushPromises()
+
+    await clickSave(wrapper)
+    expect(savedPayload()).toEqual([{ indicatorId: 102, rawValue: null }])
+  })
+
+  it('没碰过任何东西就保存 ⇒ 只发已填的值', async () => {
+    const wrapper = await mountLoaded(sheetView(3, '服务', 77))
+
+    await clickSave(wrapper)
+    expect(savedPayload()).toEqual([{ indicatorId: 103, rawValue: 77 }])
+  })
+
+  it('库里本就为 null 的格子（从没填过）不会被当成待删', async () => {
+    const wrapper = await mountLoaded(sheetView(4, '成本', null))
+
+    await clickSave(wrapper)
+    expect(savedPayload()).toEqual([])
   })
 })

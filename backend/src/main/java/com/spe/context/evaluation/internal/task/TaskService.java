@@ -1,6 +1,8 @@
 package com.spe.context.evaluation.internal.task;
 
+import com.spe.common.batch.Batches;
 import com.spe.common.event.EventPublisher;
+import com.spe.common.sql.SqlKeywords;
 import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
 import com.spe.context.evaluation.api.EvalTaskStatus;
@@ -8,6 +10,7 @@ import com.spe.context.evaluation.api.SheetStatus;
 import com.spe.context.evaluation.api.events.TaskPublishedEvent;
 import com.spe.context.evaluation.internal.sheet.MySheetRow;
 import com.spe.context.evaluation.internal.sheet.MySheetView;
+import com.spe.context.evaluation.internal.sheet.SheetContextRow;
 import com.spe.context.evaluation.internal.sheet.Sheet;
 import com.spe.context.evaluation.internal.sheet.SheetMapper;
 import com.spe.context.supplier.api.SupplierBrief;
@@ -29,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -81,7 +85,7 @@ public class TaskService {
   public com.spe.common.page.PageResult<TaskSummary> page(
       com.spe.common.page.PageQuery query, EvalTaskStatus status, String keyword) {
     String statusValue = status == null ? null : status.name();
-    String like = keyword == null || keyword.isBlank() ? null : keyword.trim();
+    String like = keyword == null || keyword.isBlank() ? null : SqlKeywords.escapeLike(keyword.trim());
     long total = taskMapper.countByFilter(statusValue, like);
     List<TaskSummary> rows =
         taskMapper.findPage(statusValue, like, query.offset(), query.size()).stream()
@@ -182,17 +186,30 @@ public class TaskService {
     List<SheetBrief> result = new ArrayList<>(sheets.size());
     for (Sheet sheet : sheets) {
       Long supplierId = supplierIdByTaskSupplier.get(sheet.getTaskSupplierId());
-      SupplierBrief supplier = supplierId == null ? null : suppliers.get(supplierId);
+      // 查不到就抛错，不兜底成 -1（CLAUDE 默认约定第 8 条；03 §38 存疑 2）。兜一个 -1 会把它当真实 id
+      // 回给前端——页面上是"一个不存在的供应商"，下一轮点击就变成按 -1 直连。
+      if (supplierId == null) {
+        throw new BizException(
+            ErrorCode.TASK_SUPPLIER_NOT_FOUND,
+            "评分单所属的评估单不在本任务内：taskId="
+                + taskId
+                + " sheetId="
+                + sheet.getId()
+                + " taskSupplierId="
+                + sheet.getTaskSupplierId());
+      }
+      SupplierBrief supplier = suppliers.get(supplierId);
       UserBrief assignee = sheet.getAssigneeId() == null ? null : assignees.get(sheet.getAssigneeId());
       result.add(
           new SheetBrief(
               sheet.getId(),
               sheet.getTaskSupplierId(),
-              supplierId == null ? -1 : supplierId,
+              supplierId,
               supplier == null ? null : supplier.code(),
               supplier == null ? null : supplier.name(),
               sheet.getDimensionId(),
-              dimensionNames.getOrDefault(sheet.getDimensionId(), "维度#" + sheet.getDimensionId()),
+              requireDimensionName(
+                  dimensionNames, task.getTemplateVersionId(), sheet.getDimensionId()),
               sheet.getAssigneeId(),
               assignee == null ? null : assignee.name(),
               sheet.getStatus(),
@@ -283,14 +300,24 @@ public class TaskService {
    * 发布（T1；05 §5.5 T1 / 01 J2）：单事务里做五件事——状态守卫、J4 校验、批量生成评分单、
    * 自动指派、发 `TaskPublishedEvent`。
    *
-   * <p>⚠️ `J4 的唯一性没有数据库兜底`（13 §E10）：`status <> 'CANCELED'` 是条件唯一，唯一键表达不了。
-   * 这里做的是**当前读**校验，把窗口压到"两个发布事务同时开始"——**不是根除**。这条风险登记在
-   * `11 §9` 与 `13 §R1`。
+   * <p>⚠️ **事务的第一条语句必须是 {@link EvalTaskMapper#lockAllTasksByIdAsc()}**（见下面的锁顺序不变量）。
+   * 挪动它 = 同时关掉两道防线：J4 的当前读语义（03 §38 的 P1-2）与"两个发布不再互相死锁"（P1-15）。
+   *
+   * <p>`J4 的唯一性仍然没有数据库兜底`（13 §E10：`status <> 'CANCELED'` 是条件唯一，唯一键表达不了），
+   * 但**并发窗口已经关掉了**：同周期的发布在 `eval_task` 的 X 锁上排队，后到者一定看得到前者已提交的
+   * `task_supplier` 行，于是稳定拿到 2019。剩下的只是"跨表的判定规则住在服务层"这件事本身。
    */
   @Transactional
   public PublishResult publish(long taskId, int version) {
-    EvalTask task =
-        taskMapper.findByIdForUpdate(taskId).orElseThrow(() -> notFound());
+    // ⚠️ **锁顺序不变量**（03 §38 的 P1-2 ＋ P1-15）：发布事务的加锁顺序恒为
+    // `eval_task`（整表按 id 升序，**一条语句**）→ `task_supplier`（兄弟行 S）→ 自己的插入。
+    // 这道 `FOR UPDATE` 必须排在**任何普通读之前**：read view 由第一条一致性读建立、锁定读不算，
+    // 先做一次普通读就把快照钉死了，之后再锁也白锁（CLAUDE 默认约定第 6 条）。
+    // 原先是"自己(X) → 同周期其它任务(S)"两条语句，两个发布交叉时构成 X↔S 互等（实测死锁 = P1-15）；
+    // 合成一条按 id 升序的整表 `FOR UPDATE` 之后全局加锁顺序一致 ⇒ 只剩排队，不可能成环。
+    // 自己那一行的 status/version 也从这份**已锁定**的结果里取，不再单独 `findByIdForUpdate`。
+    List<EvalTask> lockedTasks = taskMapper.lockAllTasksByIdAsc();
+    EvalTask task = requireLockedTask(lockedTasks, taskId);
     if (task.getStatus() != EvalTaskStatus.DRAFT) {
       throw new BizException(
           ErrorCode.TASK_STATUS_INVALID, "只有草稿可以发布，当前状态：" + task.getStatus());
@@ -298,6 +325,8 @@ public class TaskService {
     if (task.getVersion() != version) {
       throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
     }
+
+    List<Long> otherTaskIdsInPeriod = siblingTaskIdsInPeriod(lockedTasks, task);
 
     List<TaskSupplier> taskSuppliers = taskSupplierMapper.findByTaskId(taskId);
     if (taskSuppliers.isEmpty()) {
@@ -310,7 +339,9 @@ public class TaskService {
     requireApproversEnabled(nodes);
 
     TemplateSnapshot snapshot = templateSnapshotFacade.requirePublished(task.getTemplateVersionId());
-    requireNoOtherTaskUsesSameSupplierInPeriod(task, taskSuppliers);
+    // 判定与取锁分成两步：**取锁在前**（上面那道）、**判定在后**（这里）。合在一个方法里会让人
+    // 以为"挪方法就行"，而真正要挪的是取锁的位置
+    requireNoSupplierReusedInPeriod(task, otherTaskIdsInPeriod, taskSuppliers);
 
     List<Sheet> sheets = new ArrayList<>();
     Map<String, Long> assigneeByDepartment = new HashMap<>();
@@ -334,7 +365,12 @@ public class TaskService {
       }
     }
     try {
-      sheetMapper.insertBatch(sheets);
+      // 分片（03 §38 的 P1-9）：500 家供应商 × 4 个维度 = 2000 行是一条多值 INSERT 的 4 倍，
+      // 会撞 max_allowed_packet 落 5001。切分**不改变事务边界**——它们仍在同一个 @Transactional 里，
+      // 所以"任务已发布、部分评分单缺失"的半成品不可能出现（由"第 2 批抛错 ⇒ 全部回滚"的用例钉住）。
+      for (List<Sheet> batch : Batches.split(sheets, Batches.MAX_ROWS)) {
+        sheetMapper.insertBatch(batch);
+      }
     } catch (org.springframework.dao.DuplicateKeyException ex) {
       // uk_sheet(task_supplier_id, dimension_id)：并发发布时后到的那个会撞上——翻译成 3001 而不是漏成 5xxx
       // （13 §E10 的要求：**没有数据库之外的兜底**，所以这条翻译不能省）
@@ -386,11 +422,17 @@ public class TaskService {
       throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
     }
 
+    // ⚠️ 审计的 target 必须是**任务**（03 §38 的 P2-9）：原先写的是 `TASK` + `taskSupplierId`——
+    // target_type 说"任务"、target_id 却是评估单 id，按任务查操作日志既串到别处、又查不到这一条。
+    // taskId 走现成的上下文投影（它一条语句跨 sheet → task_supplier → eval_task），不为审计再拼两次查询。
+    SheetContextRow context =
+        sheetMapper.findContextById(sheetId).orElseThrow(() -> sheetNotFound());
     Map<String, Object> detail = new LinkedHashMap<>();
     detail.put("sheetId", sheetId);
+    detail.put("taskSupplierId", context.getTaskSupplierId());
     detail.put("from", sheet.getAssigneeId());
     detail.put("to", assigneeId);
-    auditFacade.record(AuditAction.SHEET_ASSIGN, AuditTargetType.TASK, sheet.getTaskSupplierId(), detail);
+    auditFacade.record(AuditAction.SHEET_ASSIGN, AuditTargetType.TASK, context.getTaskId(), detail);
   }
 
   /** 我的待办（01 E1 / 13 §E13）：只列指派给我的评分单。名称两次批量补齐，不逐行回查。 */
@@ -409,16 +451,14 @@ public class TaskService {
     List<MySheetView> views = new ArrayList<>(rows.size());
     for (MySheetRow row : rows) {
       SupplierBrief supplier = suppliers.get(row.getSupplierId());
+      // 快照取不到 ⇒ 2010，维度不在冻结快照里 ⇒ 2015。原先两处分别兜成"空 Map"与"维度#id"，
+      // 表现是页面上出现一串内部 id、且不报错（CLAUDE 默认约定第 8 条，03 §38 存疑 2）。
       String dimensionName =
-          dimensionNamesByVersion
-              .computeIfAbsent(
-                  row.getTemplateVersionId(),
-                  versionId ->
-                      templateSnapshotFacade
-                          .findPublished(versionId)
-                          .map(TaskService::dimensionNames)
-                          .orElseGet(Map::of))
-              .getOrDefault(row.getDimensionId(), "维度#" + row.getDimensionId());
+          requireDimensionName(
+              dimensionNamesByVersion.computeIfAbsent(
+                  row.getTemplateVersionId(), this::requirePublishedDimensionNames),
+              row.getTemplateVersionId(),
+              row.getDimensionId());
       views.add(
           new MySheetView(
               row.getSheetId(),
@@ -470,7 +510,13 @@ public class TaskService {
       throw new BizException(ErrorCode.BAD_REQUEST, "截止日期不能为空");
     }
     // 模板版本必须是**已发布**的（01 J1）：requirePublished 拿不到就抛 2010，不返回半成品（05 ADR-3）
-    templateSnapshotFacade.requirePublished(command.templateVersionId());
+    TemplateSnapshot snapshot = templateSnapshotFacade.requirePublished(command.templateVersionId());
+    // 版本还必须属于所选模板（21 §3.W1-2）：只传版本 id 时，前端慢网串列表会把任务静默绑错模板
+    if (snapshot.templateId() != command.templateId()) {
+      throw new BizException(
+          ErrorCode.TEMPLATE_VERSION_MISMATCH,
+          "模板版本不属于所选模板：templateId=" + command.templateId());
+    }
 
     List<Long> supplierIds = distinct(command.supplierIds());
     if (supplierIds.isEmpty()) {
@@ -481,7 +527,7 @@ public class TaskService {
       throw new BizException(ErrorCode.TASK_SUPPLIER_EMPTY, "审批链至少需要一级");
     }
     requireSuppliersEnabled(supplierIds);
-    requireUsersEnabled(approverIds);
+    requireApproversEligible(approverIds);
     return new Validated(name, supplierIds, approverIds);
   }
 
@@ -502,7 +548,15 @@ public class TaskService {
     }
   }
 
-  private void requireUsersEnabled(List<Long> userIds) {
+  /**
+   * 审批人判据的唯一收口点：createDraft/updateDraft（经 {@code validate}）与 publish
+   * （经 {@link #requireApproversEnabled}）都走这里。
+   *
+   * <p>角色口径按 2026-10-25 用户裁决收窄为 **MANAGER/ADMIN**（`01 §3`、`21 §3.W1-1`）：
+   * 审批端点第一层只对这两类角色开放，若允许 EVALUATOR/VIEWER 进审批链，评估单推进到那一节点后
+   * 无人能通过/驳回（`03 §41.1` 的可复现死锁）。
+   */
+  private void requireApproversEligible(List<Long> userIds) {
     List<UserBrief> users = userQueryFacade.findByIds(userIds);
     Map<Long, UserBrief> byId = new LinkedHashMap<>();
     users.forEach(brief -> byId.put(brief.id(), brief));
@@ -511,11 +565,14 @@ public class TaskService {
       if (brief == null || brief.status() != UserStatus.ENABLED) {
         throw new BizException(ErrorCode.USER_NOT_ELIGIBLE, "审批人不存在或已停用：id=" + id);
       }
+      if (brief.role() != Role.MANAGER && brief.role() != Role.ADMIN) {
+        throw new BizException(ErrorCode.USER_NOT_ELIGIBLE, "审批人必须是采购经理或管理员：id=" + id);
+      }
     }
   }
 
   private void requireApproversEnabled(List<ApprovalNode> nodes) {
-    requireUsersEnabled(nodes.stream().map(ApprovalNode::getApproverId).toList());
+    requireApproversEligible(nodes.stream().map(ApprovalNode::getApproverId).toList());
   }
 
   private void requireEligibleAssignee(long assigneeId) {
@@ -541,7 +598,12 @@ public class TaskService {
       rows.add(row);
     }
     try {
-      taskSupplierMapper.insertBatch(rows);
+      // 分片同 publish 的评分单批次（03 §38 的 P1-9）。⚠️ `Batches.split` 返回的是原列表的**视图片段**，
+      // 所以 `@Options(useGeneratedKeys)` 回填的 id 仍然落在调用方手里的那批对象上——
+      // 500 行那条用例断言的正是"分多批也照样每行都有 id"。
+      for (List<TaskSupplier> batch : Batches.split(rows, Batches.MAX_ROWS)) {
+        taskSupplierMapper.insertBatch(batch);
+      }
     } catch (org.springframework.dao.DuplicateKeyException ex) {
       // uk_task_supplier(task_id, supplier_id)：同一任务重复勾选同一供应商（正常情况下已被 distinct 拦掉，
       // 这里是并发/脏输入的兜底）⇒ 3001，不是 5xxx
@@ -560,25 +622,60 @@ public class TaskService {
       node.setSeq(seq++);
       rows.add(node);
     }
-    approvalNodeMapper.insertBatch(rows);
+    for (List<ApprovalNode> batch : Batches.split(rows, Batches.MAX_ROWS)) {
+      approvalNodeMapper.insertBatch(batch);
+    }
   }
 
   /**
-   * 01 J4 的当前读校验（13 §E10 方案 A）：先把"同周期的其它非取消任务"锁住（当前读），
-   * **再**用普通读查这些任务里有没有本次勾选的供应商。
-   *
-   * <p>顺序不能颠倒：read view 由第一条一致性读建立，锁定读不算——所以这条普通读看到的是**此刻**的数据，
-   * 而不是事务开始时的快照（CLAUDE 默认约定第 6 条）。
+   * 从**已经锁住**的那份结果里取自己那一行。列表里没有 = 任务不存在，这就是唯一的抛错入口
+   * （CLAUDE 默认约定第 7 条：判后取要么一体、要么单点抛错，不给"拿到 null 再自己兜"留口子）。
    */
-  private void requireNoOtherTaskUsesSameSupplierInPeriod(
-      EvalTask task, List<TaskSupplier> taskSuppliers) {
-    List<Long> otherTaskIds =
-        taskMapper.lockOtherTaskIdsInPeriod(task.getYear(), task.getQuarter(), task.getId());
-    if (otherTaskIds.isEmpty()) {
+  private static EvalTask requireLockedTask(List<EvalTask> lockedTasks, long taskId) {
+    return lockedTasks.stream()
+        .filter(task -> task.getId() != null && task.getId().longValue() == taskId)
+        .findFirst()
+        .orElseThrow(TaskService::notFound);
+  }
+
+  /**
+   * 同周期内**其它非取消任务**的 id（沿用 `lockedTasks` 的 `id` 升序）。
+   *
+   * <p>⚠️ 这四个条件是**从 SQL 搬过来的**，必须与当年的 `WHERE year=? AND quarter=? AND
+   * status <> 'CANCELED' AND id <> ?` 逐字同语义——判定条件从 SQL 迁到 Java 是最容易悄悄改行为的地方
+   * （04-057 那一族）。特别地：`status <> 'CANCELED'` **没有**排除 `DRAFT`，所以两个都还是草稿、
+   * 勾了同一批供应商的任务会互相把对方当成兄弟，这是 01 J4 的字面含义（"非取消任务"），
+   * 由 `siblingDraftBlocksPublish` 那条用例钉住。
+   */
+  private static List<Long> siblingTaskIdsInPeriod(List<EvalTask> lockedTasks, EvalTask self) {
+    return lockedTasks.stream()
+        .filter(task -> task.getId() != null && task.getId().longValue() != self.getId().longValue())
+        .filter(task -> Objects.equals(task.getYear(), self.getYear()))
+        .filter(task -> Objects.equals(task.getQuarter(), self.getQuarter()))
+        .filter(task -> task.getStatus() != EvalTaskStatus.CANCELED)
+        .map(EvalTask::getId)
+        .toList();
+  }
+
+  /**
+   * 01 J4 的判定（13 §E10 方案 A 的判定那一半）：同周期的其它任务里不能已经出现本次勾选的供应商。
+   *
+   * <p><b>这里只做判定，不取锁</b>——取锁在 `publish()` 的第一条语句里，且必须早于任何普通读
+   * （03 §38 的 P1-2）。两个调用点合起来才是不变量：`lockAllTasksByIdAsc` 把同周期的发布**串行化**，
+   * `findUsedSupplierIds` 的 `FOR SHARE` 保证判定读的是此刻的数据。删掉任意一个都会让
+   * "同周期同一供应商"的重复发布漏过去，所以两处各写了一句"哪个是不变量"。
+   *
+   * <p>J4 的 `(供应商, 周期)` 唯一性**没有数据库兜底**（`status <> 'CANCELED'` 是条件唯一，唯一键
+   * 表达不了），这条判定 + 上面那条锁是仅有的两道；要真正交给数据库需要新迁移（生成列 + 唯一键，
+   * 即 13 §E10 的方案 C），登记在 `11 §9`。
+   */
+  private void requireNoSupplierReusedInPeriod(
+      EvalTask task, List<Long> otherTaskIdsInPeriod, List<TaskSupplier> taskSuppliers) {
+    if (otherTaskIdsInPeriod.isEmpty()) {
       return;
     }
     List<Long> supplierIds = taskSuppliers.stream().map(TaskSupplier::getSupplierId).toList();
-    List<Long> used = taskSupplierMapper.findUsedSupplierIds(otherTaskIds, supplierIds);
+    List<Long> used = taskSupplierMapper.findUsedSupplierIds(otherTaskIdsInPeriod, supplierIds);
     if (!used.isEmpty()) {
       throw new BizException(
           ErrorCode.TASK_PERIOD_DUPLICATE,
@@ -635,6 +732,37 @@ public class TaskService {
       names.put(dimension.id(), dimension.name());
     }
     return names;
+  }
+
+  /**
+   * 冻结快照的名称表；版本取不到（不存在或不是已发布）时**抛错**，不返回空表。
+   *
+   * <p>空表会把"取不到快照"静默翻译成"每个维度都没有名字"，页面上只剩 id（CLAUDE 默认约定第 8 条）。
+   */
+  private Map<Long, String> requirePublishedDimensionNames(long templateVersionId) {
+    return templateSnapshotFacade
+        .findPublished(templateVersionId)
+        .map(TaskService::dimensionNames)
+        .orElseThrow(
+            () ->
+                new BizException(
+                    ErrorCode.TEMPLATE_VERSION_NOT_FOUND,
+                    "评分单引用的模板版本不存在或不是已发布版本：templateVersionId=" + templateVersionId));
+  }
+
+  /** 维度名按"查不到就抛"取值——判据与取值同侧，不给调用方留"记得先判一次"的义务（CLAUDE 第 7 条）。 */
+  private static String requireDimensionName(
+      Map<Long, String> names, long templateVersionId, long dimensionId) {
+    String name = names.get(dimensionId);
+    if (name == null) {
+      throw new BizException(
+          ErrorCode.TEMPLATE_DIMENSION_NOT_FOUND,
+          "评分单的维度不在该模板版本的冻结快照里：templateVersionId="
+              + templateVersionId
+              + " dimensionId="
+              + dimensionId);
+    }
+    return name;
   }
 
   private static List<Long> distinct(List<Long> ids) {

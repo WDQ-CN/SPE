@@ -32,4 +32,12 @@ public interface ApprovalNodeMapper extends BaseMapper<ApprovalNode> {
 
   @Select("SELECT approver_id FROM approval_node WHERE task_id = #{taskId} AND seq = 1")
   Long findFirstApproverId(@Param("taskId") long taskId);
+
+  /** 当前节点（或指定节点）的审批人；查不到返回 null，由调用方决定报错（不兜底）。 */
+  @Select("SELECT approver_id FROM approval_node WHERE task_id = #{taskId} AND seq = #{seq}")
+  Long findApproverId(@Param("taskId") long taskId, @Param("seq") int seq);
+
+  /** 审批链最大序号：判断"是否末级"用。空链返回 null。 */
+  @Select("SELECT MAX(seq) FROM approval_node WHERE task_id = #{taskId}")
+  Integer findMaxSeq(@Param("taskId") long taskId);
 }

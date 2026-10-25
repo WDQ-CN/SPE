@@ -25,14 +25,17 @@ import org.springframework.transaction.annotation.Transactional;
  * 评分写入的**唯一入口**（13 §E7 / 14 §W2.4 的口径）：手工暂存与 Excel 导入都只调它，
  * 开放 API（M6）将来也只是加一个薄委托。
  *
- * <p>它负责四件事，顺序即语义：
+ * <p>它负责五件事，顺序即语义：
  * <ol>
  *   <li><b>守卫</b>：只有 `SCORING` 的评分单可写（"已提交""待指派"一律拒），0 行/状态不符 → 2xxx/3xxx；
  *   <li><b>换算</b>：用任务的**已发布快照**把原始值换算成百分制分（13 §E8：`score_value` 随写随落，
  *       不是提交时才算——否则暂存期间看板读不到分）；
  *   <li><b>校验</b>：越界/精度/定性非整数一律翻成 `SCORE_VALUE_INVALID(2025)`；
  *       ⚠️ 这条是 04-072 的教训——Excel 导入**不过 DTO**，`@Digits`/`@Size` 拦不到，必须在服务层拦；
- *   <li><b>upsert</b>：按 `uk_score(sheet_id, indicator_id)` 幂等覆盖（01 §6.7 的"重复导入覆盖"）。
+ *   <li><b>upsert</b>：按 `uk_score(sheet_id, indicator_id)` 幂等覆盖（01 §6.7 的"重复导入覆盖"）；
+ *   <li><b>清空</b>：调用方点名的指标可以删掉行（03 §38 的 P2-15——"删值 → 保存 → 旧值复活"以前是
+ *       契约层表达不了的事）。⚠️ **只有手工路径用得上**：01 §6.6/§6.7 规定 Excel 的空格"视为该格未填"，
+ *       所以导入传进来的清空集合恒为空。
  * </ol>
  *
  * <p>⚠️ 审计不在这里写：留痕属于业务动作（暂存/导入/提交），由调用方在**动作语义**处写，
@@ -48,47 +51,72 @@ public class ScoreWriter {
   private final TemplateSnapshotFacade templateSnapshotFacade;
 
   /**
-   * 写入一张评分单的若干指标（幂等 upsert）。
+   * 写入一张评分单的若干指标（幂等 upsert ＋ 显式清空）。
    *
    * @param sheetId 评分单
-   * @param rawValues 指标 id → 原始值（**不传的格子不动**，不是清空）
+   * @param rawValues 指标 id → 原始值（**不在 keys 里的格子不动**）
+   * @param clearIndicatorIds 要**清空**的指标（01 E2 的"删值"，03 §38 的 P2-15）；
+   *     它们同样要经过"指标属于本快照 ＋ 单子可写 ＋ 是指派给我"三道守卫
    * @param source 写入渠道（MANUAL / IMPORT / API）
    * @param importBatch Excel 批次号；`source != IMPORT` 时必须传 null（否则会把旧批次号带进来）
    * @param operatorId 调用者 uid：**状态与负责人都在这里判**（04-096），调用方不必自己先判一遍
-   * @return 实际写入的格子数
+   * @return 本次**实际改动**的格子数（写入数 ＋ 删除数）；删一个本来就没值的格子记 0，不算改动
    */
   @Transactional
   public int save(
       long sheetId,
       Map<Long, BigDecimal> rawValues,
+      List<Long> clearIndicatorIds,
       ScoreSource source,
       String importBatch,
       long operatorId) {
-    if (rawValues == null || rawValues.isEmpty()) {
-      return 0;
-    }
     if (source != ScoreSource.IMPORT && importBatch != null) {
       throw new IllegalArgumentException("只有 IMPORT 来源才允许带批次号：" + source);
     }
-    List<Score> rows = buildRows(sheetId, rawValues, operatorId);
-    if (rows.isEmpty()) {
+    if (isEmpty(rawValues) && isEmpty(clearIndicatorIds)) {
       return 0;
     }
-    // 来源与批次号只在这条路径上写（`correctValues` 刻意不碰它们）
-    rows.forEach(
-        row -> {
-          row.setSource(source.name());
-          row.setImportBatch(source == ScoreSource.IMPORT ? importBatch : null);
-        });
-    scoreMapper.upsertBatch(rows);
+    WritePlan plan = plan(sheetId, rawValues, clearIndicatorIds, operatorId);
+    List<Score> rows = plan.rows();
+    int written = 0;
+    if (!rows.isEmpty()) {
+      // 来源与批次号只在这条路径上写（`correctValues` 刻意不碰它们）
+      rows.forEach(
+          row -> {
+            row.setSource(source.name());
+            row.setImportBatch(source == ScoreSource.IMPORT ? importBatch : null);
+          });
+      scoreMapper.upsertBatch(rows);
+      written = rows.size();
+    }
+    int cleared =
+        plan.clearIndicatorIds().isEmpty()
+            ? 0
+            : scoreMapper.deleteValues(sheetId, plan.clearIndicatorIds());
+    if (written + cleared > 0) {
+      log.info(
+          "写入评分 {} 格、清空 {} 格（sheetId={}，source={}，batch={}）",
+          written,
+          cleared,
+          sheetId,
+          source,
+          importBatch);
+    }
     // ⚠️ 返回**行数**而不是 JDBC 影响行数：upsert 的"更新"记 2、"值没变"记 0，直接用会让
     // "已保存 N 个指标 / 导入写入 N 格"这两个提示失真（03 §34 的 P2-6）。
-    log.info("写入评分 {} 格（sheetId={}，source={}，batch={}）", rows.size(), sheetId, source, importBatch);
-    return rows.size();
+    return written + cleared;
+  }
+
+  private static boolean isEmpty(Map<Long, BigDecimal> values) {
+    return values == null || values.isEmpty();
+  }
+
+  private static boolean isEmpty(List<Long> ids) {
+    return ids == null || ids.isEmpty();
   }
 
   /**
-   * **只纠正分值**的写入（04-096 / `03 §34` P1-2）：不动 `source` 与 `import_batch`。
+   * **只纠正分值**的写入（04-096 / `03 §34` P1-2）：不动 `source` 与 `import_batch`，也不删任何格子。
    *
    * <p>给"提交时发现库里的 `score_value` 与重算不一致"的回写用：那时行**一定已存在**，
    * 被纠正的是**算错了的分**，而来源是**历史事实**（导入还是手工）。原先那条回写复用 {@link #save}，
@@ -96,10 +124,10 @@ public class ScoreWriter {
    */
   @Transactional
   public int correctValues(long sheetId, Map<Long, BigDecimal> rawValues, long operatorId) {
-    if (rawValues == null || rawValues.isEmpty()) {
+    if (isEmpty(rawValues)) {
       return 0;
     }
-    List<Score> rows = buildRows(sheetId, rawValues, operatorId);
+    List<Score> rows = plan(sheetId, rawValues, List.of(), operatorId).rows();
     int corrected = 0;
     for (Score row : rows) {
       // 逐行 UPDATE（不是 upsert）：行一定已存在，且**只为纠值**——来源与批次号原样留着。
@@ -113,14 +141,21 @@ public class ScoreWriter {
     return corrected;
   }
 
+  /** 一次写入了什么：待 upsert 的行 ＋ 待清空的指标（都已经过守卫与归属校验）。 */
+  private record WritePlan(List<Score> rows, List<Long> clearIndicatorIds) {}
+
   /**
-   * 守卫 + 换算，产出待写入的行（`save` 与 `correctValues` 共用；`source`/`importBatch` 由调用方填）。
+   * 守卫 + 换算 + 归属校验，产出这次要动的东西。
    *
    * <p>⚠️ **锁定读是本事务的第一条语句**（CLAUDE 默认约定第 6 条）：「状态与负责人」一律取当前值——
    * 用普通读会把"刚被别人提交"的评分单看成仍可写，于是给一张 SUBMITTED 的单子落下新分（04-096）。
    * 只锁 sheet 本行：`submit` 是「先 task_supplier、再 sheet」，本方法不请求 task_supplier，不成环。
+   *
+   * <p>⚠️ **写入与清空走同一套校验**：清空一个不属于本快照的指标照样 2015。顺序也是刻意的——
+   * 先判"指标在不在快照里"再判"值是不是 null"，反过来会让"清空一个不存在的指标"静默变成无事发生。
    */
-  private List<Score> buildRows(long sheetId, Map<Long, BigDecimal> rawValues, long operatorId) {
+  private WritePlan plan(
+      long sheetId, Map<Long, BigDecimal> rawValues, List<Long> clearIndicatorIds, long operatorId) {
     Sheet sheet =
         sheetMapper.findByIdForUpdate(sheetId).orElseThrow(() -> new BizException(ErrorCode.SHEET_NOT_FOUND));
     requireWritable(sheet, operatorId);
@@ -128,35 +163,58 @@ public class ScoreWriter {
         sheetMapper.findContextById(sheetId).orElseThrow(() -> new BizException(ErrorCode.SHEET_NOT_FOUND));
 
     TemplateSnapshot snapshot = templateSnapshotFacade.requirePublished(context.getTemplateVersionId());
+    // ⚠️ 归属校验按**这张评分单自己的维度**收，而不是"整个模板版本"：原先写成全版本大集合，
+    // 于是给一张"质量"单写进"成本"的指标也能过—— upsert 会落一条本维度根本不展示的幽灵行
+    // （01 §6.6 的口径里这张单子没有那个指标）。P2-15 加的删除路径会让同一个洞变成"删掉一条看不见的行"，
+    // 所以两条一起收紧（03 §39 登记）。
     Map<Long, IndicatorSnapshot> indicatorsById = new HashMap<>();
     for (var dimension : snapshot.dimensions()) {
+      if (dimension.id() != context.getDimensionId().longValue()) {
+        continue;
+      }
       for (IndicatorSnapshot indicator : dimension.indicators()) {
         indicatorsById.put(indicator.id(), indicator);
       }
     }
 
-    List<Score> rows = new ArrayList<>(rawValues.size());
-    for (Map.Entry<Long, BigDecimal> entry : rawValues.entrySet()) {
-      Long indicatorId = entry.getKey();
-      BigDecimal rawValue = entry.getValue();
-      IndicatorSnapshot indicator = indicatorsById.get(indicatorId);
-      if (indicator == null) {
-        // 指标不在这张评分单绑定的模板版本里 ⇒ 拒绝（不是"忽略这一格"，否则导入会静默漏数据）
-        throw new BizException(
-            ErrorCode.TEMPLATE_INDICATOR_NOT_FOUND,
-            "指标不属于该评分单绑定的模板版本：indicatorId=" + indicatorId + "，versionId=" + snapshot.versionId());
+    List<Score> rows = new ArrayList<>();
+    if (!isEmpty(rawValues)) {
+      for (Map.Entry<Long, BigDecimal> entry : rawValues.entrySet()) {
+        Long indicatorId = entry.getKey();
+        BigDecimal rawValue = entry.getValue();
+        IndicatorSnapshot indicator = indicatorsById.get(indicatorId);
+        if (indicator == null) {
+          // 指标不在这张评分单的维度里 ⇒ 拒绝（不是"忽略这一格"，否则导入会静默漏数据）
+          throw new BizException(
+              ErrorCode.TEMPLATE_INDICATOR_NOT_FOUND,
+              "指标不属于该评分单绑定的维度：indicatorId=" + indicatorId + "，dimensionId=" + context.getDimensionId());
+        }
+        if (rawValue == null) {
+          // 手工路径的"清空"由 controller 拆进 clearIndicatorIds 送来，不会以 null 的形式落到这里；
+          // 走到这一支的是 **Excel 导入**：01 §6.6/§6.7 规定"空格视为该格未填"，所以跳过而不是删除
+          continue;
+        }
+        Score score = new Score();
+        score.setSheetId(sheetId);
+        score.setIndicatorId(indicatorId);
+        score.setRawValue(rawValue);
+        score.setScoreValue(convert(rawValue, indicator));
+        rows.add(score);
       }
-      if (rawValue == null) {
-        continue;
-      }
-      Score score = new Score();
-      score.setSheetId(sheetId);
-      score.setIndicatorId(indicatorId);
-      score.setRawValue(rawValue);
-      score.setScoreValue(convert(rawValue, indicator));
-      rows.add(score);
     }
-    return rows;
+
+    List<Long> clears = new ArrayList<>();
+    if (!isEmpty(clearIndicatorIds)) {
+      for (Long indicatorId : clearIndicatorIds) {
+        if (!indicatorsById.containsKey(indicatorId)) {
+          throw new BizException(
+              ErrorCode.TEMPLATE_INDICATOR_NOT_FOUND,
+              "指标不属于该评分单绑定的维度：indicatorId=" + indicatorId + "，dimensionId=" + context.getDimensionId());
+        }
+        clears.add(indicatorId);
+      }
+    }
+    return new WritePlan(rows, clears);
   }
 
   /** 换算 + 输入校验：策略抛的 IllegalArgumentException 在这里翻成 2025（01 §6.6 的"后端拒绝"）。 */

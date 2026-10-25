@@ -22,6 +22,13 @@ public class NotificationService {
   /** 通知类型常量（与 V12 列注释、02 §3.2 一致；只增不改）。 */
   public static final String TYPE_TASK_PUBLISHED = "TASK_PUBLISHED";
 
+  /** P4 审批链（05 §5.3 的四个事件 → 本上下文）：类型名与事件名逐字一致，便于日志与排障。 */
+  public static final String TYPE_APPROVAL_ROUND_STARTED = "APPROVAL_ROUND_STARTED";
+
+  public static final String TYPE_APPROVAL_NODE_PASSED = "APPROVAL_NODE_PASSED";
+  public static final String TYPE_TASK_SUPPLIER_REJECTED = "TASK_SUPPLIER_REJECTED";
+  public static final String TYPE_TASK_SUPPLIER_FINALIZED = "TASK_SUPPLIER_FINALIZED";
+
   private final NotificationMapper notificationMapper;
 
   /** 批量写通知（监听器在发布事务内调用 ⇒ 通知与发布同生共死，05 ADR-9）。 */

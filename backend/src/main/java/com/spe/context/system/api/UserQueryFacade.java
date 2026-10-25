@@ -30,4 +30,13 @@ public interface UserQueryFacade {
    * @param roles 允许的角色集合；为空时返回空列表
    */
   List<Long> findEnabledIdsByDepartmentAndRoles(String department, Collection<Role> roles);
+
+  /**
+   * 按角色查**在职**用户 id，**按 id 升序**——不限部门。
+   *
+   * <p>用途：`TaskSupplierFinalizedEvent` 的「通知采购经理」（05 §5.3）。采购经理在 01 §7 里
+   * 就是 `MANAGER` 角色本身，不按部门区分；事件载荷里没有"任务创建人"，所以不能按某个人定位。
+   * 角色集合为空时返回空列表（不猜）。
+   */
+  List<Long> findEnabledIdsByRoles(Collection<Role> roles);
 }

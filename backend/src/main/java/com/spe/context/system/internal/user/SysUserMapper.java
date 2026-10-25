@@ -53,6 +53,31 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
       """)
   List<SysUser> findByIds(@Param("ids") Collection<Long> ids);
 
+  /**
+   * 选择器用的在职用户（02 §4 / 03 §38 P0-1）。`roles` 为空 ⇒ 不限角色（目录面的通用能力；
+   * 审批链选择器固定传 MANAGER,ADMIN，见 {@code 21 §3.W1-1}）。
+   *
+   * <p>⚠️ 这是 `06 §8` 那条"列表一律走 {@code PageQuery} 分页"的**登记例外**（`11 §9` 有记录）：
+   * 规模按 01 是 50 用户，而选择器要一次拿全才能搜索与回填已选值；代价是这里必须**自带硬上限**，
+   * 否则这个端点就成了"全表导出"。上限由 {@code UserService.OPTION_LIMIT} 传入，不在 SQL 里写死。
+   */
+  @Select(
+      """
+      <script>
+      SELECT id, name, role, department
+      FROM sys_user
+      WHERE status = 'ENABLED'
+      <if test="roles != null and roles.size() > 0">
+        AND role IN
+        <foreach item="role" collection="roles" open="(" separator="," close=")">#{role}</foreach>
+      </if>
+      ORDER BY id
+      LIMIT #{limit}
+      </script>
+      """)
+  List<SysUser> findEnabledOptions(
+      @Param("roles") Collection<String> roles, @Param("limit") int limit);
+
   /** 登录用：唯一需要读出 `password_hash` 的查询，仅供 {@code AuthService} 内校验口令。 */
   @Select(
       """
@@ -79,6 +104,18 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
       """)
   List<Long> findEnabledIdsByDepartmentAndRoles(
       @Param("department") String department, @Param("roles") Collection<Role> roles);
+
+  /** 按角色查在职用户 id（升序、不限部门）：评估生效时通知采购经理（05 §5.3）。 */
+  @Select(
+      """
+      <script>
+      SELECT id FROM sys_user
+      WHERE status = 'ENABLED' AND role IN
+      <foreach item="item" collection="roles" open="(" separator="," close=")">#{item}</foreach>
+      ORDER BY id
+      </script>
+      """)
+  List<Long> findEnabledIdsByRoles(@Param("roles") Collection<Role> roles);
 
   @Select("SELECT COUNT(*) FROM sys_user WHERE username = #{username}")
   long countByUsername(@Param("username") String username);

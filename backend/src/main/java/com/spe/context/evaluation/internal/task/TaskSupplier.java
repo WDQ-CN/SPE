@@ -29,8 +29,11 @@ public class TaskSupplier {
 
   private TaskSupplierStatus status;
 
-  /** 当前审批节点序号；驳回重置为 1（02 §3）。 */
+  /** 当前审批节点序号；**提交时置 1（T2）、驳回清零为 0**（02 §3、15 §E5）。 */
   private Integer currentNode;
+
+  /** 审批轮次：驳回重提时 +1（`15 §E11`，随 `V13` 加列）；与状态回退写在**同一条**守卫 UPDATE 里。 */
+  private Integer round;
 
   private BigDecimal totalScore;
 
