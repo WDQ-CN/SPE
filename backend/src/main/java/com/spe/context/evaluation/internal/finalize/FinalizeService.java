@@ -4,6 +4,7 @@ import com.spe.common.event.EventPublisher;
 import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
 import com.spe.context.evaluation.api.events.TaskSupplierFinalizedEvent;
+import com.spe.context.evaluation.internal.approval.ApprovalRecordMapper;
 import com.spe.context.evaluation.internal.approval.TaskSupplierDimensionResult;
 import com.spe.context.evaluation.internal.approval.TaskSupplierDimensionResultMapper;
 import com.spe.context.evaluation.internal.scoring.ScoreMapper;
@@ -52,6 +53,7 @@ public class FinalizeService {
   private final SheetMapper sheetMapper;
   private final ScoreMapper scoreMapper;
   private final TaskSupplierDimensionResultMapper dimensionResultMapper;
+  private final ApprovalRecordMapper approvalRecordMapper;
   private final TemplateSnapshotFacade templateSnapshotFacade;
   private final SettingsFacade settingsFacade;
   private final EventPublisher eventPublisher;
@@ -121,6 +123,12 @@ public class FinalizeService {
           "定稿失败：维度快照应写 " + snapshot.dimensions().size() + " 行，实际 " + written + " 行");
     }
 
+    // 当前轮的末级 APPROVE 已由 ApprovalService 先写入；只数更早轮次，才能区分
+    // 「驳回后第一次生效」与「解锁重评再定稿」——前者该触发趋势，后者不该（01 W2）。
+    boolean firstEffective =
+        approvalRecordMapper.countEarlierLastNodeApprovals(
+                taskSupplier.getId(), lastNodeSeq, taskSupplier.getRound())
+            == 0;
     eventPublisher.publish(
         new TaskSupplierFinalizedEvent(
             taskSupplier.getId(),
@@ -138,7 +146,8 @@ public class FinalizeService {
                             sheet.weight(),
                             sheet.score(),
                             sheet.grade()))
-                .toList()));
+                .toList(),
+            firstEffective));
 
     int completed = taskMapper.completeIfAllEffective(task.getId());
     Map<String, Object> detail = new LinkedHashMap<>();

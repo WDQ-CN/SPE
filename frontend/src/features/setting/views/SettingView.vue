@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 
-import { getGradeThresholds, updateGradeThresholds } from '@/features/setting/api'
+import {
+  getAlertRules,
+  getGradeThresholds,
+  updateAlertRules,
+  updateGradeThresholds,
+  type AlertRulesPayload,
+} from '@/features/setting/api'
+import { alertRulesError } from '@/features/setting/alert-rules'
 import { useSubmit } from '@/shared/composables/useSubmit'
 import type { GradeThresholds } from '@/shared/types/dto'
 import { thresholdOrderingError } from '@/shared/validation'
@@ -13,6 +20,47 @@ const { submitting: saving, errorMessage: saveError, run: runSave } = useSubmit(
 
 // 即时提示，不是判定：跨字段规则（0 ≤ D ≤ C ≤ B ≤ A ≤ 100，允许相等）最终由后端判并返回 2005
 const orderingError = computed(() => thresholdOrderingError(thresholds))
+
+// ---- 预警规则（M5 SM3） ----
+const alertRules = reactive<AlertRulesPayload>({
+  enabled: true,
+  totalThreshold: 70,
+  keyDimensionThreshold: 70,
+  trendPeriods: 2,
+  trendDrop: 5,
+})
+const rulesLoading = ref(false)
+const rulesLoadError = ref('')
+const {
+  submitting: rulesSaving,
+  errorMessage: rulesSaveError,
+  run: runSaveRules,
+} = useSubmit()
+const rulesError = computed(() => alertRulesError(alertRules))
+
+async function loadAlertRules(): Promise<void> {
+  rulesLoading.value = true
+  rulesLoadError.value = ''
+  try {
+    Object.assign(alertRules, await getAlertRules())
+  } catch (caught) {
+    rulesLoadError.value = caught instanceof Error ? caught.message : '加载失败'
+  } finally {
+    rulesLoading.value = false
+  }
+}
+
+async function saveAlertRules(): Promise<void> {
+  if (rulesError.value) {
+    return
+  }
+  const ok = await runSaveRules(async () => {
+    Object.assign(alertRules, await updateAlertRules({ ...alertRules }))
+  })
+  if (ok) {
+    ElMessage.success('已保存预警规则')
+  }
+}
 
 async function load(): Promise<void> {
   loading.value = true
@@ -26,7 +74,10 @@ async function load(): Promise<void> {
   }
 }
 
-onMounted(() => void load())
+onMounted(() => {
+  void load()
+  void loadAlertRules()
+})
 
 async function save(): Promise<void> {
   if (orderingError.value) {
@@ -138,6 +189,106 @@ async function save(): Promise<void> {
         <el-button
           :disabled="loading"
           @click="load"
+        >
+          重新加载
+        </el-button>
+      </el-form-item>
+    </el-form>
+  </SectionCard>
+
+  <SectionCard title="预警规则">
+    <el-alert
+      v-if="rulesLoadError"
+      class="page__error"
+      type="error"
+      :title="rulesLoadError"
+      :closable="false"
+      show-icon
+    >
+      <el-button
+        link
+        type="primary"
+        @click="loadAlertRules"
+      >
+        重试
+      </el-button>
+    </el-alert>
+
+    <p class="page__hint">
+      评估单生效时自动判定：① 总分低于阈值；② 每个关键维度得分低于阈值；③ 连续 N 期总分累计下降 ≥ X。
+      关闭后不再生成新预警，但结果被重算/解锁时旧预警仍会关闭。
+    </p>
+
+    <el-form
+      v-loading="rulesLoading"
+      label-width="120px"
+      @submit.prevent="saveAlertRules"
+    >
+      <el-form-item label="启用预警">
+        <el-switch v-model="alertRules.enabled" />
+      </el-form-item>
+      <el-form-item label="总分阈值">
+        <el-input-number
+          v-model="alertRules.totalThreshold"
+          :min="0"
+          :max="100"
+          :step="1"
+        />
+      </el-form-item>
+      <el-form-item label="关键维度阈值">
+        <el-input-number
+          v-model="alertRules.keyDimensionThreshold"
+          :min="0"
+          :max="100"
+          :step="1"
+        />
+      </el-form-item>
+      <el-form-item label="连续期数">
+        <el-input-number
+          v-model="alertRules.trendPeriods"
+          :min="1"
+          :max="8"
+          :step="1"
+        />
+      </el-form-item>
+      <el-form-item label="累计降幅">
+        <el-input-number
+          v-model="alertRules.trendDrop"
+          :min="0"
+          :max="100"
+          :step="1"
+        />
+      </el-form-item>
+
+      <el-alert
+        v-if="rulesError"
+        class="page__error"
+        type="warning"
+        :title="rulesError"
+        :closable="false"
+        show-icon
+      />
+      <el-alert
+        v-if="rulesSaveError"
+        class="page__error"
+        type="error"
+        :title="rulesSaveError"
+        :closable="false"
+        show-icon
+      />
+
+      <el-form-item>
+        <el-button
+          type="primary"
+          :loading="rulesSaving"
+          :disabled="rulesError !== null"
+          @click="saveAlertRules"
+        >
+          保存
+        </el-button>
+        <el-button
+          :disabled="rulesLoading"
+          @click="loadAlertRules"
         >
           重新加载
         </el-button>

@@ -1,6 +1,7 @@
 package com.spe.context.evaluation.internal.approval;
 
 import java.util.List;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -38,6 +39,13 @@ public interface TaskSupplierDimensionResultMapper {
       "SELECT " + COLUMNS + " FROM task_supplier_dimension_result"
           + " WHERE task_supplier_id = #{taskSupplierId} ORDER BY dimension_id")
   List<TaskSupplierDimensionResult> findByTaskSupplier(@Param("taskSupplierId") long taskSupplierId);
+
+  /**
+   * 解锁重评时删除该单的维度快照（R5；M5 W3）：否则重定稿的 `insertBatch` 会撞
+   * `uk_ts_dimension(task_supplier_id, dimension_id)`。撤销的分数在解锁审计里留 before 值。
+   */
+  @Delete("DELETE FROM task_supplier_dimension_result WHERE task_supplier_id = #{taskSupplierId}")
+  int deleteByTaskSupplier(@Param("taskSupplierId") long taskSupplierId);
 
   /** 结果列表批读：一次取回多个评估单的维度快照，避免逐供应商回查。 */
   @Select(

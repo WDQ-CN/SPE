@@ -8,7 +8,9 @@ import com.spe.common.page.PageResult;
 import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
 import com.spe.context.evaluation.api.TaskSupplierStatus;
+import com.spe.context.evaluation.api.events.TaskSupplierFinalizedEvent;
 import com.spe.context.evaluation.internal.finalize.FinalizeService;
+import com.spe.context.evaluation.internal.unlock.UnlockService;
 import com.spe.context.evaluation.internal.result.ResultReportService;
 import com.spe.context.evaluation.internal.result.TaskSupplierReport;
 import com.spe.context.evaluation.internal.task.TaskDraftCommand;
@@ -34,6 +36,8 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 
 /**
  * P4-W3/W4：审批流转（T5）与定稿（T3）的集成用例（15 §E5/E6、16 §W3/W4）。
@@ -44,6 +48,7 @@ import org.springframework.beans.factory.annotation.Autowired;
  *
  * <p>所有断言都按**本用例自己的 taskSupplierId**收敛（CLAUDE 默认约定第 5 条）。
  */
+@RecordApplicationEvents
 class ApprovalFlowIntegrationTest extends AbstractIntegrationTest {
 
   private static final AtomicInteger YEAR_SEQ = new AtomicInteger(2090);
@@ -54,6 +59,8 @@ class ApprovalFlowIntegrationTest extends AbstractIntegrationTest {
   @Autowired private ResultReportService resultReportService;
   @Autowired private NotificationService notificationService;
   @Autowired private SettingService settingService;
+  @Autowired private UnlockService unlockService;
+  @Autowired private ApplicationEvents applicationEvents;
   @Autowired private com.spe.context.evaluation.internal.task.TaskSupplierMapper taskSupplierMapper;
 
   @Test
@@ -181,6 +188,50 @@ class ApprovalFlowIntegrationTest extends AbstractIntegrationTest {
                 manager, NotificationService.TYPE_TASK_SUPPLIER_FINALIZED, "供应商 #" + supplierId))
         .as("采购经理收到生效通知")
         .hasSize(1);
+  }
+
+  @Test
+  @DisplayName("本期首次生效：首轮定稿 true；解锁重评再定稿 false（01 W2）")
+  void firstEffectiveOnlyForTheFirstFinalize() {
+    Prepared prepared = prepareTask(1, 2);
+    long tsId = prepared.taskSupplierIds().get(0);
+    long approver1 = prepared.approverIds().get(0);
+    long approver2 = prepared.approverIds().get(1);
+
+    approvalService.approve(tsId, approver1, 0);
+    approvalService.approve(tsId, approver2, 1);
+    assertThat(finalizedEvents(tsId))
+        .singleElement()
+        .satisfies(event -> assertThat(event.firstEffective()).isTrue());
+
+    int version = ((Number) taskSupplierRow(tsId).get("version")).intValue();
+    unlockService.unlock(tsId, version, null);
+
+    jdbcTemplate.update(
+        "update sheet set status = 'SUBMITTED', version = version + 1 where task_supplier_id = ?",
+        tsId);
+    jdbcTemplate.update(
+        "update task_supplier set status = 'PENDING_APPROVAL', current_node = 1,"
+            + " version = version + 1 where id = ?",
+        tsId);
+
+    int versionAfterResubmit = ((Number) taskSupplierRow(tsId).get("version")).intValue();
+    approvalService.approve(tsId, approver1, versionAfterResubmit);
+    int versionAfterFirstNode = ((Number) taskSupplierRow(tsId).get("version")).intValue();
+    approvalService.approve(tsId, approver2, versionAfterFirstNode);
+
+    List<TaskSupplierFinalizedEvent> events = finalizedEvents(tsId);
+    assertThat(events).hasSize(2);
+    assertThat(events.get(0).firstEffective()).isTrue();
+    assertThat(events.get(1).firstEffective())
+        .as("解锁重评再定稿不算本期首次生效，趋势类预警不得重新触发")
+        .isFalse();
+  }
+
+  private List<TaskSupplierFinalizedEvent> finalizedEvents(long taskSupplierId) {
+    return applicationEvents.stream(TaskSupplierFinalizedEvent.class)
+        .filter(event -> event.taskSupplierId() == taskSupplierId)
+        .toList();
   }
 
   @Test

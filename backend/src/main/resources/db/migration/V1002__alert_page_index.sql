@@ -1,0 +1,21 @@
+-- M5R-09 的索引探针结论（11 §9.4；探针与延迟数据见仓库根 `24-index-probe-*.log`，2026-10-27）。
+-- 探针规模：12,000 任务 / 300,000 评估单 / 20,000 预警 / 600 供应商（自清理 schema，已删除）。
+--
+-- 预警列表（`AlertMapper.findPage`）现状与实测：
+--   1) 旧写法 `WHERE status != 'SUPERSEDED' ORDER BY created_at DESC, id DESC LIMIT 20`
+--      ⇒ 全表扫 + `Using temporary; Using filesort`，p95 **21.5ms**（深页 OFFSET 2000 同样 21.6ms：
+--        排序发生在 LIMIT 之前，翻页再深都要整批重排）。
+--   2) 只加本索引、SQL 不动 ⇒ 优化器**仍不自选**该索引，p95 21.4ms（无改善）；
+--      同一条 SQL 加 FORCE INDEX 才能走到 backward index scan（2.28ms）。
+--   3) 因此 findPage 同步改写为「派生表先按索引取一页 id，再回表 join」⇒ **无 hint** 即走
+--      `Index scan on alert using idx_alert_created (reverse)`，只读 30 行，实测 **0.148ms**（约 145×）。
+-- 写放大（同批 5,000 条预警的批量 INSERT，两次取均值）：494.9ms → 506.0ms（**+2.2%**）；
+-- 索引体积 27 页，对照 `idx_alert_status_created` 的 97 页。预警只在定稿/解锁时写，量级远低于读。
+--
+-- 同批评估过、**明确不加**的两项（理由都在探针里，不靠猜）：
+--   · `eval_task(year, quarter)`：索引确实被选中（`type` ALL→ref、rows 11,761→750），
+--     但排行 p95 35.4→33.5ms、周期列表 216→219ms，落在噪声区间——成本在 12,764 行的 fan-out 与排序，
+--     不是任务表扫描。触发条件已按此改写登记回 11 §9.4。
+--   · `alert(created_at, id, status)`（覆盖版）：FORCE INDEX 下 0.12ms，比本索引略快，
+--     但为省 30 次回表多带一列、且优化器同样不自选 ⇒ 收益不抵成本。
+CREATE INDEX idx_alert_created ON alert (created_at, id);

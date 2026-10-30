@@ -15,6 +15,9 @@ public interface SupplierQueryFacade {
 
   Optional<SupplierBrief> findById(long supplierId);
 
+  /** 按编码取（M6 开放 API 写请求用 code 定位供应商；编码有数据库唯一键）。 */
+  Optional<SupplierBrief> findByCode(String code);
+
   /** 批量取供应商；入参为空返回空列表。供任务发布这类「一次处理多家」的场景使用。 */
   List<SupplierBrief> findByIds(Collection<Long> supplierIds);
 

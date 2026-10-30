@@ -113,3 +113,33 @@ export const SCORE_SOURCE_LABEL: Record<string, string> = {
   IMPORT: 'Excel 导入',
   API: '开放接口',
 }
+
+/** M5 预警（01 W3）：类型与状态 */
+export const ALERT_TYPE_LABEL: Record<string, string> = {
+  TOTAL_LOW: '总分低于阈值',
+  KEY_DIMENSION_LOW: '关键维度低于阈值',
+  TREND_DECLINE: '总分连续下降',
+}
+
+export const ALERT_STATUS_LABEL: Record<string, string> = {
+  UNREAD: '未读',
+  HANDLED: '已处理',
+  SUPERSEDED: '已取代',
+}
+
+/** M5 操作日志（SM5）：目标类型（动作码保持后端原值，不在这里造中文别名） */
+export const AUDIT_TARGET_TYPE_LABEL: Record<string, string> = {
+  USER: '用户',
+  SUPPLIER: '供应商',
+  SETTING: '系统设置',
+  TEMPLATE: '模板',
+  TASK: '任务',
+  TOKEN: 'API Token',
+}
+
+export const API_TOKEN_STATUS_LABEL: Record<string, string> = {
+  ENABLED: '启用',
+  DISABLED: '已停用',
+}
+
+export const GRADE_ORDER = ['A', 'B', 'C', 'D'] as const

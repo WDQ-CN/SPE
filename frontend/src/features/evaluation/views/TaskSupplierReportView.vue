@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useAuthStore } from '@/features/auth/store'
-import { getTaskSupplierReport } from '@/features/evaluation/api'
+import { getTaskSupplierReport, unlockTaskSupplier } from '@/features/evaluation/api'
 import ScoreBreakdown from '@/features/evaluation/components/ScoreBreakdown.vue'
 import ScoreRadar from '@/features/evaluation/components/ScoreRadar.vue'
+import { useSubmit } from '@/shared/composables/useSubmit'
 import { formatGrade, formatScore } from '@/shared/format'
 import { TASK_SUPPLIER_STATUS_LABEL } from '@/shared/labels'
 import type { TaskSupplierReport } from '@/shared/types/dto'
@@ -29,6 +31,46 @@ const error = ref('')
 const canOpenResults = computed(() =>
   auth.roles.some((role) => role === 'ADMIN' || role === 'MANAGER' || role === 'VIEWER'),
 )
+/** 解锁重评仅 ADMIN，且只有生效中的评估单可解锁（R5；后端还会再判任务状态与版本）。 */
+const canUnlock = computed(
+  () => report.value?.status === 'EFFECTIVE' && auth.roles.includes('ADMIN'),
+)
+const unlockSubmission = useSubmit()
+
+async function onUnlock(): Promise<void> {
+  const current = report.value
+  if (!current) {
+    return
+  }
+  let comment = ''
+  try {
+    const { value } = await ElMessageBox.prompt(
+      '解锁后该评估单退回评分中并重走审批；已生效的分数与维度快照会被撤销（审计留痕）。可填写原因（可选）。',
+      '解锁重评',
+      {
+        confirmButtonText: '确认解锁',
+        cancelButtonText: '取消',
+        inputType: 'textarea',
+        inputPlaceholder: '可选：解锁原因',
+        inputValidator: (value: string) => (value ?? '').length <= 500 || '最多 500 字',
+      },
+    )
+    comment = value ?? ''
+  } catch {
+    return
+  }
+  const ok = await unlockSubmission.run(async () => {
+    await unlockTaskSupplier(
+      current.taskSupplierId,
+      current.version,
+      comment.trim() || undefined,
+    )
+  })
+  if (ok) {
+    ElMessage.success('已解锁，评估单退回评分中')
+    await load()
+  }
+}
 
 let loadSeq = 0
 
@@ -88,6 +130,15 @@ onMounted(() => void load())
     <SectionCard title="评估概要">
       <template #actions>
         <el-button
+          v-if="canUnlock"
+          type="warning"
+          plain
+          :loading="unlockSubmission.submitting.value"
+          @click="onUnlock"
+        >
+          解锁重评
+        </el-button>
+        <el-button
           v-if="canOpenResults"
           link
           type="primary"
@@ -133,6 +184,15 @@ onMounted(() => void load())
           </el-tag>
         </el-descriptions-item>
       </el-descriptions>
+
+      <el-alert
+        v-if="unlockSubmission.errorMessage.value"
+        class="report__hint"
+        type="error"
+        :title="unlockSubmission.errorMessage.value"
+        :closable="false"
+        show-icon
+      />
 
       <el-alert
         v-if="report.scoreMode === 'TRIAL'"

@@ -76,7 +76,7 @@ public class ScoreWriter {
     if (isEmpty(rawValues) && isEmpty(clearIndicatorIds)) {
       return 0;
     }
-    WritePlan plan = plan(sheetId, rawValues, clearIndicatorIds, operatorId);
+    WritePlan plan = plan(sheetId, rawValues, clearIndicatorIds, operatorId, WriteMode.USER);
     List<Score> rows = plan.rows();
     int written = 0;
     if (!rows.isEmpty()) {
@@ -127,7 +127,7 @@ public class ScoreWriter {
     if (isEmpty(rawValues)) {
       return 0;
     }
-    List<Score> rows = plan(sheetId, rawValues, List.of(), operatorId).rows();
+    List<Score> rows = plan(sheetId, rawValues, List.of(), operatorId, WriteMode.USER).rows();
     int corrected = 0;
     for (Score row : rows) {
       // 逐行 UPDATE（不是 upsert）：行一定已存在，且**只为纠值**——来源与批次号原样留着。
@@ -141,8 +141,40 @@ public class ScoreWriter {
     return corrected;
   }
 
+  /**
+   * 开放 API 的写入口（M6 / 23 §2 D7）：与手工/导入共用 {@link #plan} 的指标归属、快照换算与 upsert，
+   * 只放宽「必须 SCORING + 必须指派人」这条人工守卫——机器没有用户，`UNASSIGNED` 也尚未提交。
+   */
+  @Transactional
+  public BigDecimal saveForApi(long sheetId, long indicatorId, BigDecimal rawValue) {
+    if (rawValue == null) {
+      throw new BizException(ErrorCode.SCORE_VALUE_INVALID, "原始值不能为空");
+    }
+    WritePlan plan =
+        plan(sheetId, Map.of(indicatorId, rawValue), List.of(), -1L, WriteMode.API);
+    if (plan.rows().isEmpty()) {
+      throw new BizException(ErrorCode.SCORE_VALUE_INVALID, "原始值不能为空");
+    }
+    List<Score> rows = plan.rows();
+    rows.forEach(
+        row -> {
+          row.setSource(ScoreSource.API.name());
+          row.setImportBatch(null);
+        });
+    scoreMapper.upsertBatch(rows);
+    log.info(
+        "开放 API 写入评分：sheetId={} indicatorId={} source=API", sheetId, indicatorId);
+    return rows.get(0).getScoreValue();
+  }
+
   /** 一次写入了什么：待 upsert 的行 ＋ 待清空的指标（都已经过守卫与归属校验）。 */
   private record WritePlan(List<Score> rows, List<Long> clearIndicatorIds) {}
+
+  /** 人工路径与开放 API 的守卫差异；换算/归属/upsert 完全共用。 */
+  private enum WriteMode {
+    USER,
+    API
+  }
 
   /**
    * 守卫 + 换算 + 归属校验，产出这次要动的东西。
@@ -155,10 +187,14 @@ public class ScoreWriter {
    * 先判"指标在不在快照里"再判"值是不是 null"，反过来会让"清空一个不存在的指标"静默变成无事发生。
    */
   private WritePlan plan(
-      long sheetId, Map<Long, BigDecimal> rawValues, List<Long> clearIndicatorIds, long operatorId) {
+      long sheetId,
+      Map<Long, BigDecimal> rawValues,
+      List<Long> clearIndicatorIds,
+      long operatorId,
+      WriteMode mode) {
     Sheet sheet =
         sheetMapper.findByIdForUpdate(sheetId).orElseThrow(() -> new BizException(ErrorCode.SHEET_NOT_FOUND));
-    requireWritable(sheet, operatorId);
+    requireWritable(sheet, operatorId, mode);
     SheetContextRow context =
         sheetMapper.findContextById(sheetId).orElseThrow(() -> new BizException(ErrorCode.SHEET_NOT_FOUND));
 
@@ -234,7 +270,16 @@ public class ScoreWriter {
    * 导入那条**整个漏掉了**（越权实测见 `03 §34`）。合成一个入口后，漏用要么编不过（少传 operatorId）、
    * 要么必然 4002——不再依赖"调用方记得先判"。
    */
-  private static void requireWritable(Sheet sheet, long operatorId) {
+  private static void requireWritable(Sheet sheet, long operatorId, WriteMode mode) {
+    if (mode == WriteMode.API) {
+      // 01 I2 的字面口径：任务进行中 + 评分单未提交。UNASSIGNED/SCORING 都未提交；SUBMITTED 拒绝。
+      if (sheet.getStatus() != SheetStatus.SCORING && sheet.getStatus() != SheetStatus.UNASSIGNED) {
+        throw new BizException(
+            ErrorCode.TASK_STATUS_INVALID,
+            "开放 API 只能写未提交的评分单，当前状态：" + sheet.getStatus());
+      }
+      return;
+    }
     if (sheet.getStatus() != SheetStatus.SCORING) {
       throw new BizException(
           ErrorCode.TASK_STATUS_INVALID,

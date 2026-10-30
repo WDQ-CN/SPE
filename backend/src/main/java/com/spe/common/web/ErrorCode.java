@@ -83,6 +83,23 @@ public enum ErrorCode {
    * 但文案要说真话（与 2030 不复用 2026 同一条原则）。
    */
   TEMPLATE_VERSION_MISMATCH(2031, "模板版本不属于所选模板", HttpStatus.BAD_REQUEST),
+  /** 预警不存在（M5 W3 处理入口，22 §2 D1）。 */
+  ALERT_NOT_FOUND(2032, "预警不存在", HttpStatus.BAD_REQUEST),
+  /**
+   * 预警当前状态不允许该操作（M5 W3）：只有 UNREAD 能处理；已处理/已取代再点 → 本码。
+   *
+   * <p>守卫 UPDATE 0 行后**复读一次**：行不在了 ⇒ 2032；已是 HANDLED/SUPERSEDED ⇒ 本码（并发后到者
+   * 同样落到这里——alert 没有 version 列，状态机本身就是唯一判据，06 §2.4 的"复读定夺"）。
+   */
+  ALERT_STATUS_INVALID(2033, "预警当前状态不允许该操作", HttpStatus.BAD_REQUEST),
+  /** 预警规则不合法（M5 SM3）：阈值/周期数/降幅越界或顺序不成立（22 §2 D9）。 */
+  ALERT_RULE_INVALID(2034, "预警规则不合法", HttpStatus.BAD_REQUEST),
+  /** 开放 API Token 不存在（M6 Token 管理/停用入口）。 */
+  API_TOKEN_NOT_FOUND(2035, "API Token 不存在", HttpStatus.BAD_REQUEST),
+  /** Token 当前状态不允许该操作（M6：已停用再停用；停用不可逆）。 */
+  API_TOKEN_STATUS_INVALID(2036, "API Token 当前状态不允许该操作", HttpStatus.BAD_REQUEST),
+  /** 开放 API 上报的供应商不在指定任务中（M6；与 2028「评估单不存在」区分）。 */
+  SUPPLIER_NOT_IN_TASK(2037, "供应商不在该任务中", HttpStatus.BAD_REQUEST),
   CONCURRENT_CONFLICT(3001, "数据已被他人改动，请刷新后重试", HttpStatus.CONFLICT),
   FORBIDDEN(4001, "无权限执行该操作", HttpStatus.FORBIDDEN),
   /**

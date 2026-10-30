@@ -332,10 +332,17 @@ Say '=== 6) 迁移脚本的权限边界（04-077：应用账号是最小权限�
 #    不剥注释就会**自己触发自己**（匹配类判据必须带语境，03 §31.5/§31.6 是同一类坑）。
 # ⚠️ 这条规则是静态兜底，**不能替代运行态验证**：真正的判据仍是"新镜像启动后 `flyway_schema_history`
 #    里 `success = 1` + 进程 healthy"（04-077 预防第 2 条）。
-$migrationDir = Join-Path $root 'backend\src\main\resources\db\migration'
+$migrationDirs = @(
+  (Join-Path $root 'backend\src\main\resources\db\migration'),
+  (Join-Path $root 'backend\src\main\resources\db\demo')   # demo 迁移同样由应用账号执行（04-121）
+)
 $migrationFiles = @()
-if (Test-Path $migrationDir) { $migrationFiles = @(Get-ChildItem -Path $migrationDir -File -Filter 'V*.sql') }
-$migScanned = RequireScanned 'migration-privileges' $migrationFiles.Count '迁移脚本（V*.sql）'
+foreach ($migrationDir in $migrationDirs) {
+  if (Test-Path $migrationDir) {
+    $migrationFiles += @(Get-ChildItem -Path $migrationDir -File -Filter 'V*.sql')
+  }
+}
+$migScanned = RequireScanned 'migration-privileges' $migrationFiles.Count '迁移脚本（db/migration + db/demo 的 V*.sql）'
 $forbiddenPattern =
   '(?i)\b(CREATE|DROP)\s+TEMPORARY\s+TABLE\b' +   # 实测：spe_app 没有这个权限
   '|\b(GRANT|REVOKE)\b' +                          # 授权语句（应用账号无 WITH GRANT OPTION）

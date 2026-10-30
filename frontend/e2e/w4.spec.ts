@@ -28,24 +28,28 @@ import {
 
 // 探针账号约定、控制台监视、登录与菜单定位统一放在 ./support（w5/w6 也用），见那里的注释
 
-test('admin 登录后落首页：菜单八项、身份正确、控制台无错误', async ({ page }) => {
+test('admin 登录后落首页：菜单十二项、身份正确、控制台无错误', async ({ page }) => {
   const console_ = watchConsole(page)
 
   await loginAsAdmin(page)
 
   await expect(page).toHaveURL(/localhost:18081\/$/)
   const items = page.locator('.el-menu-item')
-  // P2-W4 起多一个「评估模板」；P3-W6 起又多「评估任务」；P4-W6 起再加「我的审批」「结果报表」
-  // （01 §7：ADMIN 在审批链内可审批、结果报表只读；「我的待办」只有 MANAGER/EVALUATOR 可见）。
-  await expect(items).toHaveCount(8)
+  // P2-W4 起多一个「评估模板」；P3-W6 起又多「评估任务」；P4-W6 加「我的审批」「结果报表」；
+  // M5 再加「分析看板」「预警」「操作日志」；M6 加「开放 API」（01 §7：均仅 ADMIN 可管理）。
+  await expect(items).toHaveCount(12)
   await expect(items.nth(0)).toContainText('首页')
   await expect(items.nth(1)).toContainText('供应商')
   await expect(items.nth(2)).toContainText('评估模板')
   await expect(items.nth(3)).toContainText('评估任务')
   await expect(items.nth(4)).toContainText('我的审批')
   await expect(items.nth(5)).toContainText('结果报表')
-  await expect(items.nth(6)).toContainText('用户管理')
-  await expect(items.nth(7)).toContainText('系统设置')
+  await expect(items.nth(6)).toContainText('分析看板')
+  await expect(items.nth(7)).toContainText('预警')
+  await expect(items.nth(8)).toContainText('用户管理')
+  await expect(items.nth(9)).toContainText('系统设置')
+  await expect(items.nth(10)).toContainText('操作日志')
+  await expect(items.nth(11)).toContainText('开放 API')
 
   // 「系统管理员」在页头标签和首页信息卡里都会出现，getByText 会因命中多个而报 strict mode violation
   await expect(page.locator('.layout__user .el-tag')).toHaveText('系统管理员')
@@ -115,12 +119,12 @@ test('设置页：显示当前阈值；把 A 档填得比 B 档低时前端拦�
   await aThreshold.blur()
 
   await expect(page.locator('.el-alert--warning')).toContainText('B 档不能高于 A 档')
-  await expect(page.getByRole('button', { name: '保存' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: '保存' }).first()).toBeDisabled()
 
   // 复原输入但不点保存：本用例只验前端联动，不写库
   await aThreshold.fill('90')
   await aThreshold.blur()
-  await expect(page.getByRole('button', { name: '保存' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: '保存' }).first()).toBeEnabled()
 })
 
 test('用户页：新增账号 → 列表可见 → 停用（覆盖对话框、校验与守卫 UPDATE）', async ({ page }) => {
@@ -143,8 +147,13 @@ test('用户页：新增账号 → 列表可见 → 停用（覆盖对话框、�
   await page.getByLabel('姓名').fill('E2E 用例账号')
   await page.getByRole('button', { name: '保存' }).click()
 
-  // 新增成功后对话框关闭，新账号出现在列表（上面已把页大小设到 100，新账号虽在末尾但仍在同一页）
+  // 新增成功后对话框关闭，新账号出现在列表**最后一页**（账号数早已超过一页；按 id 升序）
   await expect(page.locator('.el-dialog')).toBeHidden()
+  const lastPage = page.locator('.el-pager li.number').last()
+  if ((await lastPage.count()) > 0) {
+    await lastPage.click()
+    await page.waitForLoadState('networkidle')
+  }
   const row = page.locator('.el-table__row', { hasText: username })
   await expect(row).toContainText('启用')
 

@@ -148,8 +148,15 @@ async function seedTask(
   while (used.has(year)) {
     year += 1
   }
-  const templates = await context.api.get('/api/templates?page=1&size=10', { headers: context.headers })
-  const templateId: number = (await templates.json()).data.list[0].id
+  const templates = await context.api.get('/api/templates?page=1&size=100', {
+    headers: context.headers,
+  })
+  const templateList = (await templates.json()).data.list as { id: number; name: string }[]
+  const template = templateList.find((item) => item.name === '季度绩效默认模板')
+  if (!template) {
+    throw new Error('默认模板「季度绩效默认模板」不存在，无法建任务')
+  }
+  const templateId: number = template.id
   const versions = await context.api.get(`/api/templates/${templateId}/published-versions`, {
     headers: context.headers,
   })

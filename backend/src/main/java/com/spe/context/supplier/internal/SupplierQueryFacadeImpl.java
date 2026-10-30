@@ -25,6 +25,15 @@ public class SupplierQueryFacadeImpl implements SupplierQueryFacade {
 
   @Override
   @Transactional(readOnly = true)
+  public Optional<SupplierBrief> findByCode(String code) {
+    if (code == null || code.isBlank()) {
+      return Optional.empty();
+    }
+    return supplierMapper.findByCode(code.trim()).map(SupplierQueryFacadeImpl::toBrief);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
   public List<SupplierBrief> findByIds(Collection<Long> supplierIds) {
     if (supplierIds == null || supplierIds.isEmpty()) {
       return List.of();

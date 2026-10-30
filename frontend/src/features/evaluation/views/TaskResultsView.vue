@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import { downloadFile } from '@/app/http'
 import { getTaskResults } from '@/features/evaluation/api'
 import {
   filterAndSortResults,
@@ -27,6 +28,7 @@ const error = ref('')
 const keyword = ref('')
 const sortBy = ref<ResultSortField>('totalScore')
 const order = ref<SortOrder>('desc')
+const exporting = ref(false)
 const visibleRows = computed(() =>
   filterAndSortResults(results.value?.rows ?? [], {
     keyword: keyword.value,
@@ -34,6 +36,29 @@ const visibleRows = computed(() =>
     order: order.value,
   }),
 )
+
+async function onExport(): Promise<void> {
+  const current = results.value
+  if (!current) {
+    return
+  }
+  exporting.value = true
+  try {
+    const blob = await downloadFile(`/tasks/${current.taskId}/results/export`)
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    const today = new Date().toISOString().slice(0, 10).replaceAll('-', '')
+    // 任务名里可能有路径分隔符/引号：文件系统不接受，先替换（后端也在响应头里做过同样的清理）
+    const safeName = current.taskName.replace(/[\\/:*?"<>|]/g, '_')
+    link.download = `结果-${safeName}-${today}.xlsx`
+    link.click()
+    URL.revokeObjectURL(link.href)
+  } catch {
+    // downloadFile 已按 blob 错误体提示；这里只保证不产生未接住的 rejection（04-037 同族）
+  } finally {
+    exporting.value = false
+  }
+}
 
 let loadSeq = 0
 
@@ -94,6 +119,14 @@ onMounted(() => void load())
     title="供应商结果"
   >
     <template #actions>
+      <el-button
+        v-if="results.rows.length > 0"
+        type="primary"
+        :loading="exporting"
+        @click="onExport"
+      >
+        导出 Excel
+      </el-button>
       <el-button
         link
         type="primary"

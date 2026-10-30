@@ -197,3 +197,15 @@ export function getTaskResults(taskId: number): Promise<TaskResults> {
 export function getTaskSupplierReport(taskSupplierId: number): Promise<TaskSupplierReport> {
   return http.get<TaskSupplierReport>(`/task-suppliers/${taskSupplierId}/report`)
 }
+
+/** 管理员解锁重评（01 R5；仅 ADMIN）：解锁后退回评分中、重走审批 */
+export function unlockTaskSupplier(
+  taskSupplierId: number,
+  version: number,
+  comment?: string,
+): Promise<void> {
+  return http.post<void>(`/task-suppliers/${taskSupplierId}/unlock`, {
+    version,
+    comment: comment || undefined,
+  })
+}

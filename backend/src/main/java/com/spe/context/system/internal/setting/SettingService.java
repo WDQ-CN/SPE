@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
+import com.spe.context.system.api.AlertRules;
 import com.spe.context.system.api.AuditAction;
 import com.spe.context.system.api.AuditFacade;
 import com.spe.context.system.api.AuditTargetType;
@@ -38,6 +39,11 @@ public class SettingService {
 
   /** 缓存名（03 §16 的 PERF-3）：写入口只有 {@link #updateGradeThresholds}，故用精确 evict 失效。 */
   static final String GRADE_THRESHOLDS_CACHE = "gradeThresholds";
+
+  /** 预警规则设置键与缓存名（M5 W2，22 §2 D9）：写入口只有 {@link #updateAlertRules}。 */
+  static final String ALERT_RULES_KEY = "alert.rules";
+
+  static final String ALERT_RULES_CACHE = "alertRules";
 
   private final SysSettingMapper sysSettingMapper;
   private final ObjectMapper objectMapper;
@@ -99,12 +105,62 @@ public class SettingService {
     }
   }
 
-  private String writeThresholds(GradeThresholds thresholds) {
+  /**
+   * 读预警规则（01 W1 / SM3；M5 W2）：键缺失、存量损坏或不合法一律回落代码默认值——
+   * 设置读不出去不该让定稿链路挂掉（与阈值同一条取向）。
+   */
+  @Cacheable(cacheNames = ALERT_RULES_CACHE)
+  @Transactional(readOnly = true)
+  public AlertRules alertRules() {
+    return sysSettingMapper
+        .findByKey(ALERT_RULES_KEY)
+        .map(SysSetting::getSettingValue)
+        .map(this::readAlertRules)
+        .orElseGet(AlertRules::defaults);
+  }
+
+  /**
+   * 保存预警规则（SM3）：校验 → upsert → 审计，同一事务；成功后清缓存（失败不清，避免把旧值读回来）。
+   * 方法内的 {@code alertRules()} 是自调用、不走缓存代理，因此 {@code before} 拿到的是库中旧值。
+   */
+  @CacheEvict(cacheNames = ALERT_RULES_CACHE, allEntries = true)
+  @Transactional
+  public AlertRules updateAlertRules(AlertRules rules) {
+    if (!rules.satisfies()) {
+      throw new BizException(ErrorCode.ALERT_RULE_INVALID);
+    }
+    AlertRules before = alertRules();
+    sysSettingMapper.upsert(ALERT_RULES_KEY, writeJson(rules));
+
+    Map<String, Object> detail = new LinkedHashMap<>();
+    detail.put("key", ALERT_RULES_KEY);
+    detail.put("before", before);
+    detail.put("after", rules);
+    auditFacade.record(AuditAction.SETTING_UPDATE, AuditTargetType.SETTING, null, detail);
+    log.info("更新预警规则：{}", rules);
+    return rules;
+  }
+
+  private AlertRules readAlertRules(String json) {
     try {
-      return objectMapper.writeValueAsString(thresholds);
+      AlertRules rules = objectMapper.readValue(json, AlertRules.class);
+      return rules.satisfies() ? rules : AlertRules.defaults();
     } catch (JsonProcessingException ex) {
-      // 序列化失败属代码缺陷（record 结构固定），不是可恢复的业务异常
-      throw new IllegalStateException("等级阈值序列化失败", ex);
+      log.warn("预警规则存量值无法解析，回落默认值：{}", ex.getMessage());
+      return AlertRules.defaults();
+    }
+  }
+
+  private String writeThresholds(GradeThresholds thresholds) {
+    return writeJson(thresholds);
+  }
+
+  /** 设置值的 JSON 序列化单点：失败属代码缺陷（record 结构固定），不是可恢复的业务异常。 */
+  private String writeJson(Object value) {
+    try {
+      return objectMapper.writeValueAsString(value);
+    } catch (JsonProcessingException ex) {
+      throw new IllegalStateException("设置值序列化失败", ex);
     }
   }
 }

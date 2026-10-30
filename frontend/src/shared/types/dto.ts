@@ -463,3 +463,133 @@ export interface ApprovalTimelineEntry {
   comment: string | null
   createdAt: string
 }
+
+/** ---- M5：分析看板（B1/B2/B4/B5） ---- */
+
+export interface AnalyticsPeriod {
+  year: number
+  quarter: number
+}
+
+export interface AnalyticsSupplierOption {
+  id: number
+  code: string
+  name: string
+  category: string | null
+}
+
+export interface AnalyticsDimensionPoint {
+  dimensionName: string
+  score: number | null
+  grade: string | null
+}
+
+export interface AnalyticsTrendPoint {
+  year: number
+  quarter: number
+  totalScore: number | null
+  totalGrade: string | null
+  dimensions: AnalyticsDimensionPoint[]
+}
+
+export interface AnalyticsTrend {
+  supplierId: number
+  supplierCode: string
+  supplierName: string
+  periods: AnalyticsTrendPoint[]
+}
+
+export interface AnalyticsRankingRow {
+  supplierId: number
+  supplierCode: string
+  supplierName: string
+  category: string | null
+  totalScore: number | null
+  totalGrade: string | null
+  previousScore: number | null
+  previousYear: number | null
+  previousQuarter: number | null
+  delta: number | null
+}
+
+export interface AnalyticsRanking {
+  year: number
+  quarter: number
+  rows: AnalyticsRankingRow[]
+}
+
+export interface AnalyticsGradeCount {
+  grade: string
+  count: number
+}
+
+export interface AnalyticsCompareRow {
+  supplierId: number
+  supplierCode: string
+  supplierName: string
+  totalScore: number | null
+  totalGrade: string | null
+  dimensions: AnalyticsDimensionPoint[]
+}
+
+export interface AnalyticsCompare {
+  year: number
+  quarter: number
+  rows: AnalyticsCompareRow[]
+}
+
+/** ---- M5：预警（W3） ---- */
+
+export interface AlertView {
+  id: number
+  taskSupplierId: number
+  supplierId: number
+  supplierCode: string
+  supplierName: string
+  year: number
+  quarter: number
+  type: string
+  title: string
+  content: string
+  status: string
+  handledBy: number | null
+  handledByName: string | null
+  handledComment: string | null
+  handledAt: string | null
+  createdAt: string
+}
+
+/** ---- M6：开放 API Token（I3） ---- */
+
+export interface ApiTokenSummary {
+  id: number
+  name: string
+  tokenPrefix: string
+  status: 'ENABLED' | 'DISABLED'
+  lastUsedAt: string | null
+  createdAt: string
+  version: number
+}
+
+/** 生成响应；token 是唯一一次明文，列表不会返回它 */
+export interface ApiTokenCreated {
+  id: number
+  name: string
+  tokenPrefix: string
+  token: string
+  createdAt: string
+}
+
+/** ---- M5：操作日志（SM5） ---- */
+
+export interface AuditLogView {
+  id: number
+  operatorId: number | null
+  operatorName: string | null
+  action: string
+  targetType: string | null
+  targetId: number | null
+  detail: string | null
+  ip: string | null
+  createdAt: string
+}

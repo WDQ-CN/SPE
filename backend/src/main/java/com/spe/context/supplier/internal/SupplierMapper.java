@@ -66,6 +66,10 @@ public interface SupplierMapper extends BaseMapper<Supplier> {
   @Select("SELECT id, code, name, category, status, version FROM supplier WHERE id = #{id}")
   Optional<Supplier> findById(@Param("id") long id);
 
+  /** 开放 API 用编码定位供应商（M6）；编码唯一键在库层兜底。 */
+  @Select("SELECT id, code, name, category, status, version FROM supplier WHERE code = #{code}")
+  Optional<Supplier> findByCode(@Param("code") String code);
+
   /** 批量取（P3 发布任务时校验/展示多家供应商，经 {@code SupplierQueryFacade}）。 */
   @Select(
       """

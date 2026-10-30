@@ -12,4 +12,11 @@ public interface SettingsFacade {
    * 因此调用方永远拿到一个可用的阈值对象，无需自己兜底。
    */
   GradeThresholds gradeThresholds();
+
+  /**
+   * 预警规则（01 W1 / SM3；M5 W2）。同阈值：键缺失返回代码默认值、不落库。
+   *
+   * <p>消费方是 alert 的定稿监听器（规则判定在定稿事务内同步执行）。
+   */
+  AlertRules alertRules();
 }

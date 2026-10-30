@@ -29,6 +29,12 @@ public class NotificationService {
   public static final String TYPE_TASK_SUPPLIER_REJECTED = "TASK_SUPPLIER_REJECTED";
   public static final String TYPE_TASK_SUPPLIER_FINALIZED = "TASK_SUPPLIER_FINALIZED";
 
+  /** M5：预警生成（alert 事件 → 在职采购经理各一条）。 */
+  public static final String TYPE_ALERT_CREATED = "ALERT_CREATED";
+
+  /** M5：评估单被解锁重评（通知该单全部评分单指派人）。 */
+  public static final String TYPE_TASK_SUPPLIER_UNLOCKED = "TASK_SUPPLIER_UNLOCKED";
+
   private final NotificationMapper notificationMapper;
 
   /** 批量写通知（监听器在发布事务内调用 ⇒ 通知与发布同生共死，05 ADR-9）。 */

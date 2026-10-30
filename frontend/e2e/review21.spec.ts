@@ -39,12 +39,31 @@ async function loginApi(username: string): Promise<Ctx> {
   return { api, headers: { Authorization: `Bearer ${body.data.token}` } }
 }
 
+async function findUser(
+  admin: Ctx,
+  username: string,
+): Promise<{ id: number; username: string; status: string; version: number } | null> {
+  // 账号总数早已超过一页（分享库 + 每次 e2e 新增）⇒ 必须翻页找，不能只看 page=1
+  for (let pageNo = 1; pageNo <= 20; pageNo += 1) {
+    const listed = await admin.api.get(`/api/users?page=${pageNo}&size=100`, {
+      headers: admin.headers,
+    })
+    const rows: { id: number; username: string; status: string; version: number }[] = (
+      await listed.json()
+    ).data.list
+    const found = rows.find((row) => row.username === username)
+    if (found) {
+      return found
+    }
+    if (rows.length < 100) {
+      return null
+    }
+  }
+  return null
+}
+
 async function ensureUser(admin: Ctx, username: string, role: string): Promise<number> {
-  const listed = await admin.api.get('/api/users?page=1&size=100', { headers: admin.headers })
-  const rows: { id: number; username: string; status: string; version: number }[] = (
-    await listed.json()
-  ).data.list
-  const existing = rows.find((row) => row.username === username)
+  const existing = await findUser(admin, username)
   if (existing) {
     return existing.id
   }
@@ -59,10 +78,9 @@ async function ensureUser(admin: Ctx, username: string, role: string): Promise<n
     },
   })
   expect((await created.json()).code, `创建用户 ${username}`).toBe(0)
-  const again = await admin.api.get('/api/users?page=1&size=100', { headers: admin.headers })
-  return (await again.json()).data.list.find(
-    (row: { username: string }) => row.username === username,
-  ).id
+  const fresh = await findUser(admin, username)
+  expect(fresh, `创建后必须能找到用户 ${username}`).toBeTruthy()
+  return fresh!.id
 }
 
 async function submitAllSheets(manager: Ctx, evaluator: Ctx, taskId: number): Promise<void> {
@@ -157,9 +175,14 @@ test('21 修复批五个点的运行态验收', async ({ page }) => {
   expect(supplier.code, '创建供应商').toBe(0)
   const supplierId: number = supplier.data.id
   const templates = await (
-    await m1.api.get('/api/templates?page=1&size=10', { headers: m1.headers })
+    await m1.api.get('/api/templates?page=1&size=100', { headers: m1.headers })
   ).json()
-  const templateId: number = templates.data.list[0].id
+  // 按名称取默认模板（M5 的 V999 会新增「演示模板（M5）」，list[0] 不再稳定）
+  const template = (templates.data.list as { id: number; name: string }[]).find(
+    (item) => item.name === '季度绩效默认模板',
+  )
+  expect(template, '默认模板必须存在').toBeTruthy()
+  const templateId: number = template!.id
   const versions = await (
     await m1.api.get(`/api/templates/${templateId}/published-versions`, { headers: m1.headers })
   ).json()

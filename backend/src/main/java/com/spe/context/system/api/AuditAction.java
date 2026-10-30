@@ -62,5 +62,15 @@ public enum AuditAction {
    * 会造出假的"完成"记录（已 COMPLETED 时重跑完单 SQL 影响 0 行）。
    */
   TASK_SUPPLIER_FINALIZE,
+  /**
+   * 管理员解锁重评（R5，M5 W3）：detail 记轮次、解锁前总分/等级与**意见摘要**（可选输入，按 06 §2.8 截断）。
+   *
+   * <p>它是「生效结果被撤销」的唯一直接证据：不单独记录被删的维度快照（行数多、且快照可用定稿审计复核）。
+   */
+  TASK_SUPPLIER_UNLOCK,
+  /** M6：生成开放 API Token（detail 记名称/prefix，**不记明文与哈希**）。 */
+  TOKEN_CREATE,
+  /** M6：停用开放 API Token（detail 记名称与状态变化，不记明文与哈希）。 */
+  TOKEN_DISABLE,
   ACCESS_DENIED
 }

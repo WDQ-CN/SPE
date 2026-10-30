@@ -28,6 +28,11 @@ declare module 'axios' {
      * （13 §E18 的模板下载端点）。
      */
     skipResultUnwrap?: boolean
+    /**
+     * 下载类请求跳过拦截器的**通用**错误提示（blob 错误体没法在这里同步解析）。
+     * 调用方（`downloadFile`）解析 JSON 错误体后再给出准确文案，避免一次失败弹两遍。
+     */
+    skipErrorToast?: boolean
   }
 }
 
@@ -105,8 +110,50 @@ function failWithTransport(error: AxiosError): never {
     message = `请求未被接受（${status}）`
   }
 
-  ElMessage.error(message)
+  if (!error.config?.skipErrorToast) {
+    ElMessage.error(message)
+  }
   throw new TransportError(message, { cause: error })
+}
+
+/**
+ * 文件下载（xlsx）：成功拿 Blob；失败时把后端 `Result` JSON 从 blob 里解析出来，给出**准确文案**。
+ *
+ * <p>为什么不能直接用 `http.download`：axios 的错误分支里响应体也是 Blob，响应拦截器拿不到 `code`
+ * 只能弹通用提示。这里跳过通用提示、自行解析（`skipErrorToast`），解析失败再退回通用错误。
+ */
+export async function downloadFile(url: string): Promise<Blob> {
+  try {
+    return await instance
+      .get<Blob>(url, {
+        responseType: 'blob',
+        skipResultUnwrap: true,
+        skipErrorToast: true,
+      })
+      .then((response) => response.data)
+  } catch (error) {
+    const cause =
+      error instanceof TransportError ? (error.cause as AxiosError<unknown> | undefined) : undefined
+    const data = cause?.response?.data
+    if (data instanceof Blob) {
+      const text = await data.text()
+      try {
+        const body = JSON.parse(text) as { code?: number; message?: string }
+        if (typeof body.code === 'number' && body.message) {
+          ElMessage.error(body.message)
+          throw new BizError(body.code, body.message)
+        }
+      } catch (parseError) {
+        if (parseError instanceof BizError) {
+          throw parseError
+        }
+      }
+    }
+    ElMessage.error(
+      error instanceof Error && error.message ? error.message : '下载失败，请稍后重试',
+    )
+    throw error
+  }
 }
 
 instance.interceptors.response.use(

@@ -36,4 +36,20 @@ public interface ApprovalRecordMapper {
   /** 时间线读取：按 (round, seq) 排序 —— 不是 created_at（同一毫秒内顺序不稳，15 §E14）。 */
   @Select("SELECT " + COLUMNS + " FROM approval_record WHERE task_supplier_id = #{taskSupplierId} ORDER BY round, seq")
   List<ApprovalRecord> findByTaskSupplier(@Param("taskSupplierId") long taskSupplierId);
+
+  /**
+   * 上一轮（不含当前轮）是否已有末级 APPROVE。定稿事件用它判定「本期首次生效」：
+   * 驳回重提时上一轮不会有末级通过，仍算首次；解锁重评再定稿时上一轮已有末级通过，不再触发趋势。
+   *
+   * <p>当前轮的末级通过记录由 {@code ApprovalService} 在调用定稿**之前**写入，故必须按 {@code round <}
+   * 排除当前轮，否则每次定稿都会被判成「非首次」。
+   */
+  @Select(
+      "SELECT COUNT(*) FROM approval_record"
+          + " WHERE task_supplier_id = #{taskSupplierId} AND seq = #{seq}"
+          + " AND action = 'APPROVE' AND round < #{round}")
+  long countEarlierLastNodeApprovals(
+      @Param("taskSupplierId") long taskSupplierId,
+      @Param("seq") int seq,
+      @Param("round") int round);
 }

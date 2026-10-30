@@ -104,6 +104,30 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '评估报告' },
       },
       {
+        path: 'analytics',
+        name: 'analytics',
+        component: () => import('@/features/analytics/views/AnalyticsView.vue'),
+        meta: { title: '分析看板' },
+      },
+      {
+        path: 'alerts',
+        name: 'alerts',
+        component: () => import('@/features/alert/views/AlertListView.vue'),
+        meta: { title: '预警' },
+      },
+      {
+        path: 'audit',
+        name: 'audit',
+        component: () => import('@/features/audit/views/AuditLogView.vue'),
+        meta: { title: '操作日志' },
+      },
+      {
+        path: 'api-tokens',
+        name: 'api-tokens',
+        component: () => import('@/features/api-token/views/ApiTokenView.vue'),
+        meta: { title: '开放 API' },
+      },
+      {
         path: 'users',
         name: 'users',
         component: () => import('@/features/user/views/UserListView.vue'),

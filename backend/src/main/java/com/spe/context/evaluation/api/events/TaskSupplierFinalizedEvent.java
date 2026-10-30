@@ -17,6 +17,9 @@ import java.util.List;
  * @param totalScore 总分（定稿前已断言每维非空，故此处必有值）
  * @param totalGrade 总等级 A/B/C/D
  * @param dimensions 维度结果快照（口径与 {@code task_supplier_dimension_result} 一致）
+ * @param firstEffective 本期是否首次生效：只有 true 才允许触发趋势类预警（01 W2）；
+ *     由 {@code FinalizeService} 按「上一轮末级是否已有 APPROVE」判定，驳回重提仍算首次，
+ *     解锁重评再定稿则不算
  */
 public record TaskSupplierFinalizedEvent(
     long taskSupplierId,
@@ -25,7 +28,8 @@ public record TaskSupplierFinalizedEvent(
     int quarter,
     BigDecimal totalScore,
     String totalGrade,
-    List<DimensionResult> dimensions)
+    List<DimensionResult> dimensions,
+    boolean firstEffective)
     implements DomainEvent {
 
   public TaskSupplierFinalizedEvent {

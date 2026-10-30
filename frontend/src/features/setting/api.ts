@@ -19,3 +19,21 @@ export function getGradeThresholds(): Promise<GradeThresholds> {
 export function updateGradeThresholds(payload: GradeThresholds): Promise<GradeThresholds> {
   return http.put<GradeThresholds>('/settings/grade-thresholds', payload)
 }
+
+/** ---- M5 SM3：预警规则 ---- */
+
+export interface AlertRulesPayload {
+  enabled: boolean
+  totalThreshold: number
+  keyDimensionThreshold: number
+  trendPeriods: number
+  trendDrop: number
+}
+
+export function getAlertRules(): Promise<AlertRulesPayload> {
+  return http.get<AlertRulesPayload>('/settings/alert-rules')
+}
+
+export function updateAlertRules(payload: AlertRulesPayload): Promise<AlertRulesPayload> {
+  return http.put<AlertRulesPayload>('/settings/alert-rules', payload)
+}

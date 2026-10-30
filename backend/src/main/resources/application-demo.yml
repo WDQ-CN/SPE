@@ -1,0 +1,7 @@
+# M5 演示环境（22 §2 D10）：在常规迁移之外加载 db/demo 下的 V999 演示数据。
+# ⚠️ 只在显式启用 demo profile 时生效（docker-compose 默认启用；prod 不启用）。
+spring:
+  flyway:
+    locations:
+      - classpath:db/migration
+      - classpath:db/demo

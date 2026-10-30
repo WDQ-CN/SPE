@@ -120,7 +120,8 @@ class ApprovalEventListenerIntegrationTest extends AbstractIntegrationTest {
             "A",
             List.of(
                 new TaskSupplierFinalizedEvent.DimensionResult(
-                    1L, "质量", new BigDecimal("40.00"), new BigDecimal("90.00"), "A"))));
+                    1L, "质量", new BigDecimal("40.00"), new BigDecimal("90.00"), "A")),
+            true));
 
     List<NotificationSummary> toManager =
         notificationsAbout(manager, "供应商 #" + supplierId + " 的 " + year);

@@ -63,10 +63,23 @@ public class SecurityConfig {
     return registration;
   }
 
+  /**
+   * 开放 API Token 过滤器同样由安全链显式挂载，禁止 Boot 自动注册（与 JWT 过滤器同一理由）。
+   */
+  @Bean
+  public FilterRegistrationBean<ApiTokenAuthenticationFilter> apiTokenAuthenticationFilterRegistration(
+      ApiTokenAuthenticationFilter apiTokenAuthenticationFilter) {
+    FilterRegistrationBean<ApiTokenAuthenticationFilter> registration =
+        new FilterRegistrationBean<>(apiTokenAuthenticationFilter);
+    registration.setEnabled(false);
+    return registration;
+  }
+
   @Bean
   public SecurityFilterChain securityFilterChain(
       HttpSecurity http,
       JwtAuthenticationFilter jwtAuthenticationFilter,
+      ApiTokenAuthenticationFilter apiTokenAuthenticationFilter,
       RestAuthenticationEntryPoint authenticationEntryPoint,
       RestAccessDeniedHandler accessDeniedHandler)
       throws Exception {
@@ -89,12 +102,16 @@ public class SecurityConfig {
                     // （actuator 的 env/configprops 会打印 JWT_SECRET，那是不能公开的东西，见 03 §19）。
                     .requestMatchers("/actuator/**")
                     .hasRole("ADMIN")
+                    // 开放 API 只接受独立 Token（ADR-8）；JWT 用户没有 ROLE_API_TOKEN
+                    .requestMatchers("/open/v1/**")
+                    .hasRole("API_TOKEN")
                     .anyRequest()
                     .authenticated())
         .exceptionHandling(
             handling -> handling.authenticationEntryPoint(authenticationEntryPoint)
                 .accessDeniedHandler(accessDeniedHandler))
-        .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+        .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+        .addFilterAfter(apiTokenAuthenticationFilter, JwtAuthenticationFilter.class);
     return http.build();
   }
 }

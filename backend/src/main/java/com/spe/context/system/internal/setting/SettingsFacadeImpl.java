@@ -1,5 +1,6 @@
 package com.spe.context.system.internal.setting;
 
+import com.spe.context.system.api.AlertRules;
 import com.spe.context.system.api.GradeThresholds;
 import com.spe.context.system.api.SettingsFacade;
 import lombok.RequiredArgsConstructor;
@@ -17,5 +18,11 @@ public class SettingsFacadeImpl implements SettingsFacade {
   @Transactional(readOnly = true)
   public GradeThresholds gradeThresholds() {
     return settingService.gradeThresholds();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public AlertRules alertRules() {
+    return settingService.alertRules();
   }
 }

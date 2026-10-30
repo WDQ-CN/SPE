@@ -135,4 +135,12 @@ public interface EvalTaskMapper extends BaseMapper<EvalTask> {
         )
       """)
   int completeIfAllEffective(@Param("id") long id);
+
+  /**
+   * 解锁重评把已完成任务拉回进行中（R5；M5 W3）：守卫 UPDATE，任务本来就是 IN_PROGRESS 时 0 行属正常。
+   */
+  @Update(
+      "UPDATE eval_task SET status = 'IN_PROGRESS', version = version + 1"
+          + " WHERE id = #{id} AND status = 'COMPLETED'")
+  int reopenIfCompleted(@Param("id") long id);
 }

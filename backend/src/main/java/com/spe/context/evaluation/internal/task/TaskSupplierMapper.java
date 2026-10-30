@@ -59,6 +59,15 @@ public interface TaskSupplierMapper extends BaseMapper<TaskSupplier> {
   @Select("SELECT " + COLUMNS + " FROM task_supplier WHERE task_id = #{taskId} ORDER BY id")
   List<TaskSupplier> findByTaskId(@Param("taskId") long taskId);
 
+  /** 开放 API active 列表批量取评估单，避免逐任务 N+1（M6 W2）。不要用文本块拼接列清单（04-113）。 */
+  @Select(
+      "<script>SELECT "
+          + COLUMNS
+          + " FROM task_supplier WHERE task_id IN"
+          + " <foreach item=\"item\" collection=\"taskIds\" open=\"(\" separator=\",\" close=\")\">#{item}</foreach>"
+          + " ORDER BY task_id, id</script>")
+  List<TaskSupplier> findByTaskIds(@Param("taskIds") java.util.Collection<Long> taskIds);
+
   /**
    * 提交的收敛点（05 §5.5 T2 / 13 §E9 第 5 步）：最后一张评分单提交时把评估单迁到「待审批」。
    *
@@ -98,6 +107,19 @@ public interface TaskSupplierMapper extends BaseMapper<TaskSupplier> {
           + " AND current_node = #{currentNode} AND version = #{version}")
   int markRejected(
       @Param("id") long id, @Param("currentNode") int currentNode, @Param("version") int version);
+
+  /**
+   * 解锁重评（R5 / T4；M5 W3）：EFFECTIVE → SCORING，节点清零、轮次 +1、撤销总分/等级。
+   *
+   * <p>`round+1` 必须与状态迁移写在同一条语句：`uk_approval_record(task_supplier_id, round, seq)`
+   * 要求重审记录不撞已有效轮次（与驳回同一条理由）。守卫同时钉住 EFFECTIVE 与版本；0 行由调用方
+   * 翻成 3001（并发）或 2020（状态，已在锁内先判）。
+   */
+  @Update(
+      "UPDATE task_supplier SET status = 'SCORING', current_node = 0, round = round + 1,"
+          + " total_score = NULL, total_grade = NULL, version = version + 1"
+          + " WHERE id = #{id} AND status = 'EFFECTIVE' AND version = #{version}")
+  int unlockEffective(@Param("id") long id, @Param("version") int version);
 
   /**
    * 定稿（T3，15 §E6）：末级的守卫迁移 + 总分/总等级一次写入。
