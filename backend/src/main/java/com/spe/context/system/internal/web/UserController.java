@@ -1,6 +1,7 @@
 package com.spe.context.system.internal.web;
 
 import com.spe.common.page.PageResult;
+import com.spe.common.security.AuthenticatedOperator;
 import com.spe.common.web.Result;
 import com.spe.context.system.internal.user.UserService;
 import com.spe.context.system.internal.user.UserSummary;
@@ -11,6 +12,7 @@ import com.spe.context.system.internal.web.dto.UpdateUserRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -60,11 +62,13 @@ public class UserController {
     return Result.ok(updated);
   }
 
-  /** 启停（01 A4/SM1）：守卫 UPDATE，版本不符或已处于目标状态 → 3001。 */
+  /** 启停（01 A4/SM1）：守卫 UPDATE，版本不符或已处于目标状态 → 3001；P2-8 自锁守卫见 `UserService`。 */
   @PutMapping("/{id}/status")
   public Result<Void> changeStatus(
-      @PathVariable long id, @Valid @RequestBody ChangeStatusRequest request) {
-    userService.changeStatus(id, request.status(), request.version());
+      @PathVariable long id,
+      @Valid @RequestBody ChangeStatusRequest request,
+      @AuthenticationPrincipal AuthenticatedOperator operator) {
+    userService.changeStatus(id, request.status(), request.version(), operator.uid());
     return Result.ok();
   }
 

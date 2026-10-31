@@ -114,14 +114,26 @@ public class UserService {
   /**
    * 编辑档案（姓名/角色/部门）。
    *
-   * <p>先读一次是为了①账号是否存在（给 2006 而不是笼统冲突）②审计里的「改动字段与前后值」；
+   * <p><b>P2-8（03 §50 P1-1）</b>：降权方向在**任何普通读之前**先锁管理员集（06 §2.4 的「守卫前哨」），
+   * 判定只依赖锁定读的结果——不由 `findById` 的快照决定是否加锁，否则客户端提供一个超前的
+   * `version` 就可能跳过守卫。随后读一次用于①账号是否存在（2006）②审计的前后值
+   * ③版本一致性：请求 `version` 必须等于当前行版本，否则 3001（避免快照与写入版本错位）。
    * **迁移本身仍是带 `version` 前置条件的 UPDATE**——不是「先 SELECT 判断状态再 UPDATE」那种
-   * 竞态写法（06 §2.4 红线针对的是状态迁移的判断依据，本方法没有任何状态判断）。
+   * 竞态写法（06 §2.4 红线针对的是状态迁移的判断依据；本方法的写仍带 version 条件）。
    */
   @Transactional
   public UserSummary update(
       long id, String name, Role role, Department department, int version) {
+    // P2-8：锁是事务第一条语句；role == ADMIN（升级/不变）不涉及管理员移除，无需取锁。
+    List<Long> enabledAdmins =
+        role == Role.ADMIN ? List.of() : sysUserMapper.lockEnabledAdminIds();
     SysUser current = sysUserMapper.findById(id).orElseThrow(() -> new BizException(ErrorCode.USER_NOT_FOUND));
+    if (current.getVersion() != version) {
+      throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
+    }
+    if (enabledAdmins.contains(id) && enabledAdmins.size() == 1) {
+      throw new BizException(ErrorCode.LAST_ENABLED_ADMIN);
+    }
     if (sysUserMapper.updateProfile(id, name, role, department, version) == 0) {
       throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
     }
@@ -143,7 +155,11 @@ public class UserService {
 
   /**
    * 启停账号（01 A4/SM1）：目标状态的两态机 → 前置状态由 {@link UserStatus#other()} 推出，
-   * **不查当前状态**，一条守卫 UPDATE 完成判断与迁移。
+   * **不查目标当前状态**，一条守卫 UPDATE 完成判断与迁移。
+   *
+   * <p><b>P2-8 管理员自锁守卫</b>（`26` §3.2）：停用方向先做一次以「目标是否为启用中的 ADMIN」
+   * 为目的的锁定读——是则：目标是操作者自己 ⇒ 3002；系统只剩这一个 ⇒ 3003。锁定读是事务第一条语句，
+   * 让并发的管理员移除串行化；它与随后的守卫 UPDATE 的关系见 06 §2.4 的「守卫前哨」条款。
    *
    * <p>⚠️ 0 行有**两种**含义，必须分开（03 §38 的 P2-7）：账号不存在 ⇒ 2006，存在但版本/状态对不上 ⇒ 3001。
    * 分类读发生在守卫 UPDATE **之后**、只负责把"0 行"拆开，不是 `06 §2.4` 禁的"先 SELECT 判断再 UPDATE"
@@ -151,7 +167,20 @@ public class UserService {
    * 两条都给 3001 时，与同类 {@link #resetPassword}（0 行 → 2006）自相矛盾，前端会引导用户反复刷新重试。
    */
   @Transactional
-  public void changeStatus(long id, UserStatus target, int version) {
+  public void changeStatus(long id, UserStatus target, int version, long operatorId) {
+    // P2-8：停用方向先过管理员自锁守卫（26 §3.2）。锁定读是事务第一条语句，把并发的
+    // "停用管理员"串行化；它只用于判定，随后的守卫 UPDATE 仍带 status + version 条件。
+    if (target == UserStatus.DISABLED) {
+      List<Long> enabledAdmins = sysUserMapper.lockEnabledAdminIds();
+      if (enabledAdmins.contains(id)) {
+        if (id == operatorId) {
+          throw new BizException(ErrorCode.SELF_DISABLE_FORBIDDEN);
+        }
+        if (enabledAdmins.size() == 1) {
+          throw new BizException(ErrorCode.LAST_ENABLED_ADMIN);
+        }
+      }
+    }
     UserStatus expected = target.other();
     if (sysUserMapper.updateStatusAndVersion(id, target, expected, version) == 0) {
       throw sysUserMapper.findById(id).isEmpty()

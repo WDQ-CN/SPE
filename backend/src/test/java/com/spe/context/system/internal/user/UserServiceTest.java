@@ -75,7 +75,7 @@ class UserServiceTest {
     // P2-7：0 行之后要拿"存不存在"分类，所以这条用例必须把"存在"这一半钉住
     when(sysUserMapper.findById(7L)).thenReturn(Optional.of(user(7L, UserStatus.ENABLED, 2)));
 
-    assertThatThrownBy(() -> userService.changeStatus(7L, UserStatus.DISABLED, 3))
+    assertThatThrownBy(() -> userService.changeStatus(7L, UserStatus.DISABLED, 3, 1L))
         .isInstanceOf(BizException.class)
         .extracting(ex -> ((BizException) ex).errorCode())
         .isEqualTo(ErrorCode.CONCURRENT_CONFLICT);
@@ -92,7 +92,7 @@ class UserServiceTest {
     when(sysUserMapper.updateStatusAndVersion(7L, UserStatus.DISABLED, UserStatus.ENABLED, 3)).thenReturn(0);
     when(sysUserMapper.findById(7L)).thenReturn(Optional.empty());
 
-    assertThatThrownBy(() -> userService.changeStatus(7L, UserStatus.DISABLED, 3))
+    assertThatThrownBy(() -> userService.changeStatus(7L, UserStatus.DISABLED, 3, 1L))
         .isInstanceOf(BizException.class)
         .extracting(ex -> ((BizException) ex).errorCode())
         .isEqualTo(ErrorCode.USER_NOT_FOUND);
@@ -104,7 +104,7 @@ class UserServiceTest {
   void statusChangeRecordsAuditWithTransition() {
     when(sysUserMapper.updateStatusAndVersion(7L, UserStatus.ENABLED, UserStatus.DISABLED, 5)).thenReturn(1);
 
-    userService.changeStatus(7L, UserStatus.ENABLED, 5);
+    userService.changeStatus(7L, UserStatus.ENABLED, 5, 1L);
 
     @SuppressWarnings("unchecked")
     ArgumentCaptor<Map<String, Object>> detail = ArgumentCaptor.forClass(Map.class);
@@ -112,6 +112,143 @@ class UserServiceTest {
     assertThat(detail.getValue()).containsEntry("from", "DISABLED").containsEntry("to", "ENABLED");
     // 守卫条件里的前置状态来自目标状态的两态推导，过程中没有「先查状态」的读取
     verify(sysUserMapper, never()).findById(anyLong());
+    // 启用方向不涉及管理员移除，不应取管理员锁（P2-8）
+    verify(sysUserMapper, never()).lockEnabledAdminIds();
+  }
+
+  // ---- P2-8 管理员自锁守卫（26 §3.2 / §3.4 的 U1~U6）----
+
+  private static SysUser adminUser(long id, UserStatus status, int version) {
+    SysUser user = user(id, status, version);
+    user.setUsername("admin" + id);
+    user.setName("管理员" + id);
+    user.setRole(Role.ADMIN);
+    return user;
+  }
+
+  @Test
+  @DisplayName("P2-8 U1：唯一管理员停用自己 → 3002，且不执行 UPDATE、不写审计")
+  void cannotDisableSelf() {
+    when(sysUserMapper.lockEnabledAdminIds()).thenReturn(List.of(7L));
+
+    assertThatThrownBy(() -> userService.changeStatus(7L, UserStatus.DISABLED, 3, 7L))
+        .isInstanceOf(BizException.class)
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.SELF_DISABLE_FORBIDDEN);
+    verify(sysUserMapper, never()).updateStatusAndVersion(anyLong(), any(), any(), anyInt());
+    verifyNoInteractions(auditFacade);
+  }
+
+  @Test
+  @DisplayName("P2-8 U2：停用最后一个启用中的管理员（目标不是自己）→ 3003，且不写审计")
+  void cannotDisableLastEnabledAdmin() {
+    when(sysUserMapper.lockEnabledAdminIds()).thenReturn(List.of(7L));
+
+    assertThatThrownBy(() -> userService.changeStatus(7L, UserStatus.DISABLED, 3, 1L))
+        .isInstanceOf(BizException.class)
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.LAST_ENABLED_ADMIN);
+    verify(sysUserMapper, never()).updateStatusAndVersion(anyLong(), any(), any(), anyInt());
+    verifyNoInteractions(auditFacade);
+  }
+
+  @Test
+  @DisplayName("P2-8 U3：另有启用管理员时，停用目标管理员放行，且守卫先取锁")
+  void canDisableAdminWhenAnotherAdminRemains() {
+    when(sysUserMapper.lockEnabledAdminIds()).thenReturn(List.of(1L, 7L));
+    when(sysUserMapper.updateStatusAndVersion(7L, UserStatus.DISABLED, UserStatus.ENABLED, 3))
+        .thenReturn(1);
+
+    userService.changeStatus(7L, UserStatus.DISABLED, 3, 1L);
+
+    verify(sysUserMapper).lockEnabledAdminIds();
+    verify(sysUserMapper).updateStatusAndVersion(7L, UserStatus.DISABLED, UserStatus.ENABLED, 3);
+    verify(auditFacade).record(eq(AuditAction.USER_STATUS_CHANGE), any(), eq(7L), any());
+  }
+
+  @Test
+  @DisplayName("P2-8 U4：停用非管理员不受守卫影响（锁列表不含目标即跳过判定）")
+  void disablingNonAdminSkipsGuard() {
+    when(sysUserMapper.lockEnabledAdminIds()).thenReturn(List.of(1L));
+    when(sysUserMapper.updateStatusAndVersion(7L, UserStatus.DISABLED, UserStatus.ENABLED, 3))
+        .thenReturn(1);
+
+    userService.changeStatus(7L, UserStatus.DISABLED, 3, 1L);
+
+    verify(sysUserMapper).updateStatusAndVersion(7L, UserStatus.DISABLED, UserStatus.ENABLED, 3);
+  }
+
+  @Test
+  @DisplayName("P2-8 U5：最后一个管理员给自己降权 → 3003，且不执行档案更新、不写审计")
+  void cannotDemoteLastEnabledAdmin() {
+    when(sysUserMapper.findById(2L)).thenReturn(Optional.of(adminUser(2L, UserStatus.ENABLED, 1)));
+    when(sysUserMapper.lockEnabledAdminIds()).thenReturn(List.of(2L));
+
+    assertThatThrownBy(
+            () -> userService.update(2L, "管理员2", Role.MANAGER, Department.QUALITY, 1))
+        .isInstanceOf(BizException.class)
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.LAST_ENABLED_ADMIN);
+    verify(sysUserMapper, never())
+        .updateProfile(anyLong(), any(), any(), any(), anyInt());
+    verifyNoInteractions(auditFacade);
+  }
+
+  @Test
+  @DisplayName("P2-8 U6a：另有启用管理员时，给管理员降权放行")
+  void canDemoteAdminWhenAnotherAdminRemains() {
+    when(sysUserMapper.findById(2L)).thenReturn(Optional.of(adminUser(2L, UserStatus.ENABLED, 1)));
+    when(sysUserMapper.lockEnabledAdminIds()).thenReturn(List.of(1L, 2L));
+    when(sysUserMapper.updateProfile(2L, "管理员2", Role.MANAGER, Department.QUALITY, 1)).thenReturn(1);
+
+    userService.update(2L, "管理员2", Role.MANAGER, Department.QUALITY, 1);
+
+    verify(sysUserMapper).lockEnabledAdminIds();
+    verify(auditFacade).record(eq(AuditAction.USER_UPDATE), any(), eq(2L), any());
+  }
+
+  @Test
+  @DisplayName("P2-8 U6b：另有启用管理员时，管理员给自己降权放行")
+  void canDemoteSelfWhenAnotherAdminRemains() {
+    when(sysUserMapper.findById(1L)).thenReturn(Optional.of(adminUser(1L, UserStatus.ENABLED, 1)));
+    when(sysUserMapper.lockEnabledAdminIds()).thenReturn(List.of(1L, 2L));
+    when(sysUserMapper.updateProfile(1L, "管理员1", Role.VIEWER, Department.QUALITY, 1)).thenReturn(1);
+
+    userService.update(1L, "管理员1", Role.VIEWER, Department.QUALITY, 1);
+
+    verify(sysUserMapper).lockEnabledAdminIds();
+    verify(auditFacade).record(eq(AuditAction.USER_UPDATE), any(), eq(1L), any());
+  }
+
+  @Test
+  @DisplayName("P2-8 U7：改非管理员的角色也先取管理员锁，目标不在列表内则放行")
+  void roleChangeOfNonAdminLocksThenSkipsGuard() {
+    when(sysUserMapper.lockEnabledAdminIds()).thenReturn(List.of());
+    when(sysUserMapper.findById(3L)).thenReturn(Optional.of(user(3L, UserStatus.ENABLED, 1)));
+    when(sysUserMapper.updateProfile(3L, "张三", Role.MANAGER, Department.QUALITY, 1)).thenReturn(1);
+
+    userService.update(3L, "张三", Role.MANAGER, Department.QUALITY, 1);
+
+    // 锁先于 findById：判定只依赖锁定读的结果，不由快照决定是否加锁
+    verify(sysUserMapper).lockEnabledAdminIds();
+    verify(auditFacade).record(eq(AuditAction.USER_UPDATE), any(), eq(3L), any());
+  }
+
+  @Test
+  @DisplayName("P2-8 U8：请求 version 与当前行不一致 → 3001，且不执行 UPDATE、不写审计")
+  void updateRejectsVersionMismatchBeforeGuard() {
+    // 即使目标是最后一个管理员（锁列表含它），版本不一致也必须先报 3001：
+    // 否则守卫会基于「客户端声明的版本」与「快照」错位，形成可构造的绕过。
+    when(sysUserMapper.lockEnabledAdminIds()).thenReturn(List.of(2L));
+    when(sysUserMapper.findById(2L)).thenReturn(Optional.of(adminUser(2L, UserStatus.ENABLED, 2)));
+
+    assertThatThrownBy(
+            () -> userService.update(2L, "管理员2", Role.MANAGER, Department.QUALITY, 1))
+        .isInstanceOf(BizException.class)
+        .extracting(ex -> ((BizException) ex).errorCode())
+        .isEqualTo(ErrorCode.CONCURRENT_CONFLICT);
+    verify(sysUserMapper, never()).updateProfile(anyLong(), any(), any(), any(), anyInt());
+    verifyNoInteractions(auditFacade);
   }
 
   @Test
@@ -175,14 +312,17 @@ class UserServiceTest {
   @DisplayName("编辑：账号不存在 → 2006；版本不符（守卫 0 行）→ 3001")
   void updateDistinguishesMissingUserAndConflict() {
     when(sysUserMapper.findById(1L)).thenReturn(Optional.empty());
-    assertThatThrownBy(() -> userService.update(1L, "张三", Role.EVALUATOR, Department.QUALITY, 0))
+    assertThatThrownBy(
+            () -> userService.update(1L, "张三", Role.EVALUATOR, Department.QUALITY, 0))
         .isInstanceOf(BizException.class)
         .extracting(ex -> ((BizException) ex).errorCode())
         .isEqualTo(ErrorCode.USER_NOT_FOUND);
 
-    when(sysUserMapper.findById(2L)).thenReturn(Optional.of(user(2L, UserStatus.ENABLED, 1)));
+    // 快照版本与请求版本一致（0）才能走到守卫 UPDATE；0 行代表读后被并发改动 → 3001
+    when(sysUserMapper.findById(2L)).thenReturn(Optional.of(user(2L, UserStatus.ENABLED, 0)));
     when(sysUserMapper.updateProfile(2L, "李四", Role.MANAGER, Department.PURCHASE, 0)).thenReturn(0);
-    assertThatThrownBy(() -> userService.update(2L, "李四", Role.MANAGER, Department.PURCHASE, 0))
+    assertThatThrownBy(
+            () -> userService.update(2L, "李四", Role.MANAGER, Department.PURCHASE, 0))
         .isInstanceOf(BizException.class)
         .extracting(ex -> ((BizException) ex).errorCode())
         .isEqualTo(ErrorCode.CONCURRENT_CONFLICT);

@@ -101,6 +101,10 @@ public enum ErrorCode {
   /** 开放 API 上报的供应商不在指定任务中（M6；与 2028「评估单不存在」区分）。 */
   SUPPLIER_NOT_IN_TASK(2037, "供应商不在该任务中", HttpStatus.BAD_REQUEST),
   CONCURRENT_CONFLICT(3001, "数据已被他人改动，请刷新后重试", HttpStatus.CONFLICT),
+  /** 不能停用当前登录账号（P2-8 / `26` §3.2：自停用一律禁止，误操作会让操作者自己失去唯一入口）。 */
+  SELF_DISABLE_FORBIDDEN(3002, "不能停用当前登录账号", HttpStatus.CONFLICT),
+  /** 系统必须至少保留一个启用中的管理员（P2-8：停用或降权最后一个 ENABLED ADMIN）。 */
+  LAST_ENABLED_ADMIN(3003, "系统至少需要保留一个启用中的管理员", HttpStatus.CONFLICT),
   FORBIDDEN(4001, "无权限执行该操作", HttpStatus.FORBIDDEN),
   /**
    * 这张评分单不是指派给我的（01 §7 数据可见性 / 13 §E13 的第二层过滤）。

@@ -105,6 +105,19 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
   List<Long> findEnabledIdsByDepartmentAndRoles(
       @Param("department") String department, @Param("roles") Collection<Role> roles);
 
+  /**
+   * 锁住全部「启用中的 ADMIN」的 id（P2-8 / `26` §3.2 的守卫前哨）。
+   *
+   * <p>管理员移除类写路径必须在事务里**先**执行本查询：`FOR UPDATE` 当前读把并发的
+   * 「停用/降权管理员」串行化，否则两个请求会各自看到 2 个管理员而双双放行。
+   * 返回的列表同时用于判定目标是不是管理员、以及移除后是否还剩人。
+   *
+   * <p>`sys_user` 没有 `(role,status)` 索引 ⇒ 这里是全表扫描并锁定扫描到的行（规模上限 50 用户，
+   * 06 §2.4 的「守卫前哨」条款允许这种有界锁）。用户量上千时先加索引并复测锁范围（11 §9.3）。
+   */
+  @Select("SELECT id FROM sys_user WHERE role = 'ADMIN' AND status = 'ENABLED' ORDER BY id FOR UPDATE")
+  List<Long> lockEnabledAdminIds();
+
   /** 按角色查在职用户 id（升序、不限部门）：评估生效时通知采购经理（05 §5.3）。 */
   @Select(
       """

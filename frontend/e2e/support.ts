@@ -25,14 +25,18 @@ export const FAILURE_PROBE = 'e2e-w4-unknown-account'
  *
  * - **JS 异常**（pageerror）与 **CSP 违规**：没有豁免，出现即失败；
  * - **非 2xx 的资源响应**：只豁免 **401/403**（本项目里它们是预期结果——登录失败 401、越权 403），
- *   其余（404/500…）一律记为问题。
+ *   其余（404/500…）一律记为问题。调用方可以按 `(status, url)` 精确豁免**本用例主动制造**的
+ *   预期结果（如 P2-8 自停用的 409），豁免必须落在具体 URL 上、并在用例里写清原因。
  *
  * ⚠️ 这里**不再**靠 console 里那句 `Failed to load resource` 做判断，而是直接听 `response` 事件按
  * **状态码**判定。原因：console 与 response 两个事件的到达顺序没有保证，用 console 文本去查
  * response 记录会**时序性漏判**；而那句话本身又分不出 401 与 404——无差别豁免等于把"漏了一个
  * chunk、静态资源路径写错"这类真问题**永久静音**（03 §26.5）。
  */
-export function watchConsole(page: Page): { all: string[]; csp: string[] } {
+export function watchConsole(
+  page: Page,
+  options: { ignoreResponse?: (status: number, url: string) => boolean } = {},
+): { all: string[]; csp: string[] } {
   const all: string[] = []
   const csp: string[] = []
 
@@ -45,6 +49,9 @@ export function watchConsole(page: Page): { all: string[]; csp: string[] } {
     }
     const url = response.url()
     if (/\/(favicon\.ico|favicon\.svg)$/.test(url)) {
+      return
+    }
+    if (options.ignoreResponse?.(status, url)) {
       return
     }
     all.push(`资源加载失败：HTTP ${status} ${url}`)
