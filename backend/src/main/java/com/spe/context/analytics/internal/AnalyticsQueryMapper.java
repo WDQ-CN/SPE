@@ -1,5 +1,6 @@
 package com.spe.context.analytics.internal;
 
+import com.spe.common.sql.EffectiveResults;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
@@ -22,7 +23,7 @@ public interface AnalyticsQueryMapper {
   @Select(
       "SELECT DISTINCT t.year, t.quarter FROM task_supplier ts"
           + " JOIN eval_task t ON t.id = ts.task_id"
-          + " WHERE ts.status = 'EFFECTIVE' AND t.status != 'CANCELED'"
+          + " WHERE " + EffectiveResults.CONDITION
           + " ORDER BY t.year DESC, t.quarter DESC")
   List<PeriodRow> findPeriods();
 
@@ -32,7 +33,8 @@ public interface AnalyticsQueryMapper {
       <script>
       SELECT s.id, s.code, s.name, s.category FROM supplier s
       WHERE EXISTS (
-        SELECT 1 FROM task_supplier ts WHERE ts.supplier_id = s.id AND ts.status = 'EFFECTIVE'
+        SELECT 1 FROM task_supplier ts JOIN eval_task t ON t.id = ts.task_id
+        WHERE ts.supplier_id = s.id AND """ + " " + EffectiveResults.CONDITION + """
       )
       <if test="keyword != null and keyword != ''">
         AND (s.code LIKE CONCAT('%', #{keyword}, '%') OR s.name LIKE CONCAT('%', #{keyword}, '%'))
@@ -50,8 +52,8 @@ public interface AnalyticsQueryMapper {
   @Select(
       "SELECT ts.id AS task_supplier_id, t.year, t.quarter, ts.total_score, ts.total_grade"
           + " FROM task_supplier ts JOIN eval_task t ON t.id = ts.task_id"
-          + " WHERE ts.supplier_id = #{supplierId} AND ts.status = 'EFFECTIVE'"
-          + " AND t.status != 'CANCELED' ORDER BY t.year, t.quarter")
+          + " WHERE ts.supplier_id = #{supplierId} AND " + EffectiveResults.CONDITION
+          + " ORDER BY t.year, t.quarter")
   List<TrendPointRow> findTrendPoints(@Param("supplierId") long supplierId);
 
   /** 维度快照批读（趋势/对比共用）。 */
@@ -76,7 +78,7 @@ public interface AnalyticsQueryMapper {
       FROM task_supplier ts
       JOIN eval_task t ON t.id = ts.task_id
       JOIN supplier s ON s.id = ts.supplier_id
-      WHERE ts.status = 'EFFECTIVE' AND t.status != 'CANCELED'
+      WHERE """ + " " + EffectiveResults.CONDITION + """
         AND t.year = #{year} AND t.quarter = #{quarter}
       <if test="category != null and category != ''"> AND s.category = #{category} </if>
       <if test="grade != null and grade != ''"> AND ts.total_grade = #{grade} </if>
@@ -93,14 +95,14 @@ public interface AnalyticsQueryMapper {
   @Select(
       "SELECT ts.supplier_id, ts.total_score FROM task_supplier ts"
           + " JOIN eval_task t ON t.id = ts.task_id"
-          + " WHERE ts.status = 'EFFECTIVE' AND t.status != 'CANCELED'"
+          + " WHERE " + EffectiveResults.CONDITION
           + " AND t.year = #{year} AND t.quarter = #{quarter}")
   List<ScoreRow> findPeriodScores(@Param("year") int year, @Param("quarter") int quarter);
 
   @Select(
       "SELECT ts.total_grade AS grade, COUNT(*) AS cnt FROM task_supplier ts"
           + " JOIN eval_task t ON t.id = ts.task_id"
-          + " WHERE ts.status = 'EFFECTIVE' AND t.status != 'CANCELED'"
+          + " WHERE " + EffectiveResults.CONDITION
           + " AND t.year = #{year} AND t.quarter = #{quarter}"
           + " GROUP BY ts.total_grade")
   List<GradeCountRow> findGradeCounts(@Param("year") int year, @Param("quarter") int quarter);
@@ -113,7 +115,7 @@ public interface AnalyticsQueryMapper {
       FROM task_supplier ts
       JOIN eval_task t ON t.id = ts.task_id
       JOIN supplier s ON s.id = ts.supplier_id
-      WHERE ts.status = 'EFFECTIVE' AND t.status != 'CANCELED'
+      WHERE """ + " " + EffectiveResults.CONDITION + """
         AND t.year = #{year} AND t.quarter = #{quarter}
         AND ts.supplier_id IN
         <foreach item="item" collection="supplierIds" open="(" separator="," close=")">#{item}</foreach>

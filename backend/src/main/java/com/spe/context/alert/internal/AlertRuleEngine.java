@@ -1,5 +1,7 @@
 package com.spe.context.alert.internal;
 
+import com.spe.common.period.Quarters;
+
 import com.spe.context.system.api.AlertRules;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -128,11 +130,9 @@ public final class AlertRuleEngine {
       }
       chain.add(score);
       labels.add(period(year, quarter));
-      quarter -= 1;
-      if (quarter == 0) {
-        quarter = 4;
-        year -= 1;
-      }
+      int[] previous = Quarters.previous(year, quarter);
+      year = previous[0];
+      quarter = previous[1];
     }
     // chain[0] = 本期，chain[N] = 最早；每一步都必须严格下降
     for (int step = 0; step < periods; step++) {

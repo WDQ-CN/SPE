@@ -1,5 +1,6 @@
 package com.spe.context.evaluation.internal.task;
 
+import com.spe.integration.support.TestFixtures;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -940,26 +941,9 @@ class TaskDomainIntegrationTest extends AbstractIntegrationTest {
     return id == null ? -1 : id;
   }
 
-  private long insertSupplier(String code) {
-    jdbcTemplate.update(
-        "insert into supplier (code, name, category, status, version) values (?, ?, 'W3 测试', 'ENABLED', 0)",
-        code,
-        "供应商 " + code);
-    Long id = jdbcTemplate.queryForObject("select id from supplier where code = ?", Long.class, code);
-    return id == null ? -1 : id;
-  }
+  private long insertSupplier(String code) { return TestFixtures.insertSupplier(jdbcTemplate, code, "供应商 " + code, "W3 测试"); }
 
-  private long insertUser(String username, String role, String department) {
-    jdbcTemplate.update(
-        "insert into sys_user (username, password_hash, name, role, department, status, version)"
-            + " values (?, '$2a$10$abcdefghijklmnopqrstuv', ?, ?, ?, 'ENABLED', 0)",
-        username,
-        "测试用户 " + username,
-        role,
-        department);
-    Long id = jdbcTemplate.queryForObject("select id from sys_user where username = ?", Long.class, username);
-    return id == null ? -1 : id;
-  }
+  private long insertUser(String username, String role, String department) { return TestFixtures.insertUser(jdbcTemplate, username, role, department); }
 
   /** 该部门当前 id 最小的在职用户；**没有任何人时返回 null**（E12 的"未指派"）。 */
   private Long smallestEnabledUserIdOrNull(String department) {

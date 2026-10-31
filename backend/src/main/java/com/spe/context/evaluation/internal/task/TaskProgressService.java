@@ -2,8 +2,9 @@ package com.spe.context.evaluation.internal.task;
 
 import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
-import com.spe.context.evaluation.internal.scoring.Score;
 import com.spe.context.evaluation.internal.scoring.ScoreMapper;
+import com.spe.context.evaluation.internal.scoring.ScoreValueAssembler;
+import com.spe.context.evaluation.internal.scoring.calculator.ScoreCalculator;
 import com.spe.context.evaluation.internal.scoring.calculator.TaskSupplierScore;
 import com.spe.context.evaluation.internal.sheet.Sheet;
 import com.spe.context.evaluation.internal.sheet.SheetMapper;
@@ -64,35 +65,19 @@ public class TaskProgressService {
         .findByIds(rows.stream().map(TaskProgressRow::getSupplierId).toList())
         .forEach(brief -> suppliers.put(brief.id(), brief));
 
-    // sheet → (评估单, 维度)：试算要按"评估单 × 维度"组装原始值
-    Map<Long, Long> taskSupplierBySheet = new HashMap<>();
-    Map<Long, Long> dimensionBySheet = new HashMap<>();
-    for (Sheet sheet : sheetMapper.findByTaskId(taskId)) {
-      taskSupplierBySheet.put(sheet.getId(), sheet.getTaskSupplierId());
-      dimensionBySheet.put(sheet.getId(), sheet.getDimensionId());
-    }
-    Map<Long, Map<Long, Map<Long, BigDecimal>>> valuesByTaskSupplier = new HashMap<>();
-    for (Score score : scoreMapper.findByTaskId(taskId)) {
-      Long taskSupplierId = taskSupplierBySheet.get(score.getSheetId());
-      Long dimensionId = dimensionBySheet.get(score.getSheetId());
-      if (taskSupplierId == null || dimensionId == null || score.getRawValue() == null) {
-        continue;
-      }
-      valuesByTaskSupplier
-          .computeIfAbsent(taskSupplierId, key -> new HashMap<>())
-          .computeIfAbsent(dimensionId, key -> new LinkedHashMap<>())
-          .put(score.getIndicatorId(), score.getRawValue());
-    }
+    // 与定稿/报告/预览共用同一组装器（03 §51 P2-9）
+    List<Sheet> sheets = sheetMapper.findByTaskId(taskId);
+    Map<Long, Map<Long, Map<Long, BigDecimal>>> valuesByTaskSupplier =
+        ScoreValueAssembler.byTaskSupplier(sheets, scoreMapper.findByTaskId(taskId));
 
     GradeThresholds thresholds = settingsFacade.gradeThresholds();
     List<TaskProgress.Row> result = new ArrayList<>(rows.size());
     for (TaskProgressRow row : rows) {
       TaskSupplierScore score =
-          com.spe.context.evaluation.internal.scoring.calculator.ScoreCalculator
-              .calculateTaskSupplier(
-                  snapshot,
-                  valuesByTaskSupplier.getOrDefault(row.getTaskSupplierId(), Map.of()),
-                  thresholds);
+          ScoreCalculator.calculateTaskSupplier(
+              snapshot,
+              valuesByTaskSupplier.getOrDefault(row.getTaskSupplierId(), Map.of()),
+              thresholds);
       SupplierBrief supplier = suppliers.get(row.getSupplierId());
       result.add(
           new TaskProgress.Row(

@@ -16,6 +16,11 @@ public final class AuditDetails {
 
   private AuditDetails() {}
 
+  /** 状态/指派迁移的 detail 三件套（`from`/`to`），统一走这里避免三处手拼（03 §51 P3-3）。 */
+  public static Map<String, Object> transition(Object from, Object to) {
+    return Map.of("from", String.valueOf(from), "to", String.valueOf(to));
+  }
+
   /**
    * 审批意见摘要：**唯一实现点**（06 §2.8）。审计 detail 与 notify 的驳回通知共用，
    * 避免"整段意见进审计/通知"与两处各写一个截断口径。

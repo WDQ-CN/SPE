@@ -54,19 +54,6 @@ public interface TemplateVersionMapper extends BaseMapper<TemplateVersion> {
   List<TemplateVersion> findPublishedByTemplateId(@Param("templateId") long templateId);
 
   /**
-   * 批量取多个模板的已发布版本（供 P3 的选择器一次拿到各模板的最新版本，**避免逐模板回查**）。
-   *
-   * <p>结果按 `template_id, version_no DESC` 排好序，调用方取每个模板的第一条即"最新已发布版本"。
-   */
-  @Select(
-      "<script>SELECT "
-          + COLUMNS
-          + " FROM template_version WHERE status = 'PUBLISHED' AND template_id IN"
-          + " <foreach item=\"item\" collection=\"templateIds\" open=\"(\" separator=\",\" close=\")\">"
-          + "#{item}</foreach> ORDER BY template_id, version_no DESC</script>")
-  List<TemplateVersion> findPublishedByTemplateIds(@Param("templateIds") Collection<Long> templateIds);
-
-  /**
    * 复用查询（12 §E5）：同模板、**源自同一个已发布版本**、且仍是草稿的那个版本。
    *
    * <p>⚠️ **末尾的 `FOR UPDATE` 不是可选项**。调用方已持有版本行锁，但 MySQL 默认 REPEATABLE READ 下

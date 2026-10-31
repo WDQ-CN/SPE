@@ -20,7 +20,4 @@ public interface SupplierQueryFacade {
 
   /** 批量取供应商；入参为空返回空列表。供任务发布这类「一次处理多家」的场景使用。 */
   List<SupplierBrief> findByIds(Collection<Long> supplierIds);
-
-  /** 是否启用（`ENABLED`）；供应商不存在按未启用处理。 */
-  boolean isEnabled(long supplierId);
 }

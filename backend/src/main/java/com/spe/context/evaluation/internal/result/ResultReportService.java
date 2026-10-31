@@ -1,10 +1,10 @@
 package com.spe.context.evaluation.internal.result;
 
-import com.spe.common.web.BizException;
-import com.spe.common.sql.SqlKeywords;
-import com.spe.common.web.ErrorCode;
 import com.spe.common.page.PageQuery;
 import com.spe.common.page.PageResult;
+import com.spe.common.sql.SqlKeywords;
+import com.spe.common.web.BizException;
+import com.spe.common.web.ErrorCode;
 import com.spe.context.evaluation.api.EvalTaskStatus;
 import com.spe.context.evaluation.api.TaskSupplierStatus;
 import com.spe.context.evaluation.internal.approval.ApprovalRecord;
@@ -168,14 +168,7 @@ public class ResultReportService {
    */
   @Transactional(readOnly = true)
   public TaskSupplierReport report(long taskSupplierId, long operatorId, boolean privileged) {
-    TaskSupplier taskSupplier =
-        taskSupplierMapper
-            .findById(taskSupplierId)
-            .orElseThrow(() -> new BizException(ErrorCode.TASK_SUPPLIER_NOT_FOUND));
-    if (!privileged
-        && sheetMapper.countByTaskSupplierIdAndAssignee(taskSupplierId, operatorId) == 0) {
-      throw new BizException(ErrorCode.FORBIDDEN);
-    }
+    TaskSupplier taskSupplier = requireReadable(taskSupplierId, operatorId, privileged);
     EvalTask task =
         taskMapper
             .findById(taskSupplier.getTaskId())
@@ -189,68 +182,12 @@ public class ResultReportService {
             .collect(Collectors.toMap(Score::getIndicatorId, Function.identity(), (left, right) -> right));
     TaskSupplierScore calculated =
         ScoreCalculator.calculateTaskSupplier(
-            snapshot,
-            ScoreValueAssembler.byDimension(sheets, scores),
-            settingsFacade.gradeThresholds());
+            snapshot, ScoreValueAssembler.byDimension(sheets, scores), settingsFacade.gradeThresholds());
 
     boolean effective = taskSupplier.getStatus() == TaskSupplierStatus.EFFECTIVE;
-    Map<Long, TaskSupplierDimensionResult> savedByDimension =
-        effective
-            ? dimensionResultMapper.findByTaskSupplier(taskSupplierId).stream()
-                .collect(
-                    Collectors.toMap(
-                        TaskSupplierDimensionResult::getDimensionId, Function.identity()))
-            : Map.of();
-    Map<Long, IndicatorSnapshot> indicatorSnapshots = new HashMap<>();
-    for (DimensionSnapshot dimension : snapshot.dimensions()) {
-      for (IndicatorSnapshot indicator : dimension.indicators()) {
-        indicatorSnapshots.put(indicator.id(), indicator);
-      }
-    }
-
-    List<TaskSupplierReport.Dimension> dimensions = new ArrayList<>(snapshot.dimensions().size());
-    for (DimensionSnapshot dimension : snapshot.dimensions()) {
-      ScoreSheetResult sheetResult = sheetResultOf(calculated, dimension.id());
-      TaskSupplierDimensionResult saved = savedByDimension.get(dimension.id());
-      if (effective && saved == null) {
-        throw new BizException(
-            ErrorCode.INTERNAL_ERROR,
-            "已生效评估单缺少维度快照：taskSupplierId=" + taskSupplierId + " dimensionId=" + dimension.id());
-      }
-      BigDecimal score = effective ? saved.getScore() : sheetResult.score();
-      String grade = effective ? saved.getGrade() : sheetResult.grade();
-      List<TaskSupplierReport.Indicator> indicators = new ArrayList<>(sheetResult.indicators().size());
-      for (IndicatorScore indicator : sheetResult.indicators()) {
-        IndicatorSnapshot meta = indicatorSnapshots.get(indicator.indicatorId());
-        if (meta == null) {
-          throw new BizException(
-              ErrorCode.INTERNAL_ERROR,
-              "指标不在模板快照中：indicatorId=" + indicator.indicatorId());
-        }
-        Score scoreRow = scoreByIndicator.get(indicator.indicatorId());
-        indicators.add(
-            new TaskSupplierReport.Indicator(
-                indicator.indicatorId(),
-                indicator.code(),
-                indicator.name(),
-                indicator.weight(),
-                indicator.type(),
-                indicator.scoreMode(),
-                indicator.rawValue(),
-                indicator.scoreValue(),
-                meta.unit(),
-                scoreRow == null ? null : scoreRow.getSource()));
-      }
-      dimensions.add(
-          new TaskSupplierReport.Dimension(
-              dimension.id(),
-              dimension.name(),
-              dimension.weight(),
-              score,
-              grade,
-              effective || sheetResult.complete(),
-              indicators));
-    }
+    Map<Long, TaskSupplierDimensionResult> savedByDimension = savedSnapshots(taskSupplierId, effective);
+    List<TaskSupplierReport.Dimension> dimensions =
+        buildDimensions(snapshot, calculated, scoreByIndicator, savedByDimension, effective, taskSupplierId);
 
     SupplierBrief supplier =
         supplierQueryFacade
@@ -284,6 +221,91 @@ public class ResultReportService {
         actableNow,
         dimensions,
         timeline(taskSupplierId));
+  }
+
+  private TaskSupplier requireReadable(long taskSupplierId, long operatorId, boolean privileged) {
+    TaskSupplier taskSupplier =
+        taskSupplierMapper
+            .findById(taskSupplierId)
+            .orElseThrow(() -> new BizException(ErrorCode.TASK_SUPPLIER_NOT_FOUND));
+    if (!privileged
+        && sheetMapper.countByTaskSupplierIdAndAssignee(taskSupplierId, operatorId) == 0) {
+      throw new BizException(ErrorCode.FORBIDDEN);
+    }
+    return taskSupplier;
+  }
+
+  private Map<Long, TaskSupplierDimensionResult> savedSnapshots(long taskSupplierId, boolean effective) {
+    if (!effective) {
+      return Map.of();
+    }
+    return dimensionResultMapper.findByTaskSupplier(taskSupplierId).stream()
+        .collect(Collectors.toMap(TaskSupplierDimensionResult::getDimensionId, Function.identity()));
+  }
+
+  private List<TaskSupplierReport.Dimension> buildDimensions(
+      TemplateSnapshot snapshot,
+      TaskSupplierScore calculated,
+      Map<Long, Score> scoreByIndicator,
+      Map<Long, TaskSupplierDimensionResult> savedByDimension,
+      boolean effective,
+      long taskSupplierId) {
+    Map<Long, IndicatorSnapshot> indicatorSnapshots = new HashMap<>();
+    for (DimensionSnapshot dimension : snapshot.dimensions()) {
+      for (IndicatorSnapshot indicator : dimension.indicators()) {
+        indicatorSnapshots.put(indicator.id(), indicator);
+      }
+    }
+    List<TaskSupplierReport.Dimension> dimensions = new ArrayList<>(snapshot.dimensions().size());
+    for (DimensionSnapshot dimension : snapshot.dimensions()) {
+      ScoreSheetResult sheetResult = sheetResultOf(calculated, dimension.id());
+      TaskSupplierDimensionResult saved = savedByDimension.get(dimension.id());
+      if (effective && saved == null) {
+        throw new BizException(
+            ErrorCode.INTERNAL_ERROR,
+            "已生效评估单缺少维度快照：taskSupplierId=" + taskSupplierId + " dimensionId=" + dimension.id());
+      }
+      BigDecimal score = effective ? saved.getScore() : sheetResult.score();
+      String grade = effective ? saved.getGrade() : sheetResult.grade();
+      dimensions.add(
+          new TaskSupplierReport.Dimension(
+              dimension.id(),
+              dimension.name(),
+              dimension.weight(),
+              score,
+              grade,
+              effective || sheetResult.complete(),
+              buildIndicators(sheetResult, indicatorSnapshots, scoreByIndicator)));
+    }
+    return dimensions;
+  }
+
+  private List<TaskSupplierReport.Indicator> buildIndicators(
+      ScoreSheetResult sheetResult,
+      Map<Long, IndicatorSnapshot> indicatorSnapshots,
+      Map<Long, Score> scoreByIndicator) {
+    List<TaskSupplierReport.Indicator> indicators = new ArrayList<>(sheetResult.indicators().size());
+    for (IndicatorScore indicator : sheetResult.indicators()) {
+      IndicatorSnapshot meta = indicatorSnapshots.get(indicator.indicatorId());
+      if (meta == null) {
+        throw new BizException(
+            ErrorCode.INTERNAL_ERROR, "指标不在模板快照中：indicatorId=" + indicator.indicatorId());
+      }
+      Score scoreRow = scoreByIndicator.get(indicator.indicatorId());
+      indicators.add(
+          new TaskSupplierReport.Indicator(
+              indicator.indicatorId(),
+              indicator.code(),
+              indicator.name(),
+              indicator.weight(),
+              indicator.type(),
+              indicator.scoreMode(),
+              indicator.rawValue(),
+              indicator.scoreValue(),
+              meta.unit(),
+              scoreRow == null ? null : scoreRow.getSource()));
+    }
+    return indicators;
   }
 
   private List<TaskSupplierReport.TimelineEntry> timeline(long taskSupplierId) {

@@ -1,5 +1,6 @@
 package com.spe.context.evaluation.internal.result;
 
+import com.spe.common.sql.EffectiveResults;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -21,7 +22,7 @@ public interface ResultTaskMapper {
       SELECT t.id AS task_id, t.name AS task_name, t.year, t.quarter, t.deadline, t.status,
              COUNT(ts.id) AS result_count
       FROM eval_task t
-      JOIN task_supplier ts ON ts.task_id = t.id AND ts.status = 'EFFECTIVE'
+      JOIN task_supplier ts ON ts.task_id = t.id AND """ + " " + EffectiveResults.CONDITION + """
       <where>
         <if test="status != null and status != ''"> AND t.status = #{status} </if>
         <if test="keyword != null and keyword != ''"> AND t.name LIKE CONCAT('%', #{keyword}, '%') </if>
@@ -42,7 +43,7 @@ public interface ResultTaskMapper {
       <script>
       SELECT COUNT(*) FROM eval_task t
       WHERE EXISTS (
-        SELECT 1 FROM task_supplier ts WHERE ts.task_id = t.id AND ts.status = 'EFFECTIVE'
+        SELECT 1 FROM task_supplier ts WHERE ts.task_id = t.id AND """ + " " + EffectiveResults.CONDITION + """
       )
       <if test="status != null and status != ''"> AND t.status = #{status} </if>
       <if test="keyword != null and keyword != ''"> AND t.name LIKE CONCAT('%', #{keyword}, '%') </if>

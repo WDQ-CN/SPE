@@ -17,6 +17,7 @@ public record TaskDetail(
     String name,
     int year,
     int quarter,
+    long templateId,
     long templateVersionId,
     LocalDate deadline,
     EvalTaskStatus status,

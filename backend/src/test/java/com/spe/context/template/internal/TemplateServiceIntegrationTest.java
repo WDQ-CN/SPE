@@ -210,7 +210,7 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
     // 编辑已发布版本 → 服务端复制出新草稿；那个草稿不该有快照
     EffectiveVersion draft = templateService.ensureEditable(versionId);
 
-    assertThat(draft.copied()).isTrue();
+    assertThat(draft.versionId()).isNotEqualTo(versionId);
     assertThat(snapshotFacade.findPublished(draft.versionId())).isEmpty();
     assertThatThrownBy(() -> snapshotFacade.requirePublished(draft.versionId()))
         .isInstanceOf(BizException.class)
@@ -228,7 +228,6 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
 
     EffectiveVersion effective = templateService.ensureEditable(sourceVersionId);
 
-    assertThat(effective.copied()).isTrue();
     assertThat(effective.versionId()).isNotEqualTo(sourceVersionId);
     // 原版本仍是 PUBLISHED、维度数未变
     assertThat(versionStatus(sourceVersionId)).isEqualTo(TemplateVersionStatus.PUBLISHED);
@@ -254,7 +253,6 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
     EffectiveVersion second = templateService.ensureEditable(sourceVersionId);
 
     assertThat(second.versionId()).isEqualTo(first.versionId());
-    assertThat(second.copied()).isFalse();
     long draftCount =
         jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM template_version WHERE copied_from_version_id = ? AND status = 'DRAFT'",
@@ -285,7 +283,6 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
             target.getSuggestedDept(),
             Boolean.TRUE.equals(target.getIsKey()),
             publishedRowVersion);
-    assertThat(first.copied()).isTrue();
     assertThat(first.versionId()).isNotEqualTo(publishedVersionId);
 
     // ② 此时草稿副本的 name 与源行**不同** ⇒ 再复用同一份草稿时按 (sort_no, name) 配对**配不上**，
@@ -345,7 +342,7 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
             target.getSuggestedDept(),
             Boolean.TRUE.equals(target.getIsKey()),
             target.getVersion());
-    assertThat(first.copied()).isTrue();
+    assertThat(first.versionId()).isNotEqualTo(publishedVersionId);
     Long srcId =
         jdbcTemplate.queryForObject(
             "SELECT src_dimension_id FROM dimension WHERE template_version_id = ? ORDER BY id LIMIT 1",
@@ -365,8 +362,7 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
             Boolean.TRUE.equals(target.getIsKey()),
             target.getVersion());
 
-    assertThat(reused.copied()).as("第二次应当复用已存在的草稿").isFalse();
-    assertThat(reused.versionId()).isEqualTo(first.versionId());
+    assertThat(reused.versionId()).as("第二次应当复用已存在的草稿").isEqualTo(first.versionId());
     // 与 P0 用例同一个不变式：已发布版本一行都不能变
     Dimension after =
         snapshotDimensions(publishedVersionId).stream()
@@ -410,7 +406,7 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
             publishedSecond.getSuggestedDept(),
             Boolean.TRUE.equals(publishedSecond.getIsKey()),
             publishedSecond.getVersion());
-    assertThat(copied.copied()).isTrue();
+    assertThat(copied.versionId()).isNotEqualTo(firstDraftId);
 
     // ③ 再用第一个维度的**已发布行 id + 它在已发布版本里的 version(=1)** 发一次写：
     //    这次走**复用**分支，目标行是草稿里的副本（version=0）⇒ 守卫必须取 0。
@@ -425,8 +421,8 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
             Boolean.TRUE.equals(publishedFirst.getIsKey()),
             publishedFirst.getVersion());
 
-    assertThat(reused.copied()).as("第二次应当复用已存在的草稿，而不是再复制一份").isFalse();
-    assertThat(reused.versionId()).isEqualTo(copied.versionId());
+    assertThat(reused.versionId()).as("第二次应当复用已存在的草稿，而不是再复制一份")
+        .isEqualTo(copied.versionId());
     assertThat(versionStatus(copied.versionId())).isEqualTo(TemplateVersionStatus.DRAFT);
   }
 
@@ -607,7 +603,7 @@ class TemplateServiceIntegrationTest extends AbstractIntegrationTest {
             target.getId(), "新增指标", code, new BigDecimal("10.00"),
             IndicatorType.QUANT, ScoreMode.RATIO, "%", null, null, 99);
 
-    assertThat(effective.copied()).isTrue();
+    assertThat(effective.versionId()).isNotEqualTo(publishedVersionId);
     long draftId = effective.versionId();
     long expectedDimensionId = effective.requireDimensionId(target.getId(), publishedVersionId);
 

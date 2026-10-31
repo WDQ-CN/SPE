@@ -192,7 +192,7 @@ public class UserService {
         AuditAction.USER_STATUS_CHANGE,
         AuditTargetType.USER,
         id,
-        Map.of("from", expected.name(), "to", target.name()));
+        AuditDetails.transition(expected, target));
     log.info("用户状态迁移 id={}：{} → {}", id, expected, target);
   }
 

@@ -14,9 +14,9 @@ import com.spe.context.evaluation.internal.sheet.Sheet;
 import com.spe.context.evaluation.internal.sheet.SheetContextRow;
 import com.spe.context.evaluation.internal.sheet.SheetMapper;
 import com.spe.context.evaluation.internal.task.ApprovalNodeMapper;
+import com.spe.context.evaluation.internal.task.TaskService;
 import com.spe.context.evaluation.internal.task.TaskSupplier;
 import com.spe.context.evaluation.internal.task.TaskSupplierMapper;
-import com.spe.context.evaluation.internal.task.TaskService;
 import com.spe.context.system.api.AuditAction;
 import com.spe.context.system.api.AuditFacade;
 import com.spe.context.system.api.AuditTargetType;
@@ -119,21 +119,13 @@ public class ScoringService {
     // 两条查询搞定（不是 1 + N）：先取兄弟评分单，再**一次**取回它们的全部评分记录。
     // 原先逐张 findBySheetId（N = 维度数），而 `findBySheetIds` 就在同一个 Mapper 里现成可用（03 §34 的 P2-7）。
     List<Sheet> siblings = sheetMapper.findByTaskSupplierId(context.getTaskSupplierId());
-    Map<Long, Long> dimensionBySheet = new HashMap<>();
-    Map<Long, Map<Long, BigDecimal>> valuesByDimension = new HashMap<>();
-    for (Sheet sibling : siblings) {
-      dimensionBySheet.put(sibling.getId(), sibling.getDimensionId());
-      valuesByDimension.put(sibling.getDimensionId(), new LinkedHashMap<>());
-    }
-    if (!dimensionBySheet.isEmpty()) {
-      for (Score score : scoreMapper.findBySheetIds(dimensionBySheet.keySet())) {
-        Long dimensionId = dimensionBySheet.get(score.getSheetId());
-        if (dimensionId == null || score.getRawValue() == null) {
-          continue;
-        }
-        valuesByDimension.get(dimensionId).put(score.getIndicatorId(), score.getRawValue());
-      }
-    }
+    List<Score> scores =
+        siblings.isEmpty()
+            ? List.of()
+            : scoreMapper.findBySheetIds(siblings.stream().map(Sheet::getId).toList());
+    // 与定稿/报告共用同一组装器（03 §51 P2-9）：映射只有一份
+    Map<Long, Map<Long, BigDecimal>> valuesByDimension =
+        ScoreValueAssembler.byDimension(siblings, scores);
     if (candidateValues != null && !candidateValues.isEmpty()) {
       Map<Long, BigDecimal> target =
           valuesByDimension.computeIfAbsent(context.getDimensionId(), key -> new LinkedHashMap<>());
@@ -250,7 +242,7 @@ public class ScoringService {
     }
     auditFacade.record(
         AuditAction.SHEET_SUBMIT,
-        AuditTargetType.TASK,
+        AuditTargetType.TASK_SUPPLIER,
         context.getTaskSupplierId(),
         Map.of(
             "sheetId", sheetId,

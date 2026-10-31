@@ -30,7 +30,7 @@ import java.util.Map;
  */
 public final class ScoreCalculator {
 
-  private static final BigDecimal HUNDRED = new BigDecimal("100");
+  static final BigDecimal HUNDRED = new BigDecimal("100");
   private static final MathContext DIVISION = MathContext.DECIMAL128;
   private static final int SCORE_SCALE = 2;
 

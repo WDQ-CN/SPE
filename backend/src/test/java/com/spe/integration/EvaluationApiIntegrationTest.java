@@ -1,5 +1,6 @@
 package com.spe.integration;
 
+import com.spe.integration.support.TestFixtures;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -514,14 +515,7 @@ class EvaluationApiIntegrationTest extends AbstractIntegrationTest {
     return id == null ? -1 : id;
   }
 
-  private long insertSupplier(String code) {
-    jdbcTemplate.update(
-        "insert into supplier (code, name, category, status, version) values (?, ?, 'W5 测试', 'ENABLED', 0)",
-        code,
-        "供应商 " + code);
-    Long id = jdbcTemplate.queryForObject("select id from supplier where code = ?", Long.class, code);
-    return id == null ? -1 : id;
-  }
+  private long insertSupplier(String code) { return TestFixtures.insertSupplier(jdbcTemplate, code, "供应商 " + code, "W5 测试"); }
 
   private long indicatorId(String code) {
     Long id =

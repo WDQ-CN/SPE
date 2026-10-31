@@ -2,6 +2,7 @@ package com.spe.context.template.internal;
 
 import com.spe.common.page.PageQuery;
 import com.spe.common.page.PageResult;
+import com.spe.common.validation.Limits;
 import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
 import com.spe.context.system.api.AuditAction;
@@ -122,7 +123,7 @@ public class TemplateService {
    */
   @Transactional
   public TemplateSummary create(String name) {
-    requireText(name, 100, "模板名称");
+    requireText(name, Limits.NAME_100, "模板名称");
     Template template = new Template();
     template.setName(name);
     templateMapper.insert(template);
@@ -150,7 +151,7 @@ public class TemplateService {
    */
   @Transactional
   public void rename(long templateId, String name) {
-    requireText(name, 100, "模板名称");
+    requireText(name, Limits.NAME_100, "模板名称");
     Template current =
         templateMapper.findById(templateId)
             .orElseThrow(() -> new BizException(ErrorCode.TEMPLATE_NOT_FOUND));
@@ -171,9 +172,9 @@ public class TemplateService {
   public EffectiveVersion addDimension(
       long versionId, String name, BigDecimal weight, int sortNo, String suggestedDept, boolean isKey) {
     EffectiveVersion effective = ensureEditable(versionId);
-    requireText(name, 100, "维度名称");
+    requireText(name, Limits.NAME_100, "维度名称");
     requireWeightInRange(weight);
-    requireLength(suggestedDept, 50, "建议评估部门");
+    requireLength(suggestedDept, Limits.TEXT_50, "建议评估部门");
 
     Dimension dimension = new Dimension();
     dimension.setTemplateVersionId(effective.versionId());
@@ -205,9 +206,9 @@ public class TemplateService {
       int version) {
     Dimension current = requireDimension(dimensionId);
     EffectiveVersion effective = ensureEditable(current.getTemplateVersionId());
-    requireText(name, 100, "维度名称");
+    requireText(name, Limits.NAME_100, "维度名称");
     requireWeightInRange(weight);
-    requireLength(suggestedDept, 50, "建议评估部门");
+    requireLength(suggestedDept, Limits.TEXT_50, "建议评估部门");
 
     // 落到新草稿时，手里这一行已经是"旧版本的旧行"：用映射找到**生效版本**里的对应行，
     // 并连同它**当前的 version** 一起拿回来——守卫必须用目标行的版本，不是调用方手里源行的
@@ -298,13 +299,13 @@ public class TemplateService {
       int sortNo) {
     Dimension dimension = requireDimension(dimensionId);
     EffectiveVersion effective = ensureEditable(dimension.getTemplateVersionId());
-    requireText(name, 100, "指标名称");
-    requireText(code, 50, "指标编码");
+    requireText(name, Limits.NAME_100, "指标名称");
+    requireText(code, Limits.TEXT_50, "指标编码");
     requireWeightInRange(weight);
     requireTypeScoreMode(type, scoreMode);
     requireTargetValue(targetValue);
-    requireLength(unit, 20, "单位");
-    requireLength(standard, 500, "评分标准");
+    requireLength(unit, Limits.TEXT_20, "单位");
+    requireLength(standard, Limits.TEXT_500, "评分标准");
     // 关键：落到新草稿时 dimension.getId() 属于**旧版本**，必须翻译成新草稿里的行 id。
     // 漏了这一步不会报错（表上无外键），但会写出一行"版本指向新草稿、维度指向旧版本"的脏指标：
     // 树上按 dimension_id 分组看不见它、发布校验按 dimension_id 联结不计它的权重、删维度也删不掉它（04-057）。
@@ -352,13 +353,13 @@ public class TemplateService {
       int version) {
     Indicator current = requireIndicator(indicatorId);
     EffectiveVersion effective = ensureEditable(current.getTemplateVersionId());
-    requireText(name, 100, "指标名称");
-    requireText(code, 50, "指标编码");
+    requireText(name, Limits.NAME_100, "指标名称");
+    requireText(code, Limits.TEXT_50, "指标编码");
     requireWeightInRange(weight);
     requireTypeScoreMode(type, scoreMode);
     requireTargetValue(targetValue);
-    requireLength(unit, 20, "单位");
-    requireLength(standard, 500, "评分标准");
+    requireLength(unit, Limits.TEXT_20, "单位");
+    requireLength(standard, Limits.TEXT_500, "评分标准");
     EffectiveVersion.Target target =
         effective.requireIndicatorRow(indicatorId, current.getTemplateVersionId(), version);
 
@@ -573,8 +574,8 @@ public class TemplateService {
    * **静默改错行**，比报错严重得多。因此某键在本侧出现不止一次就标记为**歧义**、不进映射 ⇒ 调用方拿到 2015
    * （响亮），而不是被配到"另一行"。（指标侧不需要这层：`uk_indicator_version_code` 已保证版本内编码唯一。）
    *
-   * <p>`copied` 保持 `false`：本次**没有**发生复制，不该写 `TEMPLATE_VERSION_AUTO_COPY` 审计
-   * （12 §E5 的要求）。能否定位行由映射本身决定，与这个标志解耦。
+   * <p>复用路径**不写** `TEMPLATE_VERSION_AUTO_COPY` 审计（12 §E5 的要求）：本次没有发生复制。
+   * 能否定位行由映射本身决定，与审计无关。
    * <p>⚠️ 这里的四条查询**必须用当前读**（`...ForShare`）。第一版我用了普通读，结果用例仍然红了：
    * 调用方（如 `updateDimension`）在进入本方法前先做了一次 `requireDimension` 普通读，**read view 就此钉死**；
    * 之后即便本方法拿了锁，普通读看到的仍是对方**提交前**的快照 → 草稿的维度一条都查不到 → 配对全空。
@@ -638,7 +639,7 @@ public class TemplateService {
     }
 
     return new EffectiveVersion(
-        draft.getId(), draft.getVersion(), false, dimensionTargets, indicatorTargets);
+        draft.getId(), draft.getVersion(), dimensionTargets, indicatorTargets);
   }
 
   /** 维度的配对键：`sort_no` 可重复、名称也可重复，但两者的组合在"复制照抄"的语境下足够定位。 */
@@ -716,7 +717,7 @@ public class TemplateService {
         indicatorTargets.size());
 
     return new EffectiveVersion(
-        draft.getId(), draft.getVersion(), true, dimensionTargets, indicatorTargets);
+        draft.getId(), draft.getVersion(), dimensionTargets, indicatorTargets);
   }
 
   // ------------------------------------------------------------------ 辅助

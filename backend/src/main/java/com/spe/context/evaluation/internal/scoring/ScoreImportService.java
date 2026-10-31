@@ -411,7 +411,7 @@ public class ScoreImportService {
               error(rowNumber, header, "该指标不在指派给你的评分单里");
               return;
             }
-            if (!SheetStatus.SCORING.name().equals(sheet.getStatus().name())) {
+            if (sheet.getStatus() != SheetStatus.SCORING) {
               skippedCells++; // 待指派/已提交：跳过不是错误（13 §E17）
               return;
             }

@@ -1,5 +1,6 @@
 package com.spe.context.system.internal.audit;
 
+import com.spe.integration.support.TestFixtures;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -141,13 +142,5 @@ class AuditLogApiIntegrationTest extends AbstractIntegrationTest {
         createdAt);
   }
 
-  private void insertUser(String username, String role) {
-    jdbcTemplate.update(
-        "INSERT INTO sys_user (username, password_hash, name, role, department, status, version)"
-            + " VALUES (?, ?, ?, ?, 'QUALITY', 'ENABLED', 0)",
-        username,
-        "$2a$10$XN4FIyPaEhAv6Z/6Pms6quxg7qd1RlAZV8.dCcOl.YvcqCxxy9jsm",
-        "W5 " + username,
-        role);
-  }
+  private void insertUser(String username, String role) { TestFixtures.insertUser(jdbcTemplate, username, role, "QUALITY"); }
 }

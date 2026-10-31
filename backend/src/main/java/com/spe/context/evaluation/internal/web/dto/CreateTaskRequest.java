@@ -1,6 +1,7 @@
 package com.spe.context.evaluation.internal.web.dto;
 
 import com.spe.common.batch.Batches;
+import com.spe.common.validation.Limits;
 import com.spe.context.evaluation.internal.task.ApprovalNode;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -19,9 +20,9 @@ import java.util.List;
  * 审批人在职、J4 唯一性）留给服务层——两层的分工见 06 §2.7 与 P2 深审的 P1-2 教训。
  */
 public record CreateTaskRequest(
-    @NotBlank(message = "任务名称不能为空") @Size(max = 100, message = "任务名称不得超过 100 字") String name,
-    @Min(value = 2000, message = "年份不合法") @Max(value = 2999, message = "年份不合法") int year,
-    @Min(value = 1, message = "季度必须在 1~4 之间") @Max(value = 4, message = "季度必须在 1~4 之间") int quarter,
+    @NotBlank(message = "任务名称不能为空") @Size(max = Limits.NAME_100, message = "任务名称不得超过 {max} 字") String name,
+    @Min(value = Limits.YEAR_MIN, message = "年份不合法") @Max(value = Limits.YEAR_MAX, message = "年份不合法") int year,
+    @Min(value = Limits.QUARTER_MIN, message = "季度必须在 1~4 之间") @Max(value = Limits.QUARTER_MAX, message = "季度必须在 1~4 之间") int quarter,
     @Positive(message = "必须选择模板") long templateId,
     @Positive(message = "必须选择模板版本") long templateVersionId,
     @NotNull(message = "截止日期不能为空") LocalDate deadline,

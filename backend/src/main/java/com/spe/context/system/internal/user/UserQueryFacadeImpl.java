@@ -37,15 +37,6 @@ public class UserQueryFacadeImpl implements UserQueryFacade {
 
   @Override
   @Transactional(readOnly = true)
-  public boolean isEnabled(long userId) {
-    return sysUserMapper
-        .findById(userId)
-        .map(user -> user.getStatus() == UserStatus.ENABLED)
-        .orElse(false);
-  }
-
-  @Override
-  @Transactional(readOnly = true)
   public List<Long> findEnabledIdsByDepartmentAndRoles(String department, Collection<Role> roles) {
     if (department == null || department.isBlank() || roles == null || roles.isEmpty()) {
       return List.of();

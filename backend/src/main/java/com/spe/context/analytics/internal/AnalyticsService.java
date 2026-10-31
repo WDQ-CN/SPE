@@ -1,5 +1,7 @@
 package com.spe.context.analytics.internal;
 
+import com.spe.common.period.Quarters;
+
 import com.spe.common.sql.SqlKeywords;
 import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
@@ -113,7 +115,7 @@ public class AnalyticsService {
     if (rows.isEmpty()) {
       return new AnalyticsViews.Ranking(year, quarter, List.of());
     }
-    int[] previous = previousQuarter(year, quarter);
+    int[] previous = Quarters.previous(year, quarter);
     Map<Long, BigDecimal> previousScores =
         mapper.findPeriodScores(previous[0], previous[1]).stream()
             .collect(
@@ -222,8 +224,4 @@ public class AnalyticsService {
     return value;
   }
 
-  /** 上一个**日历**季度（跨年 Q1 → 上一年 Q4）；环比不跨缺口回溯（01 §5.10 尾注）。 */
-  private static int[] previousQuarter(int year, int quarter) {
-    return quarter == 1 ? new int[] {year - 1, 4} : new int[] {year, quarter - 1};
-  }
 }

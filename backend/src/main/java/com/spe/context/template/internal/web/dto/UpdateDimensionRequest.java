@@ -1,5 +1,6 @@
 package com.spe.context.template.internal.web.dto;
 
+import com.spe.common.validation.Limits;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -18,7 +19,7 @@ import java.math.BigDecimal;
  */
 public record UpdateDimensionRequest(
     @NotBlank(message = "维度名称不能为空")
-        @Size(max = 100, message = "维度名称长度不得超过 100")
+        @Size(max = Limits.NAME_100, message = "维度名称长度不得超过 100")
         String name,
     @NotNull(message = "权重不能为空")
         @DecimalMin(value = "0", message = "权重不能小于 0")
@@ -26,6 +27,6 @@ public record UpdateDimensionRequest(
         @Digits(integer = 3, fraction = 2, message = "权重最多保留两位小数")
         BigDecimal weight,
     @Min(value = 0, message = "排序号不能为负") Integer sortNo,
-    @Size(max = 50, message = "建议评估部门长度不得超过 50") String suggestedDept,
+    @Size(max = Limits.TEXT_50, message = "建议评估部门长度不得超过 50") String suggestedDept,
     Boolean isKey,
     @NotNull(message = "版本号不能为空") @Min(value = 0, message = "版本号不能为负") Integer version) {}

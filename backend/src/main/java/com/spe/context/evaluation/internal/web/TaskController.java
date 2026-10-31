@@ -5,7 +5,9 @@ import com.spe.common.page.PageResult;
 import com.spe.common.web.Result;
 import com.spe.context.evaluation.api.EvalTaskStatus;
 import com.spe.context.evaluation.internal.task.PublishResult;
+import com.spe.context.evaluation.internal.task.SheetBrief;
 import com.spe.context.evaluation.internal.task.TaskDetail;
+import com.spe.context.evaluation.internal.task.TaskDraftCommand;
 import com.spe.context.evaluation.internal.task.TaskProgress;
 import com.spe.context.evaluation.internal.task.TaskProgressService;
 import com.spe.context.evaluation.internal.task.TaskService;
@@ -15,6 +17,7 @@ import com.spe.context.evaluation.internal.web.dto.PublishTaskRequest;
 import com.spe.context.evaluation.internal.web.dto.UpdateTaskRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -67,7 +70,7 @@ public class TaskController {
   public Result<Long> create(@Valid @RequestBody CreateTaskRequest request) {
     return Result.ok(
         taskService.createDraft(
-            new com.spe.context.evaluation.internal.task.TaskDraftCommand(
+            new TaskDraftCommand(
                 request.name(),
                 request.year(),
                 request.quarter(),
@@ -85,7 +88,7 @@ public class TaskController {
     taskService.updateDraft(
         id,
         request.version(),
-        new com.spe.context.evaluation.internal.task.TaskDraftCommand(
+        new TaskDraftCommand(
             request.name(),
             request.year(),
             request.quarter(),
@@ -107,7 +110,7 @@ public class TaskController {
 
   /** 任务下的评分单清单（缺口端点）：详情页的「指派调整」用它拿 sheetId / 指派对象 / 版本。 */
   @GetMapping("/{id}/sheets")
-  public Result<java.util.List<com.spe.context.evaluation.internal.task.SheetBrief>> sheets(
+  public Result<List<SheetBrief>> sheets(
       @PathVariable long id) {
     return Result.ok(taskService.findSheets(id));
   }

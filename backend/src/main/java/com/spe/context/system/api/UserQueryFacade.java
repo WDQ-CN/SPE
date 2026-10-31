@@ -17,9 +17,6 @@ public interface UserQueryFacade {
   /** 批量取用户；入参为空返回空列表。供审批链这类「一次校验多人」的场景使用。 */
   List<UserBrief> findByIds(Collection<Long> userIds);
 
-  /** 是否在职（`ENABLED`）；账号不存在按不在职处理。 */
-  boolean isEnabled(long userId);
-
   /**
    * 按部门 + 角色查**在职**用户 id，**按 id 升序**（13 §E12 的自动指派）。
    *

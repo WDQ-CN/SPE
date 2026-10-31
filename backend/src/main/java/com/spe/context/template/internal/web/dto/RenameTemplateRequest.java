@@ -1,5 +1,6 @@
 package com.spe.context.template.internal.web.dto;
 
+import com.spe.common.validation.Limits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -12,5 +13,5 @@ import jakarta.validation.constraints.Size;
  */
 public record RenameTemplateRequest(
     @NotBlank(message = "模板名称不能为空")
-        @Size(max = 100, message = "模板名称长度不得超过 100")
+        @Size(max = Limits.NAME_100, message = "模板名称长度不得超过 100")
         String name) {}

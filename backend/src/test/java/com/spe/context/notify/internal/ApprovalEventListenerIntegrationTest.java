@@ -1,5 +1,6 @@
 package com.spe.context.notify.internal;
 
+import com.spe.integration.support.TestFixtures;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.spe.common.event.EventPublisher;
@@ -169,17 +170,7 @@ class ApprovalEventListenerIntegrationTest extends AbstractIntegrationTest {
     return 9_000_000L + nextSequence();
   }
 
-  private long insertUser(String username, String role, String department) {
-    jdbcTemplate.update(
-        "insert into sys_user (username, password_hash, name, role, department, status, version)"
-            + " values (?, '$2a$10$abcdefghijklmnopqrstuv', ?, ?, ?, 'ENABLED', 0)",
-        username,
-        "测试用户 " + username,
-        role,
-        department);
-    Long id = jdbcTemplate.queryForObject("select id from sys_user where username = ?", Long.class, username);
-    return id == null ? -1 : id;
-  }
+  private long insertUser(String username, String role, String department) { return TestFixtures.insertUser(jdbcTemplate, username, role, department); }
 
   /** 本用例自己制造的通知：共享库里同一收件人会有别的通知，按内容里的唯一标记收敛范围。 */
   private List<NotificationSummary> notificationsAbout(long receiverId, String marker) {

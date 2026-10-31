@@ -157,7 +157,7 @@ public class FinalizeService {
     // 01 J3 的完单结果并进这条留痕（15 §E10 的裁决：不新增动作码，0 行也照实记）
     detail.put("taskCompleted", completed == 1);
     auditFacade.record(
-        AuditAction.TASK_SUPPLIER_FINALIZE, AuditTargetType.TASK, taskSupplier.getId(), detail);
+        AuditAction.TASK_SUPPLIER_FINALIZE, AuditTargetType.TASK_SUPPLIER, taskSupplier.getId(), detail);
     log.info(
         "评估单定稿：taskSupplierId={} totalScore={} totalGrade={} dimensions={} taskCompleted={}",
         taskSupplier.getId(),

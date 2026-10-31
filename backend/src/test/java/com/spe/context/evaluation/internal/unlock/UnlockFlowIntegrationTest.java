@@ -1,5 +1,6 @@
 package com.spe.context.evaluation.internal.unlock;
 
+import com.spe.integration.support.TestFixtures;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -85,7 +86,7 @@ class UnlockFlowIntegrationTest extends AbstractIntegrationTest {
         jdbcTemplate.queryForMap(
             "SELECT target_type, target_id, detail FROM audit_log"
                 + " WHERE action = 'TASK_SUPPLIER_UNLOCK' ORDER BY id DESC LIMIT 1");
-    assertThat(audit.get("target_type")).isEqualTo("TASK");
+    assertThat(audit.get("target_type")).isEqualTo("TASK_SUPPLIER");
     assertThat(((Number) audit.get("target_id")).longValue()).isEqualTo(tsId);
     var detail = objectMapper.readTree(audit.get("detail").toString());
     assertThat(detail.path("round").asInt()).isEqualTo(1);
@@ -192,27 +193,9 @@ class UnlockFlowIntegrationTest extends AbstractIntegrationTest {
     return body;
   }
 
-  private long insertSupplier(String code) {
-    jdbcTemplate.update(
-        "INSERT INTO supplier (code, name, category, status, version)"
-            + " VALUES (?, ?, 'W3 解锁', 'ENABLED', 0)",
-        code,
-        "供应商 " + code);
-    return jdbcTemplate.queryForObject(
-        "SELECT id FROM supplier WHERE code = ?", Long.class, code);
-  }
+  private long insertSupplier(String code) { return TestFixtures.insertSupplier(jdbcTemplate, code, "供应商 " + code, "W3 解锁"); }
 
-  private long insertUser(String username, String role) {
-    jdbcTemplate.update(
-        "INSERT INTO sys_user (username, password_hash, name, role, department, status, version)"
-            + " VALUES (?, ?, ?, ?, 'QUALITY', 'ENABLED', 0)",
-        username,
-        "$2a$10$XN4FIyPaEhAv6Z/6Pms6quxg7qd1RlAZV8.dCcOl.YvcqCxxy9jsm",
-        "W3 " + username,
-        role);
-    return jdbcTemplate.queryForObject(
-        "SELECT id FROM sys_user WHERE username = ?", Long.class, username);
-  }
+  private long insertUser(String username, String role) { return TestFixtures.insertUser(jdbcTemplate, username, role, "QUALITY"); }
 
   private long insertTask(String name, int year, int quarter, String status, long versionId) {
     jdbcTemplate.update(

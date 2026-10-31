@@ -136,7 +136,7 @@ public class SupplierService {
         AuditAction.SUPPLIER_STATUS_CHANGE,
         AuditTargetType.SUPPLIER,
         id,
-        Map.of("from", expected.name(), "to", target.name()));
+        AuditDetails.transition(expected, target));
     log.info("供应商状态迁移 id={}：{} → {}", id, expected, target);
   }
 

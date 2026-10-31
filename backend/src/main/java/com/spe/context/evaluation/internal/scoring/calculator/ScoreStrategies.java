@@ -19,7 +19,6 @@ public final class ScoreStrategies {
   private static final BigDecimal ONE = new BigDecimal("1");
   private static final BigDecimal FIVE = new BigDecimal("5");
   private static final BigDecimal TWENTY = new BigDecimal("20");
-  private static final BigDecimal HUNDRED = new BigDecimal("100");
 
   /** 除法一律显式给 MathContext（06 §2.5 的数值红线：禁止 double、除法必须有精度口径）。 */
   private static final MathContext DIVISION = MathContext.DECIMAL128;
@@ -28,7 +27,7 @@ public final class ScoreStrategies {
   static final ScoreStrategy DIRECT =
       (rawValue, indicator) -> {
         requireScaleAtMostTwo(rawValue, "DIRECT 录入值格式不合法", indicator);
-        requireRange(rawValue, ZERO, HUNDRED, "DIRECT 录入值必须在 0~100", indicator);
+        requireRange(rawValue, ZERO, ScoreCalculator.HUNDRED, "DIRECT 录入值必须在 0~100", indicator);
         return rawValue;
       };
 
@@ -43,7 +42,7 @@ public final class ScoreStrategies {
       (rawValue, indicator) -> {
         requireScaleAtMostTwo(rawValue, "RATIO 录入值格式不合法", indicator);
         requireNonNegative(rawValue, "RATIO 录入值不能为负", indicator);
-        return rawValue.min(HUNDRED);
+        return rawValue.min(ScoreCalculator.HUNDRED);
       };
 
   /** TARGET（01 §6.1）：{@code min(100, 实际值 ÷ 目标值 × 100)}；目标值必须 > 0（01 §6.6）。 */
@@ -59,7 +58,7 @@ public final class ScoreStrategies {
         }
         requireScaleAtMostTwo(rawValue, "TARGET 实际值格式不合法", indicator);
         requireNonNegative(rawValue, "TARGET 实际值不能为负", indicator);
-        return rawValue.multiply(HUNDRED).divide(target, DIVISION).min(HUNDRED);
+        return rawValue.multiply(ScoreCalculator.HUNDRED).divide(target, DIVISION).min(ScoreCalculator.HUNDRED);
       };
 
   /** 定性（01 §6.1）：1~5 的整数 × 20；不设中间值（01 §6.1a）。 */

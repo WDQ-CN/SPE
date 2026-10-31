@@ -1,5 +1,6 @@
 package com.spe.context.alert.internal;
 
+import com.spe.common.sql.EffectiveResults;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -33,8 +34,7 @@ public interface AlertQueryMapper {
   @Select(
       "SELECT t.year, t.quarter, ts.total_score AS total_score FROM task_supplier ts"
           + " JOIN eval_task t ON t.id = ts.task_id"
-          + " WHERE ts.supplier_id = #{supplierId} AND ts.status = 'EFFECTIVE'"
-          + " AND t.status != 'CANCELED'"
+          + " WHERE ts.supplier_id = #{supplierId} AND " + EffectiveResults.CONDITION
           + " ORDER BY t.year DESC, t.quarter DESC LIMIT #{limit}")
   List<PeriodScoreRow> findRecentEffectivePeriods(
       @Param("supplierId") long supplierId, @Param("limit") int limit);

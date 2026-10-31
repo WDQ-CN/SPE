@@ -278,7 +278,7 @@ class SupplierApiIntegrationTest extends AbstractIntegrationTest {
         .perform(authed(get("/api/suppliers").param("keyword", "W3T-ST"), token))
         .andExpect(jsonPath("$.data.total").value(1))
         .andExpect(jsonPath("$.data.list[0].status").value("DISABLED"));
-    assertThat(supplierQueryFacade.isEnabled(id)).isFalse();
+    assertThat(jdbcTemplate.queryForObject("SELECT status FROM supplier WHERE id = ?", String.class, id)).isEqualTo("DISABLED");
   }
 
   @Test
@@ -409,7 +409,7 @@ class SupplierApiIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("SupplierQueryFacade：findById / findByIds / isEnabled 走真实 SQL（供 P3 用）")
+  @DisplayName("SupplierQueryFacade：findById / findByIds 走真实 SQL，且 brief 带出启用状态（供 P3 用）")
   void supplierQueryFacadeReadsRealRows() throws Exception {
     String token = login(ADMIN_USERNAME, ADMIN_PASSWORD);
     long first = createSupplier(token, "W3T-FAC-1", "甲公司", "电子");
@@ -426,7 +426,7 @@ class SupplierApiIntegrationTest extends AbstractIntegrationTest {
             });
     assertThat(supplierQueryFacade.findByIds(List.of(first, second))).hasSize(2);
     assertThat(supplierQueryFacade.findByIds(List.of())).isEmpty();
-    assertThat(supplierQueryFacade.isEnabled(999_999L)).isFalse();
+    assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM supplier WHERE id = ?", Long.class, 999_999L)).isZero();
   }
 
   private void assertAuditRow(String action, long targetId, long operatorId) {

@@ -22,7 +22,7 @@ public interface SheetMapper extends BaseMapper<Sheet> {
       <foreach item="item" collection="items" separator=",">
         (#{item.taskSupplierId}, #{item.dimensionId},
          <choose><when test="item.assigneeId != null">#{item.assigneeId}</when><otherwise>NULL</otherwise></choose>,
-         <choose><when test="item.assigneeId != null">'SCORING'</when><otherwise>'UNASSIGNED'</otherwise></choose>, 0)
+         #{item.status}, 0)
       </foreach>
       </script>
       """)

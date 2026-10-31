@@ -1,5 +1,6 @@
 package com.spe.context.evaluation.internal.result;
 
+import com.spe.integration.support.TestFixtures;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -102,15 +103,7 @@ class ResultExportApiIntegrationTest extends AbstractIntegrationTest {
     return taskId;
   }
 
-  private long insertSupplier(String code, String name) {
-    jdbcTemplate.update(
-        "INSERT INTO supplier (code, name, category, status, version)"
-            + " VALUES (?, ?, 'W5 导出', 'ENABLED', 0)",
-        code,
-        name);
-    return jdbcTemplate.queryForObject(
-        "SELECT id FROM supplier WHERE code = ?", Long.class, code);
-  }
+  private long insertSupplier(String code, String name) { return TestFixtures.insertSupplier(jdbcTemplate, code, name, "W5 导出"); }
 
   private void insertEffective(long taskId, long supplierId, List<Long> dimensionIds, String total) {
     jdbcTemplate.update(
@@ -155,15 +148,7 @@ class ResultExportApiIntegrationTest extends AbstractIntegrationTest {
     return insertTask("W5 空任务");
   }
 
-  private void insertUser(String username, String role) {
-    jdbcTemplate.update(
-        "INSERT INTO sys_user (username, password_hash, name, role, department, status, version)"
-            + " VALUES (?, ?, ?, ?, 'QUALITY', 'ENABLED', 0)",
-        username,
-        "$2a$10$XN4FIyPaEhAv6Z/6Pms6quxg7qd1RlAZV8.dCcOl.YvcqCxxy9jsm",
-        "W5 " + username,
-        role);
-  }
+  private void insertUser(String username, String role) { TestFixtures.insertUser(jdbcTemplate, username, role, "QUALITY"); }
 
   private long defaultVersionId() {
     return jdbcTemplate.queryForObject(

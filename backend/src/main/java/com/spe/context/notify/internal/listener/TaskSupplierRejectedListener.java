@@ -35,13 +35,9 @@ public class TaskSupplierRejectedListener {
             + (summary.isEmpty() ? "" : "。审批意见：" + summary);
     List<Notification> notifications = new ArrayList<>(receivers.size());
     for (Long receiverId : receivers) {
-      Notification notification = new Notification();
-      notification.setReceiverId(receiverId);
-      notification.setType(NotificationService.TYPE_TASK_SUPPLIER_REJECTED);
-      notification.setTitle("评估单被驳回");
-      notification.setContent(content);
-      notification.setIsRead(false);
-      notifications.add(notification);
+      notifications.add(
+          NotificationService.compose(
+              receiverId, NotificationService.TYPE_TASK_SUPPLIER_REJECTED, "评估单被驳回", content));
     }
     notificationService.write(notifications);
   }

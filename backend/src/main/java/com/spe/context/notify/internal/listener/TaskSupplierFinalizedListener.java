@@ -49,13 +49,9 @@ public class TaskSupplierFinalizedListener {
             + event.totalGrade();
     List<Notification> notifications = new ArrayList<>(managers.size());
     for (Long receiverId : managers) {
-      Notification notification = new Notification();
-      notification.setReceiverId(receiverId);
-      notification.setType(NotificationService.TYPE_TASK_SUPPLIER_FINALIZED);
-      notification.setTitle("评估已生效");
-      notification.setContent(content);
-      notification.setIsRead(false);
-      notifications.add(notification);
+      notifications.add(
+          NotificationService.compose(
+              receiverId, NotificationService.TYPE_TASK_SUPPLIER_FINALIZED, "评估已生效", content));
     }
     notificationService.write(notifications);
   }

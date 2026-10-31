@@ -39,34 +39,6 @@ public interface TemplateMapper extends BaseMapper<Template> {
   @Select("SELECT COUNT(*) FROM template")
   long countAll();
 
-  /**
-   * 可分页选用的模板：**只含至少有一个已发布版本的**（01 J1 要求任务绑定已发布版本）。
-   *
-   * <p>不能拿 {@link #findPage} 的结果再过滤——那是"先分页后过滤"，页大小会不足、`total` 也不对。
-   * 条件必须进 SQL，且与 {@link #countPublishable} 一致。
-   */
-  @Select(
-      """
-      SELECT t.id AS id, t.name AS name, MAX(v.version_no) AS latestPublishedNo
-      FROM template t
-      JOIN template_version v ON v.template_id = t.id AND v.status = 'PUBLISHED'
-      GROUP BY t.id, t.name
-      ORDER BY t.id
-      LIMIT #{size} OFFSET #{offset}
-      """)
-  List<TemplateRow> findPublishablePage(@Param("offset") long offset, @Param("size") int size);
-
-  /** 与 {@link #findPublishablePage} 同条件，保证 `total` 与返回行一致。 */
-  @Select(
-      """
-      SELECT COUNT(*) FROM (
-        SELECT t.id FROM template t
-        JOIN template_version v ON v.template_id = t.id AND v.status = 'PUBLISHED'
-        GROUP BY t.id
-      ) publishable
-      """)
-  long countPublishable();
-
   @Select("SELECT id, name FROM template WHERE id = #{id}")
   Optional<Template> findById(@Param("id") long id);
 

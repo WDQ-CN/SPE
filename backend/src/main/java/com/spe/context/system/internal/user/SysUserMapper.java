@@ -25,32 +25,29 @@ import org.apache.ibatis.annotations.Update;
 @Mapper
 public interface SysUserMapper extends BaseMapper<SysUser> {
 
+  /** 列表/详情共用的列清单（03 §51 P3-4）：加列只改这里。 */
+  String COLUMNS = "id, username, name, role, department, status, version";
+
   /** 分页取列表。`OFFSET` 由 Service 按「page 从 1 开始」换算（11 §11 / 09 D8）。 */
   @Select(
-      """
-      SELECT id, username, name, role, department, status, version
-      FROM sys_user
-      ORDER BY id
-      LIMIT #{size} OFFSET #{offset}
-      """)
+      "SELECT " + COLUMNS
+          + " FROM sys_user"
+          + " ORDER BY id"
+          + " LIMIT #{size} OFFSET #{offset}")
   List<SysUser> findPage(@Param("offset") long offset, @Param("size") int size);
 
   @Select("SELECT COUNT(*) FROM sys_user")
   long countAll();
 
-  @Select("SELECT id, username, name, role, department, status, version FROM sys_user WHERE id = #{id}")
+  @Select("SELECT " + COLUMNS + " FROM sys_user WHERE id = #{id}")
   Optional<SysUser> findById(@Param("id") long id);
 
   /** 批量取（P3 校验审批链内人员在职，经 {@code UserQueryFacade}）。 */
   @Select(
-      """
-      <script>
-      SELECT id, username, name, role, department, status, version
-      FROM sys_user
-      WHERE id IN
-      <foreach item="item" collection="ids" open="(" separator="," close=")">#{item}</foreach>
-      </script>
-      """)
+      "<script>SELECT " + COLUMNS
+          + " FROM sys_user WHERE id IN"
+          + " <foreach item=\"item\" collection=\"ids\" open=\"(\" separator=\",\" close=\")\">#{item}</foreach>"
+          + "</script>")
   List<SysUser> findByIds(@Param("ids") Collection<Long> ids);
 
   /**

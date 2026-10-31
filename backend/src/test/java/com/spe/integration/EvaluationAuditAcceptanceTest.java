@@ -1,5 +1,6 @@
 package com.spe.integration;
 
+import com.spe.integration.support.TestFixtures;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -272,14 +273,7 @@ class EvaluationAuditAcceptanceTest extends AbstractIntegrationTest {
     return login(username, PASSWORD);
   }
 
-  private long insertSupplier(String code) {
-    jdbcTemplate.update(
-        "insert into supplier (code, name, category, status, version) values (?, ?, 'W5 留痕', 'ENABLED', 0)",
-        code,
-        "供应商 " + code);
-    Long id = jdbcTemplate.queryForObject("select id from supplier where code = ?", Long.class, code);
-    return id == null ? -1 : id;
-  }
+  private long insertSupplier(String code) { return TestFixtures.insertSupplier(jdbcTemplate, code, "供应商 " + code, "W5 留痕"); }
 
   private com.fasterxml.jackson.databind.JsonNode data(
       org.springframework.test.web.servlet.MvcResult result) throws Exception {

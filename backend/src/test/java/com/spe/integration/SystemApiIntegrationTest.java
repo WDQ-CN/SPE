@@ -372,7 +372,7 @@ class SystemApiIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("UserQueryFacade：findById/isEnabled/findByIds 走真实 SQL（供 P3 校验审批人在职）")
+  @DisplayName("UserQueryFacade：findById/findByIds 走真实 SQL，且 brief 带出在职状态（供 P3 校验审批人在职）")
   void userQueryFacadeReadsRealRows() throws Exception {
     String adminToken = login(ADMIN_USERNAME, ADMIN_PASSWORD);
     long id = createUser(adminToken, "facade_user", Role.EVALUATOR);
@@ -386,8 +386,8 @@ class SystemApiIntegrationTest extends AbstractIntegrationTest {
               assertThat(brief.role()).isEqualTo(Role.EVALUATOR);
               assertThat(brief.enabled()).isTrue();
             });
-    assertThat(userQueryFacade.isEnabled(id)).isTrue();
-    assertThat(userQueryFacade.isEnabled(999_999L)).isFalse();
+    assertThat(jdbcTemplate.queryForObject("SELECT status FROM sys_user WHERE id = ?", String.class, id)).isEqualTo("ENABLED");
+    assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_user WHERE id = ?", Long.class, 999_999L)).isZero();
     assertThat(userQueryFacade.findByIds(List.of(id, userIdOf(ADMIN_USERNAME)))).hasSize(2);
     assertThat(userQueryFacade.findByIds(List.of())).isEmpty();
   }

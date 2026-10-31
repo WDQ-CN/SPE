@@ -41,15 +41,6 @@ public class SupplierQueryFacadeImpl implements SupplierQueryFacade {
     return supplierMapper.findByIds(supplierIds).stream().map(SupplierQueryFacadeImpl::toBrief).toList();
   }
 
-  @Override
-  @Transactional(readOnly = true)
-  public boolean isEnabled(long supplierId) {
-    return supplierMapper
-        .findById(supplierId)
-        .map(supplier -> supplier.getStatus() == SupplierStatus.ENABLED)
-        .orElse(false);
-  }
-
   private static SupplierBrief toBrief(Supplier supplier) {
     return new SupplierBrief(
         supplier.getId(),

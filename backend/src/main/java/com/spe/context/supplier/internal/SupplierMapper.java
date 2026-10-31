@@ -33,6 +33,9 @@ import org.apache.ibatis.annotations.Update;
 public interface SupplierMapper extends BaseMapper<Supplier> {
 
   /** 列表与计数共用的搜索条件；`<where>` 会在两个条件都为空时不输出 WHERE，非空时自动去掉首个 AND。 */
+  /** 列表/详情共用的列清单（03 §51 P3-4）：加列只改这里。 */
+  String COLUMNS = "id, code, name, category, status, version";
+
   String SEARCH_CONDITION =
       """
       <where>
@@ -50,7 +53,7 @@ public interface SupplierMapper extends BaseMapper<Supplier> {
    * `OFFSET` 由 Service 按「page 从 1 开始」换算（09 D8）。`ORDER BY code` 保证分页稳定（code 唯一）。
    */
   @Select(
-      "<script>SELECT id, code, name, category, status, version FROM supplier "
+      "<script>SELECT " + COLUMNS + " FROM supplier "
           + SEARCH_CONDITION
           + " ORDER BY code LIMIT #{size} OFFSET #{offset}</script>")
   List<Supplier> findPage(
@@ -63,22 +66,19 @@ public interface SupplierMapper extends BaseMapper<Supplier> {
   @Select("<script>SELECT COUNT(*) FROM supplier " + SEARCH_CONDITION + "</script>")
   long countBy(@Param("keyword") String keyword, @Param("category") String category);
 
-  @Select("SELECT id, code, name, category, status, version FROM supplier WHERE id = #{id}")
+  @Select("SELECT " + COLUMNS + " FROM supplier WHERE id = #{id}")
   Optional<Supplier> findById(@Param("id") long id);
 
   /** 开放 API 用编码定位供应商（M6）；编码唯一键在库层兜底。 */
-  @Select("SELECT id, code, name, category, status, version FROM supplier WHERE code = #{code}")
+  @Select("SELECT " + COLUMNS + " FROM supplier WHERE code = #{code}")
   Optional<Supplier> findByCode(@Param("code") String code);
 
   /** 批量取（P3 发布任务时校验/展示多家供应商，经 {@code SupplierQueryFacade}）。 */
   @Select(
-      """
-      <script>
-      SELECT id, code, name, category, status, version FROM supplier
-      WHERE id IN
-      <foreach item="item" collection="ids" open="(" separator="," close=")">#{item}</foreach>
-      </script>
-      """)
+      "<script>SELECT " + COLUMNS
+          + " FROM supplier WHERE id IN"
+          + " <foreach item=\"item\" collection=\"ids\" open=\"(\" separator=\",\" close=\")\">#{item}</foreach>"
+          + "</script>")
   List<Supplier> findByIds(@Param("ids") Collection<Long> ids);
 
   /** 编码唯一的前置校验（唯一键 `uk_supplier_code` 是最后防线，06 §4）；大小写敏感性由 DB collation 决定。 */

@@ -45,15 +45,13 @@ public class TaskPublishedListener {
     }
     List<Notification> notifications = new ArrayList<>(sheetCountByAssignee.size());
     for (Map.Entry<Long, Integer> entry : sheetCountByAssignee.entrySet()) {
-      Notification notification = new Notification();
-      notification.setReceiverId(entry.getKey());
-      notification.setType(NotificationService.TYPE_TASK_PUBLISHED);
-      notification.setTitle("新的评估任务");
-      notification.setContent(
-          "任务《" + event.taskName() + "》（" + event.year() + " 年 Q" + event.quarter()
-              + "）已发布，你被指派了 " + entry.getValue() + " 张评分单");
-      notification.setIsRead(false);
-      notifications.add(notification);
+      notifications.add(
+          NotificationService.compose(
+              entry.getKey(),
+              NotificationService.TYPE_TASK_PUBLISHED,
+              "新的评估任务",
+              "任务《" + event.taskName() + "》（" + event.year() + " 年 Q" + event.quarter()
+                  + "）已发布，你被指派了 " + entry.getValue() + " 张评分单"));
     }
     notificationService.write(notifications);
   }

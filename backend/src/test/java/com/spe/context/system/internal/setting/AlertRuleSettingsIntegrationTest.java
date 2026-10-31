@@ -1,5 +1,6 @@
 package com.spe.context.system.internal.setting;
 
+import com.spe.integration.support.TestFixtures;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -130,14 +131,5 @@ class AlertRuleSettingsIntegrationTest extends AbstractIntegrationTest {
         .andExpect(jsonPath("$.code").value(2001));
   }
 
-  private void insertUser(String username, String role, String department) {
-    jdbcTemplate.update(
-        "INSERT INTO sys_user (username, password_hash, name, role, department, status, version)"
-            + " VALUES (?, ?, ?, ?, ?, 'ENABLED', 0)",
-        username,
-        "$2a$10$XN4FIyPaEhAv6Z/6Pms6quxg7qd1RlAZV8.dCcOl.YvcqCxxy9jsm",
-        "W2 " + username,
-        role,
-        department);
-  }
+  private void insertUser(String username, String role, String department) { TestFixtures.insertUser(jdbcTemplate, username, role, department); }
 }

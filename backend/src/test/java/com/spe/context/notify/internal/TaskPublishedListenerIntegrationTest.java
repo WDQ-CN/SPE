@@ -1,5 +1,6 @@
 package com.spe.context.notify.internal;
 
+import com.spe.integration.support.TestFixtures;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.spe.common.page.PageQuery;
@@ -174,26 +175,9 @@ class TaskPublishedListenerIntegrationTest extends AbstractIntegrationTest {
             List.of(approver)));
   }
 
-  private long insertSupplier(String code) {
-    jdbcTemplate.update(
-        "insert into supplier (code, name, category, status, version) values (?, ?, 'W3 测试', 'ENABLED', 0)",
-        code,
-        "供应商 " + code);
-    Long id = jdbcTemplate.queryForObject("select id from supplier where code = ?", Long.class, code);
-    return id == null ? -1 : id;
-  }
+  private long insertSupplier(String code) { return TestFixtures.insertSupplier(jdbcTemplate, code, "供应商 " + code, "W3 测试"); }
 
-  private long insertUser(String username, String role, String department) {
-    jdbcTemplate.update(
-        "insert into sys_user (username, password_hash, name, role, department, status, version)"
-            + " values (?, '$2a$10$abcdefghijklmnopqrstuv', ?, ?, ?, 'ENABLED', 0)",
-        username,
-        "测试用户 " + username,
-        role,
-        department);
-    Long id = jdbcTemplate.queryForObject("select id from sys_user where username = ?", Long.class, username);
-    return id == null ? -1 : id;
-  }
+  private long insertUser(String username, String role, String department) { return TestFixtures.insertUser(jdbcTemplate, username, role, department); }
 
   /**
    * 本用例自己制造的通知（按任务名过滤）：共享测试库里同一个收件人会收到**多个用例**的通知，

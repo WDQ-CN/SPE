@@ -37,6 +37,22 @@ public class NotificationService {
 
   private final NotificationMapper notificationMapper;
 
+  /** 构造一条未读通知（唯一实现点，03 §51 P3-18）：字段口径不再散在 7 个监听器里。 */
+  public static Notification compose(long receiverId, String type, String title, String content) {
+    Notification notification = new Notification();
+    notification.setReceiverId(receiverId);
+    notification.setType(type);
+    notification.setTitle(title);
+    notification.setContent(content);
+    notification.setIsRead(false);
+    return notification;
+  }
+
+  /** 单收件人发送（内部仍走批量写，保持与监听器批量路径同一事务语义）。 */
+  public int send(long receiverId, String type, String title, String content) {
+    return write(List.of(compose(receiverId, type, title, content)));
+  }
+
   /** 批量写通知（监听器在发布事务内调用 ⇒ 通知与发布同生共死，05 ADR-9）。 */
   @Transactional
   public int write(List<Notification> notifications) {

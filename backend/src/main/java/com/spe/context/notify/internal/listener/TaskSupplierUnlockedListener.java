@@ -40,13 +40,9 @@ public class TaskSupplierUnlockedListener {
             + "）已被管理员解锁重评，请重新评分后提交。";
     List<Notification> notifications = new ArrayList<>(receivers.size());
     for (Long receiverId : receivers) {
-      Notification notification = new Notification();
-      notification.setReceiverId(receiverId);
-      notification.setType(NotificationService.TYPE_TASK_SUPPLIER_UNLOCKED);
-      notification.setTitle("评估单已解锁");
-      notification.setContent(content);
-      notification.setIsRead(false);
-      notifications.add(notification);
+      notifications.add(
+          NotificationService.compose(
+              receiverId, NotificationService.TYPE_TASK_SUPPLIER_UNLOCKED, "评估单已解锁", content));
     }
     notificationService.write(notifications);
   }

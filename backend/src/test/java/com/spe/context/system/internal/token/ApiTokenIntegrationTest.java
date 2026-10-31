@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.spe.integration.AbstractIntegrationTest;
+import com.spe.integration.support.TestFixtures;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -207,12 +208,7 @@ class ApiTokenIntegrationTest extends AbstractIntegrationTest {
 
   private String insertManagerAndLogin() throws Exception {
     String username = "m6-token-manager-" + SEQ.getAndIncrement();
-    jdbcTemplate.update(
-        "INSERT INTO sys_user (username, password_hash, name, role, department, status, version)"
-            + " VALUES (?, ?, ?, 'MANAGER', 'PURCHASE', 'ENABLED', 0)",
-        username,
-        "$2a$10$XN4FIyPaEhAv6Z/6Pms6quxg7qd1RlAZV8.dCcOl.YvcqCxxy9jsm",
-        "M6 Token Manager");
+    TestFixtures.insertUser(jdbcTemplate, username, "MANAGER", "PURCHASE", "M6 Token Manager");
     return login(username, ADMIN_PASSWORD);
   }
 

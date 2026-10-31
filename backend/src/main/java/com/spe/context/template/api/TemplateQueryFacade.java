@@ -1,9 +1,6 @@
 package com.spe.context.template.api;
 
-import com.spe.common.page.PageQuery;
-import com.spe.common.page.PageResult;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * 模板只读门面（12 §E16）：跨上下文读取模板与版本清单的唯一入口，实体与 Mapper 不外泄。
@@ -14,12 +11,6 @@ import java.util.Optional;
  */
 public interface TemplateQueryFacade {
 
-  /** 可分页选用的模板（**只含至少有一个已发布版本的**），按模板 id 升序。 */
-  PageResult<TemplateBrief> listPublishable(PageQuery query);
-
   /** 某模板的全部已发布版本，版本号降序（最新的在前）；模板不存在时返回空列表。 */
   List<PublishedVersionBrief> publishedVersions(long templateId);
-
-  /** 某模板的最新已发布版本；没有任何已发布版本时返回空。 */
-  Optional<PublishedVersionBrief> latestPublished(long templateId);
 }

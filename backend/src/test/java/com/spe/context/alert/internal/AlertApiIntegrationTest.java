@@ -1,5 +1,6 @@
 package com.spe.context.alert.internal;
 
+import com.spe.integration.support.TestFixtures;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -155,27 +156,9 @@ class AlertApiIntegrationTest extends AbstractIntegrationTest {
     }
   }
 
-  private long insertSupplier(String code) {
-    jdbcTemplate.update(
-        "INSERT INTO supplier (code, name, category, status, version)"
-            + " VALUES (?, ?, 'W2 API', 'ENABLED', 0)",
-        code,
-        "供应商 " + code);
-    return jdbcTemplate.queryForObject(
-        "SELECT id FROM supplier WHERE code = ?", Long.class, code);
-  }
+  private long insertSupplier(String code) { return TestFixtures.insertSupplier(jdbcTemplate, code, "供应商 " + code, "W2 API"); }
 
-  private long insertUser(String username, String role) {
-    jdbcTemplate.update(
-        "INSERT INTO sys_user (username, password_hash, name, role, department, status, version)"
-            + " VALUES (?, ?, ?, ?, 'QUALITY', 'ENABLED', 0)",
-        username,
-        "$2a$10$XN4FIyPaEhAv6Z/6Pms6quxg7qd1RlAZV8.dCcOl.YvcqCxxy9jsm",
-        "W2 " + username,
-        role);
-    return jdbcTemplate.queryForObject(
-        "SELECT id FROM sys_user WHERE username = ?", Long.class, username);
-  }
+  private long insertUser(String username, String role) { return TestFixtures.insertUser(jdbcTemplate, username, role, "QUALITY", "W2 " + username); }
 
   private long insertAlert(long supplierId, String status, Long handledBy, String comment) {
     jdbcTemplate.update(

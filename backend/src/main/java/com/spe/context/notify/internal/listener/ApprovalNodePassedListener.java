@@ -17,12 +17,10 @@ public class ApprovalNodePassedListener {
 
   @EventListener
   public void onApprovalNodePassed(ApprovalNodePassedEvent event) {
-    Notification notification = new Notification();
-    notification.setReceiverId(event.nextApproverId());
-    notification.setType(NotificationService.TYPE_APPROVAL_NODE_PASSED);
-    notification.setTitle("审批已流转");
-    notification.setContent("评估单 #" + event.taskSupplierId() + " 已通过上一级审批，等待你审批");
-    notification.setIsRead(false);
-    notificationService.write(List.of(notification));
+    notificationService.send(
+        event.nextApproverId(),
+        NotificationService.TYPE_APPROVAL_NODE_PASSED,
+        "审批已流转",
+        "评估单 #" + event.taskSupplierId() + " 已通过上一级审批，等待你审批");
   }
 }

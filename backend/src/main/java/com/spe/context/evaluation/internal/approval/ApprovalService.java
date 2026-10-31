@@ -127,7 +127,7 @@ public class ApprovalService {
       // 记录与审计先落（同一事务；定稿失败会一起回滚），再由 T3 完成 EFFECTIVE + 分数 + 快照 + 事件。
       // 审计放在 finalize 之前，让 audit_log 的先后与"通过 → 定稿"的业务顺序一致。
       appendRecord(taskSupplier, currentNode, operatorId, "APPROVE", null);
-      auditFacade.record(AuditAction.APPROVAL_APPROVE, AuditTargetType.TASK, taskSupplierId, detail);
+      auditFacade.record(AuditAction.APPROVAL_APPROVE, AuditTargetType.TASK_SUPPLIER, taskSupplierId, detail);
       finalizeService.finalize(taskSupplier, maxSeq, version);
     } else {
       Long nextApproverId = approvalNodeMapper.findApproverId(taskSupplier.getTaskId(), currentNode + 1);
@@ -140,7 +140,7 @@ public class ApprovalService {
         throw new BizException(ErrorCode.CONCURRENT_CONFLICT);
       }
       appendRecord(taskSupplier, currentNode, operatorId, "APPROVE", null);
-      auditFacade.record(AuditAction.APPROVAL_APPROVE, AuditTargetType.TASK, taskSupplierId, detail);
+      auditFacade.record(AuditAction.APPROVAL_APPROVE, AuditTargetType.TASK_SUPPLIER, taskSupplierId, detail);
       eventPublisher.publish(new ApprovalNodePassedEvent(taskSupplierId, nextApproverId));
     }
 
@@ -202,7 +202,7 @@ public class ApprovalService {
     detail.put("seq", currentNode);
     detail.put("unlockedSheets", unlocked);
     detail.put("comment", AuditDetails.commentSummary(normalizedComment));
-    auditFacade.record(AuditAction.APPROVAL_REJECT, AuditTargetType.TASK, taskSupplierId, detail);
+    auditFacade.record(AuditAction.APPROVAL_REJECT, AuditTargetType.TASK_SUPPLIER, taskSupplierId, detail);
     log.info(
         "审批驳回：taskSupplierId={} approverId={} round={} seq={} unlockedSheets={}",
         taskSupplierId,

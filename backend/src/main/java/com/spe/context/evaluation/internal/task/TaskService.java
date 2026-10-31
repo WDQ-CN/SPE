@@ -3,6 +3,7 @@ package com.spe.context.evaluation.internal.task;
 import com.spe.common.batch.Batches;
 import com.spe.common.event.EventPublisher;
 import com.spe.common.sql.SqlKeywords;
+import com.spe.common.validation.Limits;
 import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
 import com.spe.context.evaluation.api.EvalTaskStatus;
@@ -10,12 +11,13 @@ import com.spe.context.evaluation.api.SheetStatus;
 import com.spe.context.evaluation.api.events.TaskPublishedEvent;
 import com.spe.context.evaluation.internal.sheet.MySheetRow;
 import com.spe.context.evaluation.internal.sheet.MySheetView;
-import com.spe.context.evaluation.internal.sheet.SheetContextRow;
 import com.spe.context.evaluation.internal.sheet.Sheet;
+import com.spe.context.evaluation.internal.sheet.SheetContextRow;
 import com.spe.context.evaluation.internal.sheet.SheetMapper;
 import com.spe.context.supplier.api.SupplierBrief;
 import com.spe.context.supplier.api.SupplierQueryFacade;
 import com.spe.context.system.api.AuditAction;
+import com.spe.context.system.api.AuditDetails;
 import com.spe.context.system.api.AuditFacade;
 import com.spe.context.system.api.AuditTargetType;
 import com.spe.context.system.api.Department;
@@ -132,11 +134,15 @@ public class TaskService {
                       node.getApproverId(), brief == null ? null : brief.name(), node.getSeq());
                 })
             .toList();
+    // eval_task 只存 template_version_id；模板 id 从冻结快照取（跨上下文只走 api 门面）
+    long templateId =
+        templateSnapshotFacade.requirePublished(task.getTemplateVersionId()).templateId();
     return new TaskDetail(
         task.getId(),
         task.getName(),
         task.getYear(),
         task.getQuarter(),
+        templateId,
         task.getTemplateVersionId(),
         task.getDeadline(),
         task.getStatus(),
@@ -430,8 +436,7 @@ public class TaskService {
     Map<String, Object> detail = new LinkedHashMap<>();
     detail.put("sheetId", sheetId);
     detail.put("taskSupplierId", context.getTaskSupplierId());
-    detail.put("from", sheet.getAssigneeId());
-    detail.put("to", assigneeId);
+    detail.putAll(AuditDetails.transition(sheet.getAssigneeId(), assigneeId));
     auditFacade.record(AuditAction.SHEET_ASSIGN, AuditTargetType.TASK, context.getTaskId(), detail);
   }
 
@@ -497,13 +502,13 @@ public class TaskService {
 
   private Validated validate(TaskDraftCommand command) {
     String name = command.name() == null ? "" : command.name().trim();
-    if (name.isEmpty() || name.length() > 100) {
-      throw new BizException(ErrorCode.BAD_REQUEST, "任务名称不能为空且不超过 100 字");
+    if (name.isEmpty() || name.length() > Limits.NAME_100) {
+      throw new BizException(ErrorCode.BAD_REQUEST, "任务名称不能为空且不超过 " + Limits.NAME_100 + " 字");
     }
-    if (command.quarter() < 1 || command.quarter() > 4) {
+    if (command.quarter() < Limits.QUARTER_MIN || command.quarter() > Limits.QUARTER_MAX) {
       throw new BizException(ErrorCode.BAD_REQUEST, "季度必须在 1~4 之间");
     }
-    if (command.year() < 2000 || command.year() > 2999) {
+    if (command.year() < Limits.YEAR_MIN || command.year() > Limits.YEAR_MAX) {
       throw new BizException(ErrorCode.BAD_REQUEST, "年份不合法：" + command.year());
     }
     if (command.deadline() == null) {
@@ -531,7 +536,7 @@ public class TaskService {
     return new Validated(name, supplierIds, approverIds);
   }
 
-  /** 停用的供应商不可被新任务选中（01 S2；门面在 P1 就为这条留了 `isEnabled` 的语义）。 */
+  /** 停用的供应商不可被新任务选中（01 S2）。 */
   private void requireSuppliersEnabled(List<Long> supplierIds) {
     List<SupplierBrief> suppliers = supplierQueryFacade.findByIds(supplierIds);
     Map<Long, SupplierBrief> byId = new LinkedHashMap<>();

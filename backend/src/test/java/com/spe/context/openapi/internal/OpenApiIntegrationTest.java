@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.spe.integration.AbstractIntegrationTest;
+import com.spe.integration.support.TestFixtures;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -201,14 +202,9 @@ class OpenApiIntegrationTest extends AbstractIntegrationTest {
     int seq = SEQ.getAndIncrement();
     int year = 2080 + seq;
     String supplierCode = codePrefix + "-SUP-" + seq;
-    jdbcTemplate.update(
-        "INSERT INTO supplier (code, name, category, status, version)"
-            + " VALUES (?, ?, 'M6 开放', 'ENABLED', 0)",
-        supplierCode,
-        "供应商 " + supplierCode);
     long supplierId =
-        jdbcTemplate.queryForObject(
-            "SELECT id FROM supplier WHERE code = ?", Long.class, supplierCode);
+        TestFixtures.insertSupplier(
+            jdbcTemplate, supplierCode, "供应商 " + supplierCode, "M6 开放", "ENABLED");
     long versionId = defaultVersionId();
     Map<String, Object> indicator =
         jdbcTemplate.queryForMap(
@@ -267,14 +263,7 @@ class OpenApiIntegrationTest extends AbstractIntegrationTest {
   }
 
   private long insertEvaluator(String username) {
-    jdbcTemplate.update(
-        "INSERT INTO sys_user (username, password_hash, name, role, department, status, version)"
-            + " VALUES (?, ?, ?, 'EVALUATOR', 'QUALITY', 'ENABLED', 0)",
-        username,
-        "$2a$10$XN4FIyPaEhAv6Z/6Pms6quxg7qd1RlAZV8.dCcOl.YvcqCxxy9jsm",
-        "M6 开放评估人");
-    return jdbcTemplate.queryForObject(
-        "SELECT id FROM sys_user WHERE username = ?", Long.class, username);
+    return TestFixtures.insertUser(jdbcTemplate, username, "EVALUATOR", "QUALITY", "M6 开放评估人");
   }
 
   private long defaultVersionId() {

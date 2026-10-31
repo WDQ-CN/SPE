@@ -22,13 +22,10 @@ public class ApprovalRoundStartedListener {
 
   @EventListener
   public void onApprovalRoundStarted(ApprovalRoundStartedEvent event) {
-    Notification notification = new Notification();
-    notification.setReceiverId(event.approverId());
-    notification.setType(NotificationService.TYPE_APPROVAL_ROUND_STARTED);
-    notification.setTitle("评估单待审批");
-    notification.setContent(
+    notificationService.send(
+        event.approverId(),
+        NotificationService.TYPE_APPROVAL_ROUND_STARTED,
+        "评估单待审批",
         "评估单 #" + event.taskSupplierId() + " 第 " + event.round() + " 轮审批已发起，等待你审批");
-    notification.setIsRead(false);
-    notificationService.write(List.of(notification));
   }
 }

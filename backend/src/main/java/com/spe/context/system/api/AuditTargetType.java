@@ -13,8 +13,15 @@ public enum AuditTargetType {
   SETTING,
   /** P2 起：模板、模板版本、维度、指标（四者共用一个目标类型，具体对象由 action 区分）。 */
   TEMPLATE,
-  /** P3 起：评估任务、评估单、评分单（三者共用一个目标类型，具体对象由 action 区分，13 §E20）。 */
+  /** 评估任务（目标 id = eval_task.id；建/改/发布/改派等任务级动作）。 */
   TASK,
+  /**
+   * 评估单（目标 id = task_supplier.id；提交/审批/定稿/解锁/导入等评估单级动作）。
+   *
+   * <p>与 TASK 分开是为了让「按任务查审计」与「按评估单查审计」不再靠猜 id 语义（03 §51 P2-11）。
+   * 历史上把评估单级动作记成 TASK + task_supplier_id 的旧行保留原样（审计只增不改）。
+   */
+  TASK_SUPPLIER,
   /** M6 起：开放 API Token（生成/停用；目标 id = api_token.id）。 */
   TOKEN
 }

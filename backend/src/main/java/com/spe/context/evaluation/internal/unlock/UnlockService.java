@@ -108,7 +108,7 @@ public class UnlockService {
       detail.put("comment", AuditDetails.commentSummary(normalizedComment));
     }
     auditFacade.record(
-        AuditAction.TASK_SUPPLIER_UNLOCK, AuditTargetType.TASK, taskSupplierId, detail);
+        AuditAction.TASK_SUPPLIER_UNLOCK, AuditTargetType.TASK_SUPPLIER, taskSupplierId, detail);
 
     eventPublisher.publish(
         new TaskSupplierUnlockedEvent(

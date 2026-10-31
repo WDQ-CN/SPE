@@ -1,5 +1,6 @@
 package com.spe.context.evaluation.internal.approval;
 
+import com.spe.integration.support.TestFixtures;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
@@ -540,7 +541,7 @@ class ApprovalFlowIntegrationTest extends AbstractIntegrationTest {
     assertThat(rows.stream().map(row -> row.get("action")).toList())
         .containsExactly(
             "APPROVAL_REJECT", "APPROVAL_APPROVE", "APPROVAL_APPROVE", "TASK_SUPPLIER_FINALIZE");
-    assertThat(rows).allSatisfy(row -> assertThat(row.get("target_type")).isEqualTo("TASK"));
+    assertThat(rows).allSatisfy(row -> assertThat(row.get("target_type")).isEqualTo("TASK_SUPPLIER"));
 
     String details =
         rows.stream().map(row -> String.valueOf(row.get("detail"))).collect(Collectors.joining("\n"));
@@ -704,26 +705,9 @@ class ApprovalFlowIntegrationTest extends AbstractIntegrationTest {
     return id;
   }
 
-  private long insertSupplier(String code) {
-    jdbcTemplate.update(
-        "insert into supplier (code, name, category, status, version) values (?, ?, 'P4 测试', 'ENABLED', 0)",
-        code,
-        "供应商 " + code);
-    Long id = jdbcTemplate.queryForObject("select id from supplier where code = ?", Long.class, code);
-    return id == null ? -1 : id;
-  }
+  private long insertSupplier(String code) { return TestFixtures.insertSupplier(jdbcTemplate, code, "供应商 " + code, "P4 测试"); }
 
-  private long insertUser(String username, String role, String department) {
-    jdbcTemplate.update(
-        "insert into sys_user (username, password_hash, name, role, department, status, version)"
-            + " values (?, '$2a$10$abcdefghijklmnopqrstuv', ?, ?, ?, 'ENABLED', 0)",
-        username,
-        "测试用户 " + username,
-        role,
-        department);
-    Long id = jdbcTemplate.queryForObject("select id from sys_user where username = ?", Long.class, username);
-    return id == null ? -1 : id;
-  }
+  private long insertUser(String username, String role, String department) { return TestFixtures.insertUser(jdbcTemplate, username, role, department); }
 
   private Map<String, Object> taskSupplierRow(long taskSupplierId) {
     return jdbcTemplate.queryForMap("select * from task_supplier where id = ?", taskSupplierId);

@@ -1,5 +1,6 @@
 package com.spe.context.alert.internal;
 
+import com.spe.integration.support.TestFixtures;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.spe.common.event.EventPublisher;
@@ -254,26 +255,9 @@ class AlertFlowIntegrationTest extends AbstractIntegrationTest {
             firstEffective));
   }
 
-  private long insertSupplier(String code) {
-    jdbcTemplate.update(
-        "INSERT INTO supplier (code, name, category, status, version)"
-            + " VALUES (?, ?, 'W2 预警', 'ENABLED', 0)",
-        code,
-        "供应商 " + code);
-    return jdbcTemplate.queryForObject(
-        "SELECT id FROM supplier WHERE code = ?", Long.class, code);
-  }
+  private long insertSupplier(String code) { return TestFixtures.insertSupplier(jdbcTemplate, code, "供应商 " + code, "W2 预警"); }
 
-  private long insertUser(String username) {
-    jdbcTemplate.update(
-        "INSERT INTO sys_user (username, password_hash, name, role, department, status, version)"
-            + " VALUES (?, ?, ?, 'MANAGER', 'PURCHASE', 'ENABLED', 0)",
-        username,
-        "$2a$10$XN4FIyPaEhAv6Z/6Pms6quxg7qd1RlAZV8.dCcOl.YvcqCxxy9jsm",
-        "W2 " + username);
-    return jdbcTemplate.queryForObject(
-        "SELECT id FROM sys_user WHERE username = ?", Long.class, username);
-  }
+  private long insertUser(String username) { return TestFixtures.insertUser(jdbcTemplate, username, "MANAGER", "PURCHASE"); }
 
   private long insertTask(String name, int year, int quarter, String status, long versionId) {
     jdbcTemplate.update(

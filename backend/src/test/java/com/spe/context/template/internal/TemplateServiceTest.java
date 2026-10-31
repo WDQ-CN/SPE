@@ -200,7 +200,6 @@ class TemplateServiceTest {
 
     assertThat(effective.versionId()).isEqualTo(1L);
     assertThat(effective.version()).isEqualTo(7);
-    assertThat(effective.copied()).isFalse();
     // 版本没换 ⇒ 行 id 就是它自己，不需要任何映射
     assertThat(effective.requireDimensionId(42L, 1L)).isEqualTo(42L);
     // 草稿路径**直接返回**：连"有没有同源草稿"都不必查（04-080 删掉模板行锁后，这条断言换成它）
@@ -223,10 +222,10 @@ class TemplateServiceTest {
 
     EffectiveVersion effective = service.ensureEditable(PUBLISHED_VERSION_ID);
 
-    assertThat(effective.copied()).isTrue();
     assertThat(effective.versionId()).isNotEqualTo(PUBLISHED_VERSION_ID);
     assertThat(effective.requireDimensionId(10L, PUBLISHED_VERSION_ID)).isNotEqualTo(10L);
-    assertThat(effective.requireIndicatorId(100L, PUBLISHED_VERSION_ID)).isNotEqualTo(100L);
+    assertThat(effective.requireIndicatorRow(100L, PUBLISHED_VERSION_ID, 0).id())
+        .isNotEqualTo(100L);
     // 顺序不变式：**先查复用、再算 max**——已经有同源草稿就不该去动版本号（04-080 删掉模板行锁后，
     // 这里不再能断言"锁先于复用查询"，改成断言这条仍然成立的顺序）
     var order = org.mockito.Mockito.inOrder(templateVersionMapper);
@@ -257,8 +256,8 @@ class TemplateServiceTest {
 
     // 已发布版本上的写操作必须经"复制"落地。若判状态用的是快照（旧写法），这里会走 sameAs 分支、
     // 把维度直接插进已发布版本，而版本守卫只能拦 UPDATE、拦不住 INSERT（05 ADR-3 就此失守）。
-    assertThat(effective.copied()).as("必须复制出新草稿，而不是把改动落进已发布版本").isTrue();
-    assertThat(effective.versionId()).isNotEqualTo(PUBLISHED_VERSION_ID);
+    assertThat(effective.versionId()).as("必须复制出新草稿，而不是把改动落进已发布版本")
+        .isNotEqualTo(PUBLISHED_VERSION_ID);
   }
 
   @Test
@@ -282,9 +281,8 @@ class TemplateServiceTest {
     EffectiveVersion effective = service.ensureEditable(PUBLISHED_VERSION_ID);
 
     assertThat(effective.versionId()).isEqualTo(9L);
-    assertThat(effective.copied()).isFalse();
     // 指标侧配上了：能翻译
-    assertThat(effective.requireIndicatorId(100L, PUBLISHED_VERSION_ID)).isEqualTo(200L);
+    assertThat(effective.requireIndicatorRow(100L, PUBLISHED_VERSION_ID, 0).id()).isEqualTo(200L);
     // 维度侧配不上：必须**抛 2015**。修复前的写法会 (a) 因为指标映射非空而放行闸门、
     // 再 (b) 用 getOrDefault 把请求里的 10L 当答案返回 ⇒ 静默把改动写到旧行上。
     assertThatThrownBy(() -> effective.requireDimensionId(10L, PUBLISHED_VERSION_ID))

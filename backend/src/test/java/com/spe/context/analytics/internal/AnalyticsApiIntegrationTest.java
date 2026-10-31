@@ -1,5 +1,6 @@
 package com.spe.context.analytics.internal;
 
+import com.spe.integration.support.TestFixtures;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -250,25 +251,9 @@ class AnalyticsApiIntegrationTest extends AbstractIntegrationTest {
     return login("w4-analytics-viewer", "Admin@12345");
   }
 
-  private void insertUser(String username, String role) {
-    jdbcTemplate.update(
-        "INSERT INTO sys_user (username, password_hash, name, role, department, status, version)"
-            + " VALUES (?, ?, ?, ?, 'QUALITY', 'ENABLED', 0)",
-        username,
-        "$2a$10$XN4FIyPaEhAv6Z/6Pms6quxg7qd1RlAZV8.dCcOl.YvcqCxxy9jsm",
-        "W4 " + username,
-        role);
-  }
+  private void insertUser(String username, String role) { TestFixtures.insertUser(jdbcTemplate, username, role, "QUALITY"); }
 
-  private long insertSupplier(String code, String name, String category, String status) {
-    jdbcTemplate.update(
-        "INSERT INTO supplier (code, name, category, status, version) VALUES (?, ?, ?, ?, 0)",
-        code,
-        name,
-        category,
-        status);
-    return supplierId(code);
-  }
+  private long insertSupplier(String code, String name, String category, String status) { return TestFixtures.insertSupplier(jdbcTemplate, code, name, category, status); }
 
   private long supplierId(String code) {
     return jdbcTemplate.queryForObject(

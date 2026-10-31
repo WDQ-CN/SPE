@@ -35,13 +35,9 @@ public class AlertCreatedListener {
     }
     List<Notification> notifications = new ArrayList<>(managers.size());
     for (Long receiverId : managers) {
-      Notification notification = new Notification();
-      notification.setReceiverId(receiverId);
-      notification.setType(NotificationService.TYPE_ALERT_CREATED);
-      notification.setTitle(event.title());
-      notification.setContent(event.content());
-      notification.setIsRead(false);
-      notifications.add(notification);
+      notifications.add(
+          NotificationService.compose(
+              receiverId, NotificationService.TYPE_ALERT_CREATED, event.title(), event.content()));
     }
     notificationService.write(notifications);
   }

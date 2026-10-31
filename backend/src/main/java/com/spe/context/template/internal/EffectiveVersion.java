@@ -15,9 +15,7 @@ import java.util.Map;
  *       拿旧 id 继续改只会得到 2015/2016（不存在）或 3001；</li>
  *   <li><b>旧行对应到新行的哪一行</b>（{@link #requireDimensionRow} / {@link #requireIndicatorRow}）：
  *       返回 {@link Target}（新行 id **+ 它当前的 version**）。这是"自动复制"能真正让改动生效的关键；
- *       没有它，服务端复制完就不知道该改新草稿里的哪一行——T1 的"再次修改自动复制生成新草稿"就只剩前半句；</li>
- *   <li><b>要不要留复制痕迹</b>（{@code copied}）：只在**本次新建**草稿时为真；复用一个已存在的同源草稿时
- *       不算"发生了复制"，不该写 {@code TEMPLATE_VERSION_AUTO_COPY} 审计。</li>
+ *       没有它，服务端复制完就不知道该改新草稿里的哪一行——T1 的"再次修改自动复制生成新草稿"就只剩前半句。</li>
  * </ul>
  *
  * <p>⚠️ **这两条翻译方法是唯一入口，故意不接受"先自己判断、再自己取映射"的两步走法**。早先的版本把
@@ -47,7 +45,6 @@ import java.util.Map;
 public record EffectiveVersion(
     long versionId,
     int version,
-    boolean copied,
     Map<Long, Target> dimensionTargets,
     Map<Long, Target> indicatorTargets) {
 
@@ -61,7 +58,7 @@ public record EffectiveVersion(
 
   /** 原本就在草稿上：版本没换、行也没换。 */
   public static EffectiveVersion sameAs(long versionId, int version) {
-    return new EffectiveVersion(versionId, version, false, Map.of(), Map.of());
+    return new EffectiveVersion(versionId, version, Map.of(), Map.of());
   }
 
   /**
@@ -98,10 +95,5 @@ public record EffectiveVersion(
   /** 只要 id 的场景（新增行不需要守卫版本，例如 `addIndicator`）。 */
   public long requireDimensionId(long requestedId, long requestedVersionId) {
     return requireDimensionRow(requestedId, requestedVersionId, 0).id();
-  }
-
-  /** 只要 id 的场景（2016）。 */
-  public long requireIndicatorId(long requestedId, long requestedVersionId) {
-    return requireIndicatorRow(requestedId, requestedVersionId, 0).id();
   }
 }
