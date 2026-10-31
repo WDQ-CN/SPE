@@ -284,14 +284,13 @@ async function submitReset(): Promise<void> {
       </el-table-column>
     </el-table>
 
-    <el-pagination
-      v-model:current-page="page"
-      v-model:page-size="size"
-      class="page__pager"
+    <ListPagination
+      v-model:page="page"
+      v-model:size="size"
       :total="total"
       :page-sizes="[10, 20, 50, 100]"
-      layout="total, sizes, prev, pager, next"
-      @current-change="(target: number) => void load(target)"
+      class="page__pager"
+      @change="(target: number) => void load(target)"
       @size-change="() => void load(1)"
     />
 

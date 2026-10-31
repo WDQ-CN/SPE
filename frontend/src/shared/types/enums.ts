@@ -22,9 +22,6 @@ export type UserStatus = 'ENABLED' | 'DISABLED'
 /** 供应商档案状态（`V3__supplier.sql` 的 status 列，两态机） */
 export type SupplierStatus = 'ENABLED' | 'DISABLED'
 
-/** 开放 API Token 状态（M6 I3）：生成即 ENABLED，停用不可逆。 */
-export type ApiTokenStatus = 'ENABLED' | 'DISABLED'
-
 /**
  * 模板版本状态（`V7__template.sql` 的 status 列）。
  *

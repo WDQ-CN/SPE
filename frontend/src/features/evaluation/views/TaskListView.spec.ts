@@ -12,6 +12,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   listTasks: vi.fn(),
   createTask: vi.fn(),
+  getTask: vi.fn(),
+  updateTask: vi.fn(),
   publishTask: vi.fn(),
   listTemplates: vi.fn(),
   listPublishedVersions: vi.fn(),
@@ -24,6 +26,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/features/evaluation/api', () => ({
   listTasks: mocks.listTasks,
   createTask: mocks.createTask,
+  getTask: mocks.getTask,
+  updateTask: mocks.updateTask,
   publishTask: mocks.publishTask,
 }))
 vi.mock('@/features/template/api', () => ({
@@ -69,6 +73,8 @@ beforeEach(() => {
   mocks.listUserOptions.mockResolvedValue([])
   mocks.listSuppliers.mockResolvedValue({ list: [], total: 0, page: 1, size: 20 })
   mocks.createTask.mockResolvedValue(1)
+  mocks.updateTask.mockResolvedValue(undefined)
+  mocks.getTask.mockReset()
   mocks.publishTask.mockResolvedValue({})
   mocks.listPublishedVersions.mockReset()
 })
@@ -128,5 +134,82 @@ describe('TaskListView（建任务弹窗）', () => {
     const wrapper = mountView()
     await flushPromises()
     expect(wrapper.findAll('button').some((item) => item.text() === '新建任务')).toBe(false)
+  })
+
+  it('编辑草稿：按详情回填并带 version 调 updateTask（P2-2）', async () => {
+    mocks.listTasks.mockResolvedValue({
+      list: [
+        {
+          id: 5,
+          name: '旧草稿',
+          year: 2026,
+          quarter: 1,
+          templateVersionId: 101,
+          deadline: '2026-03-31',
+          status: 'DRAFT',
+          version: 3,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 10,
+    })
+    mocks.listTemplates.mockResolvedValue({
+      list: [{ id: 9, name: '默认模板' }],
+      total: 1,
+      page: 1,
+      size: 100,
+    })
+    mocks.listUserOptions.mockResolvedValue([
+      { id: 2, name: '经理', role: 'MANAGER', department: 'OTHER' },
+    ])
+    mocks.listSuppliers.mockResolvedValue({
+      list: [
+        { id: 1, code: 'S1', name: '供应商一', category: null, status: 'ENABLED', version: 0 },
+      ],
+      total: 1,
+      page: 1,
+      size: 50,
+    })
+    mocks.listPublishedVersions.mockResolvedValue([{ versionId: 101, versionNo: 1 }])
+    mocks.getTask.mockResolvedValue({
+      id: 5,
+      name: '旧草稿',
+      year: 2026,
+      quarter: 1,
+      templateId: 9,
+      templateVersionId: 101,
+      deadline: '2026-03-31',
+      status: 'DRAFT',
+      version: 3,
+      suppliers: [{ id: 1, code: 'S1', name: '供应商一' }],
+      approvers: [{ userId: 2, name: '经理', seq: 1 }],
+      sheetCount: 0,
+      unsubmittedSheetCount: 0,
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+    const edit = wrapper.findAll('button').find((item) => item.text() === '编辑')
+    expect(edit, 'DRAFT 行必须有编辑入口').toBeTruthy()
+    await edit!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('编辑草稿')
+    const save = wrapper.findAll('button').find((item) => item.text() === '保存草稿')
+    await save!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.updateTask).toHaveBeenCalledWith(
+      5,
+      expect.objectContaining({
+        name: '旧草稿',
+        templateId: 9,
+        templateVersionId: 101,
+        supplierIds: [1],
+        approverIds: [2],
+        version: 3,
+      }),
+    )
   })
 })

@@ -4,7 +4,7 @@ import {
   SCORE_MODE_LABEL,
   SCORE_SOURCE_LABEL,
 } from '@/shared/labels'
-import { formatScore } from '@/shared/format'
+import { formatScore, formatWeight } from '@/shared/format'
 import type { ReportDimension } from '@/shared/types/dto'
 
 /**
@@ -53,7 +53,7 @@ function modeText(type: string, scoreMode: string | null): string {
             size="small"
             type="info"
           >
-            权重 {{ dimension.weight.toFixed(2) }}
+            权重 {{ formatWeight(dimension.weight) }}
           </el-tag>
           <span>得分 {{ formatScore(dimension.score) }} · {{ dimension.grade ?? '—' }}</span>
           <el-tag
@@ -94,7 +94,7 @@ function modeText(type: string, scoreMode: string | null): string {
           width="80"
         >
           <template #default="{ row }">
-            {{ row.weight.toFixed(2) }}
+            {{ formatWeight(row.weight) }}
           </template>
         </el-table-column>
         <el-table-column

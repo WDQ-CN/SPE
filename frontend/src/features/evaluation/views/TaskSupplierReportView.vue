@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessageBox } from 'element-plus'
+import 'element-plus/es/components/message-box/style/css'
 import { useRoute, useRouter } from 'vue-router'
 
+import { canAccess } from '@/app/menu'
 import { useAuthStore } from '@/features/auth/store'
 import { getTaskSupplierReport, unlockTaskSupplier } from '@/features/evaluation/api'
 import ScoreBreakdown from '@/features/evaluation/components/ScoreBreakdown.vue'
 import ScoreRadar from '@/features/evaluation/components/ScoreRadar.vue'
+import { useAsyncData } from '@/shared/composables/useAsyncData'
 import { useSubmit } from '@/shared/composables/useSubmit'
 import { formatGrade, formatScore } from '@/shared/format'
 import { TASK_SUPPLIER_STATUS_LABEL } from '@/shared/labels'
@@ -22,15 +25,19 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const taskSupplierId = ref(Number(route.params.id))
-const report = ref<TaskSupplierReport | null>(null)
-const loading = ref(false)
-const error = ref('')
+const {
+  data: report,
+  loading,
+  error,
+  run: load,
+} = useAsyncData(
+  () => getTaskSupplierReport(taskSupplierId.value),
+  null as TaskSupplierReport | null,
+)
 
 // 结果列表只对 ADMIN/MANAGER/VIEWER 开放（01 §7）；评估人的合法来路是「我的评分单」，
 // 固定跳 task-results 会把它送进无权限路由（03 §41.3 的 P2-30）⇒ 用返回上一页。
-const canOpenResults = computed(() =>
-  auth.roles.some((role) => role === 'ADMIN' || role === 'MANAGER' || role === 'VIEWER'),
-)
+const canOpenResults = computed(() => canAccess('/results', auth.roles))
 /** 解锁重评仅 ADMIN，且只有生效中的评估单可解锁（R5；后端还会再判任务状态与版本）。 */
 const canUnlock = computed(
   () => report.value?.status === 'EFFECTIVE' && auth.roles.includes('ADMIN'),
@@ -69,32 +76,6 @@ async function onUnlock(): Promise<void> {
   if (ok) {
     ElMessage.success('已解锁，评估单退回评分中')
     await load()
-  }
-}
-
-let loadSeq = 0
-
-async function load(): Promise<void> {
-  const requested = taskSupplierId.value
-  const seq = ++loadSeq
-  loading.value = true
-  error.value = ''
-  try {
-    const data = await getTaskSupplierReport(requested)
-    if (seq !== loadSeq) {
-      return
-    }
-    report.value = data
-  } catch (caught) {
-    if (seq !== loadSeq) {
-      return
-    }
-    report.value = null
-    error.value = caught instanceof Error ? caught.message : '加载失败'
-  } finally {
-    if (seq === loadSeq) {
-      loading.value = false
-    }
   }
 }
 

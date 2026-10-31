@@ -11,6 +11,7 @@ import {
 } from '@/features/analytics/api'
 import AnalyticsChart from '@/features/analytics/components/AnalyticsChart.vue'
 import { compareOption, gradeOption, periodLabel, trendOption } from '@/features/analytics/charts'
+import { useAsyncData } from '@/shared/composables/useAsyncData'
 import { GRADE_ORDER } from '@/shared/labels'
 import { formatScore } from '@/shared/format'
 import type {
@@ -28,32 +29,41 @@ import type {
  * <p>数据口径全部在后端（只读 EFFECTIVE、环比只认上一日历季度、维度名并集）；本页只做选择与呈现。
  * 周期默认取 `/periods` 的最新一条；空库/空周期显示空态而不是造数。
  */
-const periods = ref<AnalyticsPeriod[]>([])
 const periodKey = ref('')
-const suppliers = ref<AnalyticsSupplierOption[]>([])
 const category = ref('')
 const grade = ref('')
-
-const ranking = ref<AnalyticsRanking | null>(null)
-const gradeCounts = ref<AnalyticsGradeCount[]>([])
 const trendSupplierId = ref<number | null>(null)
-const trend = ref<AnalyticsTrend | null>(null)
 const compareIds = ref<number[]>([])
-const compare = ref<AnalyticsCompare | null>(null)
 
-const baseError = ref('')
-const baseLoading = ref(false)
-const rankingError = ref('')
-const trendError = ref('')
-const compareError = ref('')
-const loadingRanking = ref(false)
-const loadingTrend = ref(false)
-const loadingCompare = ref(false)
-
-// 迟到响应守卫（与其它页面同一模式）：快速切周期/筛选时，晚到的旧结果不得覆盖新结果
-let rankingSeq = 0
-let trendSeq = 0
-let compareSeq = 0
+// 四个数据源各自走 useAsyncData：迟到响应由序号栅栏统一拦截，页面不再各写一套 seq + try/catch
+const {
+  data: baseData,
+  loading: baseLoading,
+  error: baseError,
+  run: loadBase,
+} = useAsyncData(
+  async () => {
+    const [periodList, supplierList] = await Promise.all([
+      listAnalyticsPeriods(),
+      listAnalyticsSuppliers(),
+    ])
+    return { periods: periodList, suppliers: supplierList }
+  },
+  { periods: [] as AnalyticsPeriod[], suppliers: [] as AnalyticsSupplierOption[] },
+  {
+    onSuccess: (data) => {
+      // 周期默认取最新一条、供应商默认取第一家；下面的 watcher 随后各自发起首次加载
+      if (data.periods.length > 0) {
+        periodKey.value = keyOf(data.periods[0])
+      }
+      if (data.suppliers.length > 0) {
+        trendSupplierId.value = data.suppliers[0].id
+      }
+    },
+  },
+)
+const periods = computed(() => baseData.value.periods)
+const suppliers = computed(() => baseData.value.suppliers)
 
 const selectedPeriod = computed(
   () => periods.value.find((period) => keyOf(period) === periodKey.value) ?? null,
@@ -61,6 +71,74 @@ const selectedPeriod = computed(
 const categories = computed(() =>
   [...new Set(suppliers.value.map((supplier) => supplier.category).filter((value): value is string => !!value))].sort(),
 )
+
+const {
+  data: rankingData,
+  loading: loadingRanking,
+  error: rankingError,
+  run: loadRanking,
+} = useAsyncData(
+  async () => {
+    const period = selectedPeriod.value
+    if (!period) {
+      return { ranking: null as AnalyticsRanking | null, gradeCounts: [] as AnalyticsGradeCount[] }
+    }
+    const [rank, distribution] = await Promise.all([
+      getAnalyticsRanking({
+        year: period.year,
+        quarter: period.quarter,
+        category: category.value || undefined,
+        grade: grade.value || undefined,
+      }),
+      getGradeDistribution({ year: period.year, quarter: period.quarter }),
+    ])
+    return { ranking: rank, gradeCounts: distribution }
+  },
+  { ranking: null as AnalyticsRanking | null, gradeCounts: [] as AnalyticsGradeCount[] },
+  {
+    onSuccess: (data) => {
+      // 对比默认取当前排行前两家：它们必然在本周期有生效结果（避免默认选择打出 400）
+      if (compareIds.value.length === 0) {
+        compareIds.value = data.ranking?.rows.slice(0, 2).map((row) => row.supplierId) ?? []
+      }
+    },
+  },
+)
+const ranking = computed(() => rankingData.value.ranking)
+const gradeCounts = computed(() => rankingData.value.gradeCounts)
+
+const {
+  data: trendData,
+  error: trendError,
+  run: loadTrend,
+} = useAsyncData(
+  async () => {
+    const id = trendSupplierId.value
+    return id == null ? null : await getAnalyticsTrend(id)
+  },
+  null as AnalyticsTrend | null,
+)
+const trend = computed(() => trendData.value)
+
+const {
+  data: compareData,
+  error: compareError,
+  run: loadCompare,
+} = useAsyncData(
+  async () => {
+    const period = selectedPeriod.value
+    if (!period || compareIds.value.length === 0) {
+      return null
+    }
+    return await getAnalyticsCompare({
+      year: period.year,
+      quarter: period.quarter,
+      supplierIds: compareIds.value,
+    })
+  },
+  null as AnalyticsCompare | null,
+)
+const compare = computed(() => compareData.value)
 
 const gradeChart = computed(() =>
   gradeCounts.value.length > 0 ? gradeOption(gradeCounts.value) : null,
@@ -76,148 +154,14 @@ function keyOf(period: AnalyticsPeriod): string {
   return `${period.year}-${period.quarter}`
 }
 
-function messageOf(caught: unknown): string {
-  return caught instanceof Error ? caught.message : '加载失败'
-}
-
-async function loadBase(): Promise<void> {
-  baseError.value = ''
-  baseLoading.value = true
-  try {
-    periods.value = await listAnalyticsPeriods()
-    if (periods.value.length > 0) {
-      periodKey.value = keyOf(periods.value[0])
-    }
-    suppliers.value = await listAnalyticsSuppliers()
-    if (suppliers.value.length > 0) {
-      trendSupplierId.value = suppliers.value[0].id
-    }
-  } catch (caught) {
-    baseError.value = messageOf(caught)
-  } finally {
-    baseLoading.value = false
-  }
-}
-
-async function loadRanking(): Promise<void> {
-  const seq = ++rankingSeq
-  const period = selectedPeriod.value
-  if (!period) {
-    ranking.value = null
-    gradeCounts.value = []
-    rankingError.value = ''
-    loadingRanking.value = false
-    return
-  }
-  loadingRanking.value = true
-  rankingError.value = ''
-  try {
-    const [rank, distribution] = await Promise.all([
-      getAnalyticsRanking({
-        year: period.year,
-        quarter: period.quarter,
-        category: category.value || undefined,
-        grade: grade.value || undefined,
-      }),
-      getGradeDistribution({ year: period.year, quarter: period.quarter }),
-    ])
-    if (seq !== rankingSeq) {
-      return
-    }
-    ranking.value = rank
-    gradeCounts.value = distribution
-    // 对比默认取当前排行前两家：它们必然在本周期有生效结果（避免默认选择打出 400）
-    if (compareIds.value.length === 0) {
-      compareIds.value = rank.rows.slice(0, 2).map((row) => row.supplierId)
-    }
-  } catch (caught) {
-    if (seq !== rankingSeq) {
-      return
-    }
-    ranking.value = null
-    gradeCounts.value = []
-    rankingError.value = messageOf(caught)
-  } finally {
-    if (seq === rankingSeq) {
-      loadingRanking.value = false
-    }
-  }
-}
-
-async function loadTrend(): Promise<void> {
-  const seq = ++trendSeq
-  if (trendSupplierId.value == null) {
-    trend.value = null
-    trendError.value = ''
-    loadingTrend.value = false
-    return
-  }
-  loadingTrend.value = true
-  trendError.value = ''
-  try {
-    const data = await getAnalyticsTrend(trendSupplierId.value)
-    if (seq !== trendSeq) {
-      return
-    }
-    trend.value = data
-  } catch (caught) {
-    if (seq !== trendSeq) {
-      return
-    }
-    trend.value = null
-    trendError.value = messageOf(caught)
-  } finally {
-    if (seq === trendSeq) {
-      loadingTrend.value = false
-    }
-  }
-}
-
-async function loadCompare(): Promise<void> {
-  const seq = ++compareSeq
-  const period = selectedPeriod.value
-  if (!period || compareIds.value.length === 0) {
-    compare.value = null
-    compareError.value = ''
-    loadingCompare.value = false
-    return
-  }
-  loadingCompare.value = true
-  compareError.value = ''
-  try {
-    const data = await getAnalyticsCompare({
-      year: period.year,
-      quarter: period.quarter,
-      supplierIds: compareIds.value,
-    })
-    if (seq !== compareSeq) {
-      return
-    }
-    compare.value = data
-  } catch (caught) {
-    if (seq !== compareSeq) {
-      return
-    }
-    compare.value = null
-    compareError.value = messageOf(caught)
-  } finally {
-    if (seq === compareSeq) {
-      loadingCompare.value = false
-    }
-  }
-}
-
-onMounted(async () => {
-  await loadBase()
-  // loadBase 写入 periodKey/trendSupplierId 后，下面的 watcher 会各自发起首次加载；
-  // 这里不再显式调用一遍，避免首次进入重复请求排行/趋势（03 §44 的 M5R-07）。
-})
+onMounted(loadBase)
+// loadBase 的 onSuccess 写入 periodKey/trendSupplierId 后，下面的 watcher 会各自发起首次加载；
+// 这里不再显式调用一遍，避免首次进入重复请求排行/趋势（03 §44 的 M5R-07）。
 
 watch(periodKey, () => {
-  // 周期切换后对比先清空：旧选择在新周期可能没有生效结果（否则会打出一个 400）
+  // 周期切换后对比先清空：旧选择在新周期可能没有生效结果（否则会打出一个 400）。
+  // 置空会触发下面的 compareIds watcher，它负责把 compare/compareError 一并清掉。
   compareIds.value = []
-  compare.value = null
-  compareError.value = ''
   void loadRanking()
 })
 watch([category, grade], () => void loadRanking())

@@ -11,6 +11,7 @@ import {
 import { useAuthStore } from '@/features/auth/store'
 import { sheetPermissions } from '@/features/evaluation/sheet-status'
 import { listUserOptions } from '@/features/user/api'
+import { useAsyncData } from '@/shared/composables/useAsyncData'
 import { useSubmit } from '@/shared/composables/useSubmit'
 import {
   EVAL_TASK_STATUS_LABEL,
@@ -36,12 +37,32 @@ const auth = useAuthStore()
  */
 const taskId = ref(Number(route.params.id))
 
-const detail = ref<TaskDetail | null>(null)
-const progress = ref<TaskProgress | null>(null)
-const sheets = ref<SheetBrief[]>([])
+const {
+  data: loaded,
+  loading,
+  error,
+  run: load,
+  reset: resetLoaded,
+} = useAsyncData(
+  async () => {
+    const requested = taskId.value
+    const [detailData, progressData, sheetData] = await Promise.all([
+      getTask(requested),
+      getTaskProgress(requested),
+      listTaskSheets(requested),
+    ])
+    return { detail: detailData, progress: progressData, sheets: sheetData }
+  },
+  {
+    detail: null as TaskDetail | null,
+    progress: null as TaskProgress | null,
+    sheets: [] as SheetBrief[],
+  },
+)
+const detail = computed(() => loaded.value.detail)
+const progress = computed(() => loaded.value.progress)
+const sheets = computed(() => loaded.value.sheets)
 const users = ref<UserOption[]>([])
-const loading = ref(false)
-const error = ref('')
 /** 改派是写操作：闸门 + 错误回显一律走 useSubmit（03 §38 的 P1-14——原来没有防重复闸门） */
 const assign = useSubmit()
 
@@ -72,41 +93,6 @@ const pagedSheets = computed(() => {
   return sheets.value.slice(from, from + sheetsSize.value)
 })
 
-/** 迟到响应不得覆盖新的单子（同一族的竞态形态：03 §38 的 P1-10 打分页就是它）。 */
-let loadSeq = 0
-
-async function load(): Promise<void> {
-  const requested = taskId.value
-  const seq = ++loadSeq
-  loading.value = true
-  error.value = ''
-  try {
-    const [detailData, progressData, sheetData] = await Promise.all([
-      getTask(requested),
-      getTaskProgress(requested),
-      listTaskSheets(requested),
-    ])
-    if (seq !== loadSeq) {
-      return
-    }
-    detail.value = detailData
-    progress.value = progressData
-    sheets.value = sheetData
-  } catch (caught) {
-    if (seq !== loadSeq) {
-      return
-    }
-    detail.value = null
-    progress.value = null
-    sheets.value = []
-    error.value = caught instanceof Error ? caught.message : '加载失败'
-  } finally {
-    if (seq === loadSeq) {
-      loading.value = false
-    }
-  }
-}
-
 watch(
   () => route.params.id,
   (next) => {
@@ -115,9 +101,7 @@ watch(
       return
     }
     taskId.value = parsed
-    detail.value = null
-    progress.value = null
-    sheets.value = []
+    resetLoaded()
     void load()
   },
 )
@@ -263,12 +247,11 @@ onMounted(load)
             </template>
           </el-table-column>
         </el-table>
-        <el-pagination
-          v-model:current-page="progressPage"
-          v-model:page-size="progressSize"
+        <ListPagination
+          v-model:page="progressPage"
+          v-model:size="progressSize"
           :total="progress?.rows.length ?? 0"
           :page-sizes="[20, 50, 100]"
-          layout="total, sizes, prev, pager, next"
           class="detail__pagination"
         />
       </SectionCard>
@@ -324,12 +307,11 @@ onMounted(load)
             </template>
           </el-table-column>
         </el-table>
-        <el-pagination
-          v-model:current-page="sheetsPage"
-          v-model:page-size="sheetsSize"
+        <ListPagination
+          v-model:page="sheetsPage"
+          v-model:size="sheetsSize"
           :total="sheets.length"
           :page-sizes="[20, 50, 100]"
-          layout="total, sizes, prev, pager, next"
           class="detail__pagination"
         />
       </SectionCard>

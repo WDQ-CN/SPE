@@ -13,6 +13,7 @@
  * <p>纯函数、不依赖 Vue：这样边界值（99.99 / 100.00 / 100.01、空维度）可以直接单测，不必挂载组件。
  */
 
+import { formatWeight } from '@/shared/format'
 import type { ScoreMode } from '@/shared/types/enums'
 
 /** 权重合计的目标值（与后端 `TemplateService.FULL_WEIGHT` 一致） */
@@ -23,10 +24,6 @@ export function toCents(weight: number): number {
   return Math.round(weight * 100)
 }
 
-/** 展示用的两位小数（仅用于文案，不参与判定） */
-export function formatWeight(value: number): string {
-  return value.toFixed(2)
-}
 
 export interface WeightCheck {
   /** 合计（两位小数，供展示） */

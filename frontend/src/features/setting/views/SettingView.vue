@@ -13,7 +13,10 @@ import { useSubmit } from '@/shared/composables/useSubmit'
 import type { GradeThresholds } from '@/shared/types/dto'
 import { thresholdOrderingError } from '@/shared/validation'
 
-const thresholds = reactive<GradeThresholds>({ a: 90, b: 80, c: 70, d: 0 })
+// 占位值不是默认值：真实设置只来自后端（默认值由后端代码持有）。加载成功前禁止保存，
+// 避免加载失败时把占位值写回、覆盖用户已定制的设置（03 §51 P2-1）。
+const thresholds = reactive<GradeThresholds>({ a: 0, b: 0, c: 0, d: 0 })
+const thresholdsLoaded = ref(false)
 const loading = ref(false)
 const loadError = ref('')
 const { submitting: saving, errorMessage: saveError, run: runSave } = useSubmit()
@@ -22,13 +25,15 @@ const { submitting: saving, errorMessage: saveError, run: runSave } = useSubmit(
 const orderingError = computed(() => thresholdOrderingError(thresholds))
 
 // ---- 预警规则（M5 SM3） ----
+// 同上：占位值不是默认值，加载成功前禁止保存
 const alertRules = reactive<AlertRulesPayload>({
-  enabled: true,
-  totalThreshold: 70,
-  keyDimensionThreshold: 70,
-  trendPeriods: 2,
-  trendDrop: 5,
+  enabled: false,
+  totalThreshold: 0,
+  keyDimensionThreshold: 0,
+  trendPeriods: 1,
+  trendDrop: 0,
 })
+const rulesLoaded = ref(false)
 const rulesLoading = ref(false)
 const rulesLoadError = ref('')
 const {
@@ -43,7 +48,9 @@ async function loadAlertRules(): Promise<void> {
   rulesLoadError.value = ''
   try {
     Object.assign(alertRules, await getAlertRules())
+    rulesLoaded.value = true
   } catch (caught) {
+    rulesLoaded.value = false
     rulesLoadError.value = caught instanceof Error ? caught.message : '加载失败'
   } finally {
     rulesLoading.value = false
@@ -51,7 +58,7 @@ async function loadAlertRules(): Promise<void> {
 }
 
 async function saveAlertRules(): Promise<void> {
-  if (rulesError.value) {
+  if (!rulesLoaded.value || rulesError.value) {
     return
   }
   const ok = await runSaveRules(async () => {
@@ -67,7 +74,9 @@ async function load(): Promise<void> {
   loadError.value = ''
   try {
     Object.assign(thresholds, await getGradeThresholds())
+    thresholdsLoaded.value = true
   } catch (caught) {
+    thresholdsLoaded.value = false
     loadError.value = caught instanceof Error ? caught.message : '加载失败'
   } finally {
     loading.value = false
@@ -80,7 +89,7 @@ onMounted(() => {
 })
 
 async function save(): Promise<void> {
-  if (orderingError.value) {
+  if (!thresholdsLoaded.value || orderingError.value) {
     return
   }
   const ok = await runSave(async () => {
@@ -181,7 +190,7 @@ async function save(): Promise<void> {
         <el-button
           type="primary"
           :loading="saving"
-          :disabled="orderingError !== null"
+          :disabled="!thresholdsLoaded || orderingError !== null"
           @click="save"
         >
           保存
@@ -281,7 +290,7 @@ async function save(): Promise<void> {
         <el-button
           type="primary"
           :loading="rulesSaving"
-          :disabled="rulesError !== null"
+          :disabled="!rulesLoaded || rulesError !== null"
           @click="saveAlertRules"
         >
           保存

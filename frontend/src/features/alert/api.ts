@@ -1,12 +1,10 @@
 import { http } from '@/app/http'
-import type { AlertView } from '@/shared/types/dto'
+import type { AlertView, PageParams } from '@/shared/types/dto'
 import type { PageResult } from '@/shared/types/result'
 
 /** 预警列表与处理（M5 W2/W3，02 §4）。 */
 
-export interface AlertQuery {
-  page: number
-  size: number
+export interface AlertQuery extends PageParams {
   status?: 'UNREAD' | 'HANDLED' | ''
 }
 

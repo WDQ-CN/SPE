@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { checkTemplateWeights, checkWeightSum, formatWeight } from './weight'
+import { formatWeight } from '@/shared/format'
+import { checkTemplateWeights, checkWeightSum } from './weight'
 
 /**
  * 权重校验的边界（12 §3-W4 的"单测：权重校验边界（99.99/100.00/100.01、某维度为空）"）。

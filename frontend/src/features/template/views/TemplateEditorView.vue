@@ -17,8 +17,10 @@ import {
   updateIndicator,
 } from '@/features/template/api'
 import { interpretWriteResult } from '@/features/template/effective-version'
-import { checkTemplateWeights, formatWeight } from '@/features/template/weight'
+import { checkTemplateWeights } from '@/features/template/weight'
+import { useAsyncData } from '@/shared/composables/useAsyncData'
 import { useSubmit } from '@/shared/composables/useSubmit'
+import { formatWeight } from '@/shared/format'
 import {
   DEPARTMENT_OPTIONS,
   INDICATOR_TYPE_LABEL,
@@ -46,11 +48,24 @@ import type { IndicatorType, ScoreMode } from '@/shared/types/enums'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
-const canWrite = computed(() => auth.roles.includes('ADMIN'))
+const canWrite = computed(() => auth.isAdmin)
 
-const tree = ref<TemplateVersionTree | null>(null)
-const loading = ref(false)
-const loadError = ref('')
+const {
+  data: tree,
+  loading,
+  error: loadError,
+  run: loadTree,
+  reset: resetTree,
+} = useAsyncData(
+  async () => {
+    const versionId = Number(route.params.versionId)
+    if (!Number.isFinite(versionId)) {
+      throw new Error('版本参数不合法')
+    }
+    return await getVersionTree(versionId)
+  },
+  null as TemplateVersionTree | null,
+)
 
 // 页面级写操作与对话框共用一套提交状态：同一时刻只应有一个写请求在飞
 const { submitting, errorMessage, run, clearError } = useSubmit()
@@ -119,55 +134,24 @@ const publishHint = computed(() => {
   return '权重合计正确，可以发布。'
 })
 
-/** 请求序号：只有最后一次 `loadTree` 的结果会被采用（见函数内注释）。 */
-let treeRequestSeq = 0
-
-async function loadTree(): Promise<void> {
-  const versionId = Number(route.params.versionId)
-  // ⚠️ 请求序号：`loadTree` 可能被并发触发（快速点两次"重试"、或路由切换与重试叠加），
-  // 而 `usePagedList` 早就为列表做过同一件事。这里更要紧——乱序后 `tree.value` 可能是**另一个版本**
-  // 的树，而 `addDimension` 用的是 `tree.value.versionId`，那就等于**往非预期版本写**
-  // （03 §30 的 P2-10；审查者没能构造出高可达序列，但修法只要三行，不值得赌）。
-  const seq = ++treeRequestSeq
-  if (!Number.isFinite(versionId)) {
-    // ⚠️ 这里必须**同时清掉 tree**：只设 loadError 的话，错误提示会与"上一个版本"的维度树同时渲染，
-    // 而写按钮仍然可用 → 用户能在"URL 与内容不一致"的状态下往旧版本写（03 §30 的 P2-6）。
-    tree.value = null
-    loadError.value = '版本参数不合法'
-    return
-  }
-  // ⚠️ **换了版本就必须在 await 之前把旧树清掉**（03 §30 的 P2-1）：路由组件被复用（`/templates/:versionId`
-  // 的 `name` 不变 ⇒ 不重新挂载）时，`watch` 只调 `loadTree`，而 `tree.value` 仍指向**上一个版本**——
-  // 请求在飞的窗口期内页面渲染的是「上个版本的树 + 新版本的 URL」，写入口（加指标/改维度/删维度、
-  // 发布 vN）全都还在，点下去就是**拿旧版本的 id 往旧版本写**（`runWrite` 用的是 `tree.value.versionId`）。
-  // 上面那条"参数不合法"分支早就这么做了，这里只是把同一条判据补到正常路径上。
-  // 判据是"手里那棵树的 versionId 与目标不同"——写完重取、点重试这些**同一版本**的重载不清树，避免自己闪自己。
-  if (tree.value !== null && tree.value.versionId !== versionId) {
-    tree.value = null
-  }
-  loading.value = true
-  loadError.value = ''
-  try {
-    const loaded = await getVersionTree(versionId)
-    if (seq !== treeRequestSeq) {
-      return
-    }
-    tree.value = loaded
-  } catch (caught) {
-    if (seq !== treeRequestSeq) {
-      return
-    }
-    tree.value = null
-    loadError.value = caught instanceof Error ? caught.message : '加载失败'
-  } finally {
-    if (seq === treeRequestSeq) {
-      loading.value = false
-    }
-  }
-}
-
 // immediate: 首次进入要加载；之后每次 route 参数变化（自动复制后 replace）都要重新拉树
-watch(() => route.params.versionId, () => void loadTree(), { immediate: true })
+watch(
+  () => route.params.versionId,
+  () => {
+    // ⚠️ **换了版本就必须在 await 之前把旧树清掉**（03 §30 的 P2-1/P2-6）：路由组件被复用
+    // （`/templates/:versionId` 的 `name` 不变 ⇒ 不重新挂载）时，`tree` 仍指向**上一个版本**——
+    // 请求在飞的窗口期内页面渲染的是「上个版本的树 + 新版本的 URL」，写入口（加指标/改维度/删维度、
+    // 发布 vN）全都还在，点下去就是**拿旧版本的 id 往旧版本写**（`runWrite` 用的是 `tree.value.versionId`）。
+    // 参数不合法时同样要清掉 tree：只设错误提示的话，它会与上一个版本的树同时渲染，写按钮仍然可用。
+    // 判据是"手里那棵树的 versionId 与目标不同"——写完重取、点重试这些**同一版本**的重载不清树，避免自己闪自己。
+    const versionId = Number(route.params.versionId)
+    if (tree.value !== null && (!Number.isFinite(versionId) || tree.value.versionId !== versionId)) {
+      resetTree()
+    }
+    void loadTree()
+  },
+  { immediate: true },
+)
 
 /**
  * 统一处理写响应：原地更新就重载当前树，"复制了草稿"就跳到新版本。

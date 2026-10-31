@@ -16,5 +16,7 @@ FROM nginx:1.30-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 # 安全响应头片段（含 CSP）：放在 snippets 而非 conf.d，避免被主配置的 `include *.conf` 当成 server 配置
 COPY security-headers.conf /etc/nginx/snippets/security-headers.conf
+# /api/ 与 /open/v1/ 共用的反代配置（03 §51 P2-4）
+COPY api-proxy.conf /etc/nginx/snippets/api-proxy.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80

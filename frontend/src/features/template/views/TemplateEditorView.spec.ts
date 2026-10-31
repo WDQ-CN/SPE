@@ -51,7 +51,7 @@ vi.mock('vue-router', async () => {
 })
 
 vi.mock('@/features/auth/store', () => ({
-  useAuthStore: () => ({ roles: mocks.roles }),
+  useAuthStore: () => ({ roles: mocks.roles, isAdmin: mocks.roles.includes('ADMIN') }),
 }))
 
 import TemplateEditorView from './TemplateEditorView.vue'

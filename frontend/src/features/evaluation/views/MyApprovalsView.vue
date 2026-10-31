@@ -113,13 +113,12 @@ onMounted(() => void list.load())
       </el-table-column>
     </el-table>
 
-    <el-pagination
-      v-model:current-page="list.page.value"
-      v-model:page-size="list.size.value"
+    <ListPagination
+      v-model:page="list.page.value"
+      v-model:size="list.size.value"
       :total="list.total.value"
       :page-sizes="[10, 20, 50]"
-      layout="total, sizes, prev, pager, next"
-      @current-change="list.load"
+      @change="list.load"
       @size-change="list.load(1)"
     />
   </SectionCard>

@@ -9,7 +9,9 @@ import {
   type ResultSortField,
   type SortOrder,
 } from '@/features/evaluation/result-sort'
-import { formatGrade, formatScore } from '@/shared/format'
+import { useAsyncData } from '@/shared/composables/useAsyncData'
+import { saveBlob } from '@/shared/download'
+import { formatGrade, formatScore, formatWeight } from '@/shared/format'
 import type { TaskResults } from '@/shared/types/dto'
 
 /**
@@ -21,9 +23,12 @@ import type { TaskResults } from '@/shared/types/dto'
 const route = useRoute()
 const router = useRouter()
 const taskId = ref(Number(route.params.id))
-const results = ref<TaskResults | null>(null)
-const loading = ref(false)
-const error = ref('')
+const {
+  data: results,
+  loading,
+  error,
+  run: load,
+} = useAsyncData(() => getTaskResults(taskId.value), null as TaskResults | null)
 
 const keyword = ref('')
 const sortBy = ref<ResultSortField>('totalScore')
@@ -45,44 +50,14 @@ async function onExport(): Promise<void> {
   exporting.value = true
   try {
     const blob = await downloadFile(`/tasks/${current.taskId}/results/export`)
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
     const today = new Date().toISOString().slice(0, 10).replaceAll('-', '')
     // 任务名里可能有路径分隔符/引号：文件系统不接受，先替换（后端也在响应头里做过同样的清理）
     const safeName = current.taskName.replace(/[\\/:*?"<>|]/g, '_')
-    link.download = `结果-${safeName}-${today}.xlsx`
-    link.click()
-    URL.revokeObjectURL(link.href)
+    saveBlob(blob, `结果-${safeName}-${today}.xlsx`)
   } catch {
     // downloadFile 已按 blob 错误体提示；这里只保证不产生未接住的 rejection（04-037 同族）
   } finally {
     exporting.value = false
-  }
-}
-
-let loadSeq = 0
-
-async function load(): Promise<void> {
-  const requested = taskId.value
-  const seq = ++loadSeq
-  loading.value = true
-  error.value = ''
-  try {
-    const data = await getTaskResults(requested)
-    if (seq !== loadSeq) {
-      return
-    }
-    results.value = data
-  } catch (caught) {
-    if (seq !== loadSeq) {
-      return
-    }
-    results.value = null
-    error.value = caught instanceof Error ? caught.message : '加载失败'
-  } finally {
-    if (seq === loadSeq) {
-      loading.value = false
-    }
   }
 }
 
@@ -205,7 +180,7 @@ onMounted(() => void load())
                   width="90"
                 >
                   <template #default="scope">
-                    {{ scope.row.weight.toFixed(2) }}
+                    {{ formatWeight(scope.row.weight) }}
                   </template>
                 </el-table-column>
                 <el-table-column

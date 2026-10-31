@@ -1,10 +1,11 @@
-import { http } from '@/app/http'
+import { downloadFile, http } from '@/app/http'
 import type { PageResult } from '@/shared/types/result'
 import type {
   ApprovalTodoView,
   ImportReport,
   MySheetView,
   NotificationSummary,
+  PageParams,
   PublishResult,
   ResultTaskSummary,
   SheetBrief,
@@ -30,9 +31,7 @@ import type { EvalTaskStatus } from '@/shared/types/enums'
  */
 
 /** 任务列表查询（`status` 与 `keyword` 都可省） */
-export interface TaskQuery {
-  page: number
-  size: number
+export interface TaskQuery extends PageParams {
   status?: EvalTaskStatus
   keyword?: string
 }
@@ -129,7 +128,8 @@ export function listMySheets(): Promise<MySheetView[]> {
 
 /** 下载任务级导入模板（xlsx） */
 export function downloadImportTemplate(taskId: number): Promise<Blob> {
-  return http.download(`/tasks/${taskId}/import-template`)
+  // 与结果导出共用 downloadFile：blob 错误体也能解析出服务端 code/文案
+  return downloadFile(`/tasks/${taskId}/import-template`)
 }
 
 /** 上传导入（字段名必须是 `file`，对应后端 `@RequestParam("file")`） */
@@ -179,12 +179,9 @@ export function rejectTaskSupplier(
 }
 
 /** 结果报表入口：只列已有已生效评估单的任务（VIEWER 可读，不暴露任务管理面） */
-export function listResultTasks(query: {
-  page: number
-  size: number
-  status?: EvalTaskStatus
-  keyword?: string
-}): Promise<PageResult<ResultTaskSummary>> {
+export function listResultTasks(
+  query: PageParams & { status?: EvalTaskStatus; keyword?: string },
+): Promise<PageResult<ResultTaskSummary>> {
   return http.get<PageResult<ResultTaskSummary>>('/results/tasks', query)
 }
 

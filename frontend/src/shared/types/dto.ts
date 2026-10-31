@@ -181,6 +181,8 @@ export interface TaskDetail {
   name: string
   year: number
   quarter: number
+  /** 任务所属模板（编辑草稿时回填模板下拉；后端 `TaskDetail` 已含此字段） */
+  templateId: number
   templateVersionId: number
   deadline: string
   status: EvalTaskStatus

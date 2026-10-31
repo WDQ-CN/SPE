@@ -4,11 +4,10 @@ import { computed } from 'vue'
 import { visibleMenus } from '@/app/menu'
 import { useAuthStore } from '@/features/auth/store'
 import { APP_NAME } from '@/shared/constants'
-import { DEPARTMENT_LABEL, ROLE_LABEL } from '@/shared/labels'
+import { DEPARTMENT_LABEL } from '@/shared/labels'
 
 const auth = useAuthStore()
 
-const roleText = computed(() => auth.roles.map((role) => ROLE_LABEL[role]).join(' / ') || '—')
 const departmentText = computed(() =>
   auth.department ? DEPARTMENT_LABEL[auth.department] : '—',
 )
@@ -52,7 +51,7 @@ const shortcuts = computed(() => visibleMenus(auth.roles).filter((menu) => menu.
             {{ auth.name || '—' }}
           </el-descriptions-item>
           <el-descriptions-item label="角色">
-            {{ roleText }}
+            {{ auth.roleText }}
           </el-descriptions-item>
           <el-descriptions-item label="部门">
             {{ departmentText }}

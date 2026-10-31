@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 // ElMessage 由 unplugin-auto-import 按需注入；ElMessageBox 不在它的白名单里，需显式引入
 import { ElMessageBox, type UploadFile } from 'element-plus'
+import 'element-plus/es/components/message-box/style/css'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useAuthStore } from '@/features/auth/store'
@@ -16,7 +17,9 @@ import {
 } from '@/features/evaluation/api'
 import { checkRawValue, inputHint } from '@/features/evaluation/raw-value'
 import { sheetPermissions } from '@/features/evaluation/sheet-status'
+import { useAsyncData } from '@/shared/composables/useAsyncData'
 import { useSubmit } from '@/shared/composables/useSubmit'
+import { saveBlob } from '@/shared/download'
 import { SHEET_STATUS_LABEL } from '@/shared/labels'
 import type { SheetIndicatorEntry, SheetPreview, SheetScoreView } from '@/shared/types/dto'
 
@@ -39,13 +42,9 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const sheetId = computed(() => Number(route.params.id))
-/** 当前这张评分单；null = 还没加载到（切单窗口期） */
-const sheet = ref<SheetScoreView | null>(null)
 /** 本地录入值：indicatorId → 用户输入（null = 清空） */
 const values = ref<Record<number, number | null>>({})
 const preview = ref<SheetPreview | null>(null)
-const loading = ref(false)
-const error = ref('')
 /**
  * 三个写动作 + 下载，**各自一个壳**（03 §38 的 P1-10 / P1-14）。
  *
@@ -74,6 +73,41 @@ const actionError = computed(
  * 前者是"还差这格"，后者是"要删这格"。不分就会出现"待删格被算成未填、按钮永远禁用"的二次故障。
  */
 const touchedIds = ref<Set<number>>(new Set())
+
+/** 当前这张评分单；null = 还没加载到（切单窗口期）。 */
+const {
+  data: sheet,
+  loading,
+  error,
+  run: fetchSheet,
+  reset: resetSheet,
+} = useAsyncData(
+  () => getSheetScores(sheetId.value),
+  null as SheetScoreView | null,
+  {
+    onReset: () => {
+      values.value = {}
+      preview.value = null
+      touchedIds.value = new Set()
+      saveShell.clearError()
+      submitShell.clearError()
+      importShell.clearError()
+      downloadShell.clearError()
+    },
+    onSuccess: async (data) => {
+      if (!data) {
+        return
+      }
+      loadValues(data)
+      await runPreview()
+    },
+  },
+)
+
+async function load(): Promise<void> {
+  resetSheet()
+  await fetchSheet()
+}
 
 const permissions = computed(() =>
   // 能读到就说明是我的（后端 4002 把关），故 isAssignee 传 true
@@ -138,7 +172,6 @@ function saveEntries(): ScoreEntryPayload[] {
  * 而暂存接口**不带乐观锁**（`saveScores` 只传 scores），于是点保存会把 A 的值写进 B——静默写错分。
  * 与 `usePagedList` 的"并发只认最后一次"同一形态：只认最新那次的结果，过期的直接丢弃。
  */
-let loadSeq = 0
 let previewSeq = 0
 
 async function runPreview(): Promise<void> {
@@ -172,39 +205,6 @@ function onCellChange(indicatorId: number): void {
 
 // 卸载时清掉待发的防抖（03 §41.3 的 P2-34）：previewSeq 只防旧值覆盖，不防卸载后多发一次请求
 onBeforeUnmount(() => window.clearTimeout(previewTimer))
-
-async function load(): Promise<void> {
-  const seq = ++loadSeq
-  // 先清再取：窗口期内 sheet 为 null ⇒ 写入口关闭（canEdit 依赖 loaded）
-  sheet.value = null
-  values.value = {}
-  preview.value = null
-  touchedIds.value = new Set()
-  saveShell.clearError()
-  submitShell.clearError()
-  importShell.clearError()
-  downloadShell.clearError()
-  loading.value = true
-  error.value = ''
-  try {
-    const data = await getSheetScores(sheetId.value)
-    if (seq !== loadSeq) {
-      return // 期间已经切到另一张单子：这次的响应过期，丢弃（否则 values 与路由会错位）
-    }
-    sheet.value = data
-    loadValues(data)
-    await runPreview()
-  } catch (caught) {
-    if (seq !== loadSeq) {
-      return
-    }
-    error.value = caught instanceof Error ? caught.message : '加载失败'
-  } finally {
-    if (seq === loadSeq) {
-      loading.value = false
-    }
-  }
-}
 
 async function onSave(): Promise<void> {
   const invalid = (sheet.value?.indicators ?? []).filter((entry) => cellError(entry) !== '')
@@ -265,12 +265,7 @@ async function onDownloadTemplate(): Promise<void> {
   }
   await downloadShell.run(async () => {
     const blob = await downloadImportTemplate(current.taskId)
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `task-${current.taskId}-import-template.xlsx`
-    link.click()
-    URL.revokeObjectURL(url)
+    saveBlob(blob, `task-${current.taskId}-import-template.xlsx`)
   })
 }
 

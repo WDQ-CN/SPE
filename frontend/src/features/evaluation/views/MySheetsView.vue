@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useAuthStore } from '@/features/auth/store'
 import { listMySheets } from '@/features/evaluation/api'
 import { mySheetsEmptyHint } from '@/features/evaluation/sheet-status'
+import { useAsyncData } from '@/shared/composables/useAsyncData'
 import { SHEET_STATUS_LABEL } from '@/shared/labels'
 import type { MySheetView } from '@/shared/types/dto'
 
@@ -16,24 +17,13 @@ import type { MySheetView } from '@/shared/types/dto'
 const auth = useAuthStore()
 const router = useRouter()
 
-const rows = ref<MySheetView[]>([])
-const loading = ref(false)
-const error = ref('')
 const emptyHint = computed(() => mySheetsEmptyHint(auth.roles))
-
-async function load(): Promise<void> {
-  loading.value = true
-  error.value = ''
-  try {
-    rows.value = await listMySheets()
-  } catch (caught) {
-    // 失败即清空：留着上一次的数据配上错误提示，会让人以为看到的是当前待办（usePagedList 的同一条取舍）
-    rows.value = []
-    error.value = caught instanceof Error ? caught.message : '加载失败'
-  } finally {
-    loading.value = false
-  }
-}
+const {
+  data: rows,
+  loading,
+  error,
+  run: load,
+} = useAsyncData(listMySheets, [] as MySheetView[])
 
 onMounted(load)
 </script>

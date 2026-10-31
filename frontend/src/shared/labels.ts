@@ -134,6 +134,7 @@ export const AUDIT_TARGET_TYPE_LABEL: Record<string, string> = {
   SETTING: '系统设置',
   TEMPLATE: '模板',
   TASK: '任务',
+  TASK_SUPPLIER: '评估单',
   TOKEN: 'API Token',
 }
 

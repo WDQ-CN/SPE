@@ -21,7 +21,7 @@ import type { TemplateSummary } from '@/shared/types/dto'
  */
 const router = useRouter()
 const auth = useAuthStore()
-const canWrite = computed(() => auth.roles.includes('ADMIN'))
+const canWrite = computed(() => auth.isAdmin)
 
 const { rows, total, page, size, loading, error, load } = usePagedList<TemplateSummary>(
   (targetPage, pageSize) => listTemplates({ page: targetPage, size: pageSize }),
@@ -225,14 +225,13 @@ function draftTagType(row: TemplateSummary): 'warning' | 'info' {
     <!-- ⚠️ 用 `v-model:` 双向绑定，与 UserListView/SupplierListView 一致（P2 深审的 P2-11）：
          单向 `:current-page` + 模板里手写 `size = target` 虽然实测能工作（编译产物里 ref 赋值被改写成
          `.value`），但失败路径下 Element Plus 内部的当前页与数据可能不一致，且偏离了两处既有约定。 -->
-    <el-pagination
-      v-model:current-page="page"
-      v-model:page-size="size"
-      class="page__pager"
-      layout="total, prev, pager, next, sizes"
+    <ListPagination
+      v-model:page="page"
+      v-model:size="size"
       :total="total"
       :page-sizes="[10, 20, 50]"
-      @current-change="(target: number) => load(target)"
+      class="page__pager"
+      @change="(target: number) => load(target)"
       @size-change="() => load(1)"
     />
 

@@ -1,12 +1,10 @@
 import { http } from '@/app/http'
-import type { AuditLogView } from '@/shared/types/dto'
+import type { AuditLogView, PageParams } from '@/shared/types/dto'
 import type { PageResult } from '@/shared/types/result'
 
 /** 操作日志查询（M5 SM5，02 §4）：仅 ADMIN。 */
 
-export interface AuditLogQuery {
-  page: number
-  size: number
+export interface AuditLogQuery extends PageParams {
   action?: string
   targetType?: string
   operator?: string

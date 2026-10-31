@@ -119,7 +119,7 @@ function failWithTransport(error: AxiosError): never {
 /**
  * 文件下载（xlsx）：成功拿 Blob；失败时把后端 `Result` JSON 从 blob 里解析出来，给出**准确文案**。
  *
- * <p>为什么不能直接用 `http.download`：axios 的错误分支里响应体也是 Blob，响应拦截器拿不到 `code`
+ * <p>为什么不能直接在拦截器里解包：axios 的错误分支里响应体也是 Blob，响应拦截器拿不到 `code`
  * 只能弹通用提示。这里跳过通用提示、自行解析（`skipErrorToast`），解析失败再退回通用错误。
  */
 export async function downloadFile(url: string): Promise<Blob> {
@@ -190,15 +190,6 @@ export const http = {
   // 02 §4 已有 DELETE 类端点（如 /api-tokens），先备好，避免届时绕开统一封装
   delete<T>(url: string, params?: object): Promise<T> {
     return instance.delete<Result<T>>(url, { params }).then((response) => response.data.data)
-  },
-  /**
-   * 下载二进制文件（P3 的 Excel 模板）：**不走 Result 解包**——响应体就是 xlsx 字节。
-   * 传 `skipResultUnwrap` 让响应拦截器原样放行（见文件顶部的模块增强）。
-   */
-  download(url: string): Promise<Blob> {
-    return instance
-      .get<Blob>(url, { responseType: 'blob', skipResultUnwrap: true })
-      .then((response) => response.data)
   },
   /**
    * 上传文件（multipart/form-data）：字段名 `file` 与服务端 `@RequestParam("file")` 对齐。

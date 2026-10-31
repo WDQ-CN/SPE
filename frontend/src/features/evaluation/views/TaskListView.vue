@@ -2,13 +2,16 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 // ElMessage 由 unplugin-auto-import 按需注入；ElMessageBox 不在它的白名单里，需显式引入
 import { ElMessageBox } from 'element-plus'
+import 'element-plus/es/components/message-box/style/css'
 import { useRouter } from 'vue-router'
 
 import { useAuthStore } from '@/features/auth/store'
 import {
   createTask,
+  getTask,
   listTasks,
   publishTask,
+  updateTask,
   type TaskDraftPayload,
 } from '@/features/evaluation/api'
 import { listSuppliers } from '@/features/supplier/api'
@@ -54,6 +57,8 @@ const list = usePagedList<TaskSummary>((page, size) =>
 )
 
 const dialogVisible = ref(false)
+/** 非空表示正在编辑既有草稿（带版本做守卫 UPDATE）；null 表示新建。 */
+const editing = ref<{ id: number; version: number } | null>(null)
 const submit = useSubmit()
 /** 发布是列表级的写操作：闸门与错误回显同样走 useSubmit（03 §38 的 P1-14——原来没有防重复闸门）。 */
 const publish = useSubmit()
@@ -98,6 +103,7 @@ let templateChangeSeq = 0
 
 async function openDialog(): Promise<void> {
   dialogVisible.value = true
+  editing.value = null
   submit.clearError()
   form.name = ''
   form.templateId = null
@@ -107,6 +113,64 @@ async function openDialog(): Promise<void> {
   form.approverIds = []
   versions.value = []
   failedOptions.value = []
+  await loadDialogOptions()
+}
+
+/** 编辑草稿：复用同一向导，按详情回填；提交走 `PUT /tasks/{id}`（带 version 守卫）。 */
+async function openEdit(row: TaskSummary): Promise<void> {
+  dialogVisible.value = true
+  editing.value = { id: row.id, version: row.version }
+  submit.clearError()
+  failedOptions.value = []
+  versions.value = []
+  await loadDialogOptions()
+  try {
+    const detail = await getTask(row.id)
+    form.name = detail.name
+    form.year = detail.year
+    form.quarter = detail.quarter
+    form.deadline = detail.deadline
+    form.templateId = detail.templateId
+    form.templateVersionId = detail.templateVersionId
+    form.supplierIds = detail.suppliers.map((item) => item.id)
+    form.approverIds = detail.approvers.map((item) => item.userId)
+    // 远程搜索只回前 50 家；已选中的必须留在选项里，否则 v-model 会显示裸 id
+    for (const supplier of detail.suppliers) {
+      if (!suppliers.value.some((item) => item.id === supplier.id)) {
+        suppliers.value.push({
+          id: supplier.id,
+          code: supplier.code ?? '',
+          name: supplier.name ?? '',
+          category: null,
+          status: 'ENABLED',
+          version: 0,
+        })
+      }
+    }
+    for (const approver of detail.approvers) {
+      if (!users.value.some((item) => item.id === approver.userId)) {
+        // 下拉只展示姓名；role/department 仅用于满足 UserOption 形状
+        users.value.push({
+          id: approver.userId,
+          name: approver.name ?? '',
+          role: 'MANAGER',
+          department: 'OTHER',
+        })
+      }
+    }
+    try {
+      versions.value = await listPublishedVersions(detail.templateId)
+    } catch {
+      markOptionFailed('模板版本')
+    }
+  } catch {
+    ElMessage.error('草稿加载失败，请重试')
+    dialogVisible.value = false
+    editing.value = null
+  }
+}
+
+async function loadDialogOptions(): Promise<void> {
   // allSettled 而不是 all：一个分支失败（03 §38 的 P0-1 就是这个场景）不能把另外两路一起打断——
   // 但也不能只靠 allSettled 就完事：失败必须**在界面上说是哪一路失败了**，否则 P0 只是变成静默 P2
   const [templateResult, userResult] = await Promise.allSettled([
@@ -179,7 +243,7 @@ async function onTemplateChange(templateId: number): Promise<void> {
   }
 }
 
-async function onCreate(): Promise<void> {
+async function onSaveDraft(): Promise<void> {
   const payload: TaskDraftPayload = {
     name: form.name,
     year: form.year,
@@ -190,12 +254,18 @@ async function onCreate(): Promise<void> {
     supplierIds: form.supplierIds,
     approverIds: form.approverIds,
   }
+  const current = editing.value
   const ok = await submit.run(async () => {
-    await createTask(payload)
+    if (current) {
+      await updateTask(current.id, { ...payload, version: current.version })
+    } else {
+      await createTask(payload)
+    }
   })
   if (ok) {
-    ElMessage.success('草稿已创建，可在列表里发布')
+    ElMessage.success(current ? '草稿已保存' : '草稿已创建，可在列表里发布')
     dialogVisible.value = false
+    editing.value = null
     await list.reload()
   }
 }
@@ -326,7 +396,7 @@ onMounted(() => void list.load())
       </el-table-column>
       <el-table-column
         label="操作"
-        width="180"
+        width="220"
       >
         <template #default="{ row }">
           <el-button
@@ -335,6 +405,14 @@ onMounted(() => void list.load())
             @click="router.push({ name: 'task-detail', params: { id: row.id } })"
           >
             详情
+          </el-button>
+          <el-button
+            v-if="canManage && row.status === 'DRAFT'"
+            link
+            type="primary"
+            @click="openEdit(row as TaskSummary)"
+          >
+            编辑
           </el-button>
           <el-button
             v-if="canManage && row.status === 'DRAFT'"
@@ -350,19 +428,18 @@ onMounted(() => void list.load())
       </el-table-column>
     </el-table>
 
-    <el-pagination
-      v-model:current-page="list.page.value"
-      v-model:page-size="list.size.value"
+    <ListPagination
+      v-model:page="list.page.value"
+      v-model:size="list.size.value"
       :total="list.total.value"
       :page-sizes="[10, 20, 50]"
-      layout="total, sizes, prev, pager, next"
-      @current-change="list.load"
+      @change="list.load"
       @size-change="list.load(1)"
     />
 
     <el-dialog
       v-model="dialogVisible"
-      title="新建评估任务"
+      :title="editing ? '编辑草稿' : '新建评估任务'"
       width="620px"
     >
       <el-form label-width="110px">
@@ -490,7 +567,7 @@ onMounted(() => void list.load())
         <el-button
           type="primary"
           :loading="submit.submitting.value"
-          @click="onCreate"
+          @click="onSaveDraft"
         >
           保存草稿
         </el-button>

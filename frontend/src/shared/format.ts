@@ -8,3 +8,8 @@ export function formatScore(value: number | null | undefined): string {
 export function formatGrade(value: string | null | undefined): string {
   return value ?? '—'
 }
+
+/** 权重展示用（仅文案，不参与判定）；与分值的 null 语义不同，故单独命名。 */
+export function formatWeight(value: number): string {
+  return value.toFixed(2)
+}

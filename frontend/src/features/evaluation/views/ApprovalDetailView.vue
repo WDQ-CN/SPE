@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ElMessageBox } from 'element-plus'
+import 'element-plus/es/components/message-box/style/css'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -9,6 +10,7 @@ import {
   rejectTaskSupplier,
 } from '@/features/evaluation/api'
 import ScoreBreakdown from '@/features/evaluation/components/ScoreBreakdown.vue'
+import { useAsyncData } from '@/shared/composables/useAsyncData'
 import { useSubmit } from '@/shared/composables/useSubmit'
 import { formatGrade, formatScore } from '@/shared/format'
 import { TASK_SUPPLIER_STATUS_LABEL } from '@/shared/labels'
@@ -24,40 +26,20 @@ const route = useRoute()
 const router = useRouter()
 const taskSupplierId = ref(Number(route.params.id))
 
-const report = ref<TaskSupplierReport | null>(null)
-const loading = ref(false)
-const error = ref('')
+const {
+  data: report,
+  loading,
+  error,
+  run: load,
+} = useAsyncData(
+  () => getTaskSupplierReport(taskSupplierId.value),
+  null as TaskSupplierReport | null,
+)
 const approve = useSubmit()
 const reject = useSubmit()
 const rejectVisible = ref(false)
 const comment = ref('')
 const commentError = ref('')
-
-let loadSeq = 0
-
-async function load(): Promise<void> {
-  const requested = taskSupplierId.value
-  const seq = ++loadSeq
-  loading.value = true
-  error.value = ''
-  try {
-    const data = await getTaskSupplierReport(requested)
-    if (seq !== loadSeq) {
-      return
-    }
-    report.value = data
-  } catch (caught) {
-    if (seq !== loadSeq) {
-      return
-    }
-    report.value = null
-    error.value = caught instanceof Error ? caught.message : '加载失败'
-  } finally {
-    if (seq === loadSeq) {
-      loading.value = false
-    }
-  }
-}
 
 const canAct = computed(
   () =>

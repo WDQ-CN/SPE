@@ -2,6 +2,7 @@ import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 
 import { clearToken, setToken, useToken } from '@/app/http/token'
+import { ROLE_LABEL } from '@/shared/labels'
 import { clearProfile, readProfile, saveProfile } from './session'
 import type { Department, Role } from '@/shared/types/enums'
 
@@ -36,6 +37,9 @@ export const useAuthStore = defineStore('auth', () => {
   )
 
   const isAuthenticated = computed(() => token.value !== '')
+  // 权限/展示的单一来源：视图不要再各自 `roles.includes('ADMIN')` 或拼角色文案
+  const isAdmin = computed(() => roles.value.includes('ADMIN'))
+  const roleText = computed(() => roles.value.map((role) => ROLE_LABEL[role]).join(' / ') || '—')
 
   function setSession(session: AuthSession): void {
     setToken(session.token)
@@ -49,5 +53,15 @@ export const useAuthStore = defineStore('auth', () => {
     clearToken()
   }
 
-  return { token, name, roles, department, isAuthenticated, setSession, clearSession }
+  return {
+    token,
+    name,
+    roles,
+    department,
+    isAuthenticated,
+    isAdmin,
+    roleText,
+    setSession,
+    clearSession,
+  }
 })

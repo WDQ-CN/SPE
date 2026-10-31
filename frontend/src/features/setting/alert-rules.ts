@@ -1,12 +1,8 @@
 /** 预警规则的前端即时校验（M5 SM3；判定权仍在后端，越界返回 2034，这里只是体验）。 */
+import type { AlertRulesPayload } from './api'
 
-export interface AlertRulesForm {
-  enabled: boolean
-  totalThreshold: number
-  keyDimensionThreshold: number
-  trendPeriods: number
-  trendDrop: number
-}
+/** 表单与接口载荷是同一事实：不要再抄一份字段。 */
+export type AlertRulesForm = AlertRulesPayload
 
 export function alertRulesError(rules: AlertRulesForm): string | null {
   if (rules.totalThreshold < 0 || rules.totalThreshold > 100) {
