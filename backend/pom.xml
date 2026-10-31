@@ -48,6 +48,42 @@
     <log4j2.version>2.25.5</log4j2.version>
   </properties>
 
+  <!--
+    POI 5.4.1 覆盖（27 的评估结论）：EasyExcel 4.0.3 直接钉 poi/poi-ooxml 5.2.5，且没有版本属性可覆盖；
+    5.2.5 有 1 条 MODERATE（CVE-2025-31672，修复于 5.4.0）。已在仓库外副本实测
+    「POI 5.4.1 + EasyExcel 4.0.3」：导入/导出定向用例 16/16、后端全量 419/419 绿。
+    之后升级 EasyExcel 或更换 Excel 库时，必须重新验证这三个坐标。
+  -->
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.apache.poi</groupId>
+        <artifactId>poi</artifactId>
+        <version>5.4.1</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.poi</groupId>
+        <artifactId>poi-ooxml</artifactId>
+        <version>5.4.1</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.poi</groupId>
+        <artifactId>poi-ooxml-lite</artifactId>
+        <version>5.4.1</version>
+      </dependency>
+      <!--
+        POI 5.4.1 声明 commons-io 2.18.0；commons-compress 1.27.1（本项目直接依赖）传递 2.16.1，
+        按就近原则压掉了 POI 的声明版本。收敛到 2.18.0，与 POI 的测试组合一致（仓库外探针的
+        Excel 定向用例 16/16 绿）。
+      -->
+      <dependency>
+        <groupId>commons-io</groupId>
+        <artifactId>commons-io</artifactId>
+        <version>2.18.0</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
   <dependencies>
     <dependency>
       <groupId>org.springframework.boot</groupId>
