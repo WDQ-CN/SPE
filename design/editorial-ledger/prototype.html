@@ -1,0 +1,1192 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SPE · Editorial Ledger 原型</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%231c1c1c'/%3E%3Ctext x='16' y='23' font-family='Georgia,serif' font-size='20' fill='%23f7f4ed' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Albert+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600&family=Noto+Serif+SC:wght@500;600&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      --paper: #f7f4ed;
+      --paper-deep: #f1ece1;
+      --surface: #fffdf9;
+      --ink: #1c1c1c;
+      --ink-secondary: #3f3b36;
+      --muted: #6b6a65;
+      --muted-2: #8a857c;
+      --rule: #ded8cc;
+      --rule-strong: #1c1c1c;
+      --accent: #816d70;
+      --accent-soft: #efe7e5;
+      --success: #3f6148;
+      --success-bg: #eaf0e9;
+      --warning: #8a6a2f;
+      --warning-bg: #f4eddd;
+      --danger: #a33a32;
+      --danger-bg: #f4e6e2;
+      --info: #4b5563;
+      --info-bg: #ecedef;
+      --serif: 'Playfair Display', 'Noto Serif SC', 'Songti SC', SimSun, serif;
+      --sans: 'Albert Sans', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+      --mono: 'JetBrains Mono', Consolas, monospace;
+      --sidebar: 216px;
+      --topbar: 72px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background: #e9e3d8;
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 13px;
+      line-height: 20px;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .icon {
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex: none;
+    }
+    .num { font-variant-numeric: tabular-nums; }
+
+    /* ---------- shell ---------- */
+    .app {
+      width: 1440px;
+      height: var(--frame-height, 1200px);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: var(--sidebar) minmax(0, 1fr);
+      background: var(--paper);
+      overflow: hidden;
+    }
+    .sidebar {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 18px 14px 14px;
+      background: var(--surface);
+      border-right: 1px solid var(--rule);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 0 6px; }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border: 1px solid var(--ink);
+      border-radius: 999px;
+      font-family: var(--serif);
+      font-size: 13px;
+      line-height: 1;
+    }
+    .brand-name { display: block; font-family: var(--serif); font-size: 22px; line-height: 24px; font-weight: 600; letter-spacing: -0.6px; }
+    .brand-sub { display: block; margin-top: 1px; font-size: 7px; line-height: 10px; letter-spacing: 0.13em; color: var(--muted-2); text-transform: uppercase; }
+    .nav-group { margin-top: 21px; }
+    .nav-label {
+      padding: 0 8px 7px;
+      font-size: 8px;
+      line-height: 12px;
+      letter-spacing: 0.14em;
+      color: var(--muted-2);
+      text-transform: uppercase;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 34px;
+      padding: 0 8px;
+      border-left: 2px solid transparent;
+      border-radius: 1px;
+      font-size: 12px;
+      color: var(--muted);
+      transition: background 160ms ease, color 160ms ease;
+    }
+    .nav-item:hover { color: var(--ink); background: rgb(129 109 112 / 5%); }
+    .nav-item.active { color: var(--ink); background: var(--accent-soft); border-left-color: var(--ink); font-weight: 500; }
+    .nav-item .icon { width: 15px; height: 15px; color: var(--muted-2); }
+    .nav-item.active .icon { color: var(--ink); }
+    .nav-count { margin-left: auto; font-family: var(--mono); font-size: 9px; color: var(--muted-2); }
+    .sidebar-spacer { flex: 1; }
+    .sidebar-user {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 6px 0;
+      border-top: 1px solid var(--rule);
+    }
+    .avatar {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border: 1px solid var(--ink);
+      border-radius: 999px;
+      font-family: var(--serif);
+      font-size: 10px;
+      flex: none;
+    }
+    .user-name { font-size: 10.5px; line-height: 15px; }
+    .user-role { font-size: 8.5px; line-height: 12px; color: var(--muted-2); }
+    .sidebar-user .icon { margin-left: auto; color: var(--muted-2); width: 13px; height: 13px; }
+
+    .main { min-width: 0; display: flex; flex-direction: column; }
+    .topbar {
+      flex: none;
+      height: var(--topbar);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 30px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--rule);
+    }
+    .crumbs { display: flex; align-items: center; gap: 8px; font-size: 10px; line-height: 15px; letter-spacing: 0.06em; color: var(--muted); text-transform: uppercase; }
+    .crumbs strong { color: var(--ink); font-weight: 500; }
+    .top-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .top-search {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      width: 242px;
+      height: 34px;
+      padding: 0 10px;
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      background: var(--paper);
+      color: var(--muted-2);
+      font-size: 10.5px;
+    }
+    .top-search .icon { width: 14px; height: 14px; }
+    .top-icon {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border: 1px solid transparent;
+      border-radius: 2px;
+      background: transparent;
+      color: var(--muted);
+    }
+    .top-icon:hover { border-color: var(--rule); background: var(--paper); color: var(--ink); }
+    .top-icon .icon { width: 16px; height: 16px; }
+    .notify-dot { position: absolute; top: 5px; right: 5px; width: 4px; height: 4px; background: var(--danger); border-radius: 999px; }
+    .top-user { display: flex; align-items: center; gap: 7px; margin-left: 2px; padding-left: 14px; border-left: 1px solid var(--rule); }
+    .top-user .avatar { width: 28px; height: 28px; }
+    .top-user .icon { width: 12px; height: 12px; color: var(--muted-2); }
+
+    .content { flex: 1; min-height: 0; padding: 28px 32px 32px; overflow: hidden; }
+    .screen { display: none; height: 100%; min-height: 0; flex-direction: column; }
+    .screen.is-active { display: flex; }
+
+    /* ---------- common ---------- */
+    .page-head {
+      flex: none;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--rule);
+    }
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 9px;
+      line-height: 13px;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .eyebrow::before { content: ''; width: 5px; height: 5px; background: var(--accent); flex: none; }
+    .page-title {
+      margin: 8px 0 0;
+      font-family: var(--serif);
+      font-size: 38px;
+      line-height: 44px;
+      font-weight: 500;
+      letter-spacing: -1.2px;
+    }
+    .title-row { display: flex; align-items: center; gap: 12px; }
+    .title-status { display: inline-flex; align-items: center; gap: 6px; margin-top: 19px; font-size: 10.5px; color: var(--accent); white-space: nowrap; }
+    .title-status::before { content: ''; width: 5px; height: 5px; background: currentColor; }
+    .page-lede { margin: 6px 0 0; font-size: 12px; line-height: 20px; color: var(--muted); }
+    .page-actions { display: flex; align-items: center; gap: 8px; padding-bottom: 2px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      height: 36px;
+      padding: 0 14px;
+      border: 1px solid transparent;
+      border-radius: 2px;
+      font-size: 12px;
+      line-height: 18px;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+    }
+    .btn .icon { width: 13px; height: 13px; }
+    .btn-primary { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+    .btn-primary:hover { background: #000; }
+    .btn-secondary { background: var(--surface); border-color: var(--rule); color: var(--ink); }
+    .btn-secondary:hover { border-color: var(--ink); }
+    .btn-ghost { padding: 0 2px; border: 0; background: transparent; color: var(--ink); text-decoration: underline; text-underline-offset: 4px; }
+    .btn-ghost:hover { color: var(--accent); }
+    .btn-danger { color: var(--danger); border-color: rgb(163 58 50 / 35%); background: transparent; }
+    .btn-sm { height: 30px; padding: 0 10px; font-size: 11px; }
+
+    .kpi-row { flex: none; display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--rule); }
+    .kpi { min-width: 0; padding: 15px 20px 16px; border-right: 1px solid var(--rule); }
+    .kpi:first-child { padding-left: 0; }
+    .kpi:last-child { border-right: 0; }
+    .kpi-label { font-size: 9px; line-height: 13px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; }
+    .kpi-value { margin-top: 4px; font-family: var(--serif); font-size: 36px; line-height: 40px; font-weight: 500; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+    .kpi-meta { margin-top: 3px; font-size: 10.5px; line-height: 15px; color: var(--muted); white-space: nowrap; }
+    .kpi-meta .up { color: var(--success); }
+    .kpi-meta .down { color: var(--danger); }
+
+    .dash-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 32px; padding-top: 20px; flex: 1; min-height: 0; }
+    .stack { min-width: 0; display: flex; flex-direction: column; }
+    .block { padding-top: 14px; margin-top: 20px; border-top: 1px solid var(--rule); min-width: 0; }
+    .stack > .block:first-child, .side-stack > .block:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+    .block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .block-title { margin: 0; font-family: var(--serif); font-size: 19px; line-height: 26px; font-weight: 500; letter-spacing: -0.3px; }
+    .block-note { margin: 2px 0 0; font-size: 10px; line-height: 15px; color: var(--muted); }
+    .block-link { border-bottom: 1px solid var(--rule); color: var(--muted); font-size: 10px; line-height: 16px; }
+    .block-link:hover { color: var(--accent); border-color: var(--accent); }
+    .legend { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 9px; line-height: 13px; }
+    .legend i { display: inline-block; width: 14px; height: 1px; margin-right: 4px; background: var(--ink); vertical-align: middle; }
+    .legend i.dashed { background: repeating-linear-gradient(90deg, var(--accent) 0 3px, transparent 3px 6px); }
+
+    .chart { margin-top: 8px; }
+    .chart svg { display: block; width: 100%; height: 190px; }
+    .chart-axis { font-family: var(--sans); font-size: 9px; fill: var(--muted-2); }
+    .chart-grid { stroke: var(--rule); stroke-width: 1; }
+    .chart-line { fill: none; stroke: var(--ink); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .chart-target { fill: none; stroke: var(--accent); stroke-width: 1.3; stroke-dasharray: 4 4; }
+    .chart-dot { fill: var(--paper); stroke: var(--ink); stroke-width: 1.3; }
+    .chart-fill { fill: rgb(129 109 112 / 6%); }
+    .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--rule); margin-top: 6px; }
+    .stat { padding: 9px 12px 0; border-right: 1px solid var(--rule); }
+    .stat:first-child { padding-left: 0; }
+    .stat:last-child { border-right: 0; }
+    .stat-label { font-size: 8.5px; line-height: 12px; letter-spacing: 0.1em; color: var(--muted-2); text-transform: uppercase; }
+    .stat-value { margin-top: 2px; font-size: 15px; line-height: 20px; font-weight: 500; }
+    .stat-value small { margin-left: 2px; font-size: 9.5px; color: var(--muted-2); font-weight: 400; }
+    .stat-value.is-success { color: var(--success); }
+
+    /* ---------- tables ---------- */
+    .data-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .data-table th {
+      height: 38px;
+      padding: 0 10px;
+      border-bottom: 1px solid var(--ink);
+      font-size: 9px;
+      line-height: 13px;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      text-align: left;
+      text-transform: uppercase;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .data-table td {
+      height: 52px;
+      padding: 0 10px;
+      border-bottom: 1px solid var(--rule);
+      font-size: 12px;
+      color: var(--ink-secondary);
+      vertical-align: middle;
+    }
+    .data-table th:first-child, .data-table td:first-child { padding-left: 0; }
+    .data-table th:last-child, .data-table td:last-child { padding-right: 0; text-align: right; }
+    .data-table th.num, .data-table td.num { text-align: right; }
+    .data-table tbody tr:hover td { background: rgb(129 109 112 / 4%); }
+    .data-table .strong { color: var(--ink); font-weight: 500; }
+    .data-table .sub { display: block; margin-top: 1px; font-size: 9.5px; line-height: 14px; color: var(--muted-2); }
+    .cell-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .company-mark {
+      display: grid;
+      place-items: center;
+      width: 25px;
+      height: 25px;
+      flex: none;
+      border: 1px solid var(--rule);
+      font-family: var(--serif);
+      font-size: 10px;
+      color: var(--ink-secondary);
+    }
+    .table-actions { display: inline-flex; align-items: center; gap: 12px; justify-content: flex-end; }
+    .table-actions a { border-bottom: 1px solid var(--rule); color: var(--ink); font-size: 10.5px; line-height: 18px; }
+    .table-actions a:hover { color: var(--accent); border-color: var(--accent); }
+    .table-actions a.muted { color: var(--muted); }
+    .grade { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; }
+    .grade::before { content: ''; width: 5px; height: 5px; background: currentColor; }
+    .grade-a { color: var(--success); }
+    .grade-b { color: var(--info); }
+    .grade-c { color: var(--warning); }
+    .grade-d { color: var(--danger); }
+    .delta-up { color: var(--success); font-size: 10.5px; }
+    .delta-down { color: var(--danger); font-size: 10.5px; }
+
+    .status { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; line-height: 18px; white-space: nowrap; }
+    .status::before { content: ''; width: 5px; height: 5px; background: currentColor; flex: none; }
+    .status.is-success { color: var(--success); }
+    .status.is-progress { color: var(--accent); }
+    .status.is-wait { color: var(--warning); }
+    .status.is-risk { color: var(--danger); }
+    .status.is-off { color: var(--muted-2); }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      height: 21px;
+      padding: 0 6px;
+      border: 1px solid var(--rule);
+      font-size: 8.5px;
+      line-height: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .tag.is-code { font-family: var(--mono); font-size: 9px; letter-spacing: 0; text-transform: none; color: var(--ink-secondary); }
+    .tag.is-qual { color: var(--accent); border-color: rgb(129 109 112 / 35%); }
+
+    .progress-line { height: 2px; background: var(--rule); overflow: hidden; }
+    .progress-line > span { display: block; height: 2px; background: var(--ink); }
+    .progress-line > span.is-accent { background: var(--accent); }
+    .progress-line > span.is-success { background: var(--success); }
+    .progress-cell { display: flex; align-items: center; gap: 8px; }
+    .progress-cell .progress-line { flex: 1; }
+    .progress-cell small { font-size: 9px; color: var(--muted); white-space: nowrap; }
+
+    .pagination { display: flex; align-items: center; justify-content: space-between; height: 46px; border-top: 1px solid var(--rule); color: var(--muted); font-size: 10px; }
+    .pager { display: flex; align-items: center; gap: 4px; }
+    .pager button { min-width: 24px; height: 24px; padding: 0 5px; border: 0; border-bottom: 1px solid transparent; background: transparent; color: var(--muted); font-size: 10px; }
+    .pager button:hover { color: var(--ink); }
+    .pager button.is-active { color: var(--ink); border-color: var(--ink); }
+
+    /* ---------- dashboard ---------- */
+    .conclusion { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--rule); display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+    .conclusion p { max-width: 720px; margin: 0; font-family: var(--serif); font-size: 14px; line-height: 22px; color: var(--ink-secondary); }
+    .conclusion p::first-letter { color: var(--accent); }
+    .conclusion .block-link { flex: none; margin-top: 2px; }
+    .side-stack { display: flex; flex-direction: column; min-width: 0; }
+    .side-block { min-width: 0; }
+    .list-row { display: flex; align-items: center; gap: 8px; min-height: 48px; border-bottom: 1px solid var(--rule); }
+    .list-row:last-child { border-bottom: 0; }
+    .list-mark { width: 5px; height: 5px; flex: none; background: var(--accent); }
+    .list-mark.is-wait { background: var(--warning); }
+    .list-mark.is-risk { background: var(--danger); }
+    .list-mark.is-off { background: var(--muted-2); }
+    .list-main { min-width: 0; flex: 1; }
+    .list-title { font-size: 11px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .list-meta { margin-top: 1px; font-size: 9px; line-height: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .list-state { flex: none; font-size: 9px; line-height: 14px; color: var(--muted); white-space: nowrap; }
+    .list-state.is-wait { color: var(--warning); }
+    .list-state.is-risk { color: var(--danger); }
+    .coverage-row { display: grid; grid-template-columns: 46px 1fr 48px; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+    .coverage-row:last-child { border-bottom: 0; }
+    .coverage-label { font-size: 10px; color: var(--ink-secondary); }
+    .coverage-value { text-align: right; font-size: 9px; color: var(--muted); }
+    .coverage-track { height: 2px; background: var(--rule); }
+    .coverage-track span { display: block; height: 2px; background: var(--ink); }
+    .coverage-track span.is-accent { background: var(--accent); }
+
+    /* ---------- suppliers ---------- */
+    .toolbar { display: flex; align-items: center; gap: 8px; padding: 16px 0; border-bottom: 1px solid var(--rule); flex: none; }
+    .field {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      height: 36px;
+      min-width: 190px;
+      padding: 0 10px;
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .field .icon { width: 14px; height: 14px; color: var(--muted-2); }
+    .field input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 11px; }
+    .field input::placeholder { color: var(--muted-2); }
+    .field.is-focus { border-color: var(--ink); box-shadow: 0 0 0 2px var(--accent-soft); }
+    .field.is-select { min-width: 122px; justify-content: space-between; color: var(--ink-secondary); cursor: pointer; }
+    .field.is-select .icon { width: 12px; height: 12px; margin-left: auto; }
+    .field.is-wide { flex: 1; max-width: 268px; }
+    .toolbar-spacer { flex: 1; }
+    .toolbar-note { font-size: 10px; color: var(--muted-2); }
+    .icon-divider { width: 1px; height: 22px; background: var(--rule); margin: 0 3px; }
+    .table-block { display: flex; flex-direction: column; flex: 1; min-height: 0; padding-top: 0; }
+    .table-block .data-table { flex: none; }
+    .table-block .pagination { margin-top: auto; }
+    .data-footnote { padding: 9px 0 0; border-top: 1px solid var(--rule); font-size: 9.5px; color: var(--muted-2); }
+
+    /* ---------- task detail ---------- */
+    .meta-strip { flex: none; display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--rule); }
+    .meta-item { padding: 13px 20px 14px; border-right: 1px solid var(--rule); }
+    .meta-item:first-child { padding-left: 0; }
+    .meta-item:last-child { border-right: 0; padding-right: 0; }
+    .meta-label { font-size: 8.5px; line-height: 12px; letter-spacing: 0.1em; color: var(--muted-2); text-transform: uppercase; }
+    .meta-value { margin-top: 4px; font-size: 12px; line-height: 17px; font-weight: 500; color: var(--ink); }
+    .meta-value .muted { color: var(--muted); font-weight: 400; }
+    .meta-progress { margin-top: 6px; }
+    .task-layout { display: grid; grid-template-columns: minmax(0, 1.62fr) minmax(0, 1fr); gap: 32px; padding-top: 20px; flex: 1; min-height: 0; }
+    .task-main { min-width: 0; display: flex; flex-direction: column; }
+    .task-main .pagination { margin-top: auto; }
+    .timeline { padding-top: 2px; }
+    .timeline-item { position: relative; padding: 9px 0 9px 22px; margin-left: 4px; border-left: 1px solid var(--rule); }
+    .timeline-item:last-child { border-left-color: transparent; padding-bottom: 6px; }
+    .timeline-dot { position: absolute; left: -4px; top: 14px; width: 7px; height: 7px; border: 1px solid var(--muted-2); background: var(--surface); border-radius: 999px; }
+    .timeline-item.is-done .timeline-dot { border-color: var(--success); background: var(--success); }
+    .timeline-item.is-current .timeline-dot { border-color: var(--ink); background: var(--ink); }
+    .timeline-title { font-size: 11px; line-height: 16px; font-weight: 500; }
+    .timeline-meta { margin-top: 2px; font-size: 9.5px; line-height: 14px; color: var(--muted); }
+    .callout { margin-top: 14px; padding: 10px 12px; border-left: 2px solid var(--accent); background: var(--accent-soft); font-size: 10px; line-height: 17px; color: var(--ink-secondary); }
+    .aside-block { border-top: 1px solid var(--rule); padding-top: 14px; margin-top: 20px; }
+    .side-stack > .aside-block:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+
+    /* ---------- scoring ---------- */
+    .scoring-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 32px; padding-top: 20px; flex: 1; min-height: 0; }
+    .score-number { font-family: var(--serif); font-size: 66px; line-height: 70px; font-weight: 500; letter-spacing: -2px; font-variant-numeric: tabular-nums; }
+    .score-grade { margin-left: 8px; font-family: var(--serif); font-size: 18px; color: var(--success); }
+    .score-hint { margin-top: 3px; font-size: 9.5px; line-height: 15px; color: var(--muted); }
+    .dimension-row { padding: 9px 0; border-bottom: 1px solid var(--rule); }
+    .dimension-row:last-child { border-bottom: 0; }
+    .dimension-top { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; font-size: 10px; }
+    .dimension-top strong { font-weight: 500; }
+    .dimension-top span { color: var(--muted); }
+    .score-input {
+      width: 96px;
+      height: 32px;
+      padding: 0 9px;
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      background: var(--surface);
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 11px;
+      text-align: right;
+      outline: 0;
+    }
+    .score-input:focus { border-color: var(--ink); box-shadow: 0 0 0 2px var(--accent-soft); }
+    .score-input.is-filled { background: #fbf8f2; }
+    .select {
+      height: 32px;
+      padding: 0 28px 0 8px;
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+      background: var(--surface);
+      color: var(--ink-secondary);
+      font-size: 11px;
+      appearance: none;
+      background-image: linear-gradient(45deg, transparent 50%, var(--muted-2) 50%), linear-gradient(135deg, var(--muted-2) 50%, transparent 50%);
+      background-position: calc(100% - 13px) 13px, calc(100% - 9px) 13px;
+      background-size: 4px 4px, 4px 4px;
+      background-repeat: no-repeat;
+    }
+    .scoring-foot { display: flex; align-items: center; justify-content: space-between; padding-top: 13px; border-top: 1px solid var(--rule); margin-top: 14px; }
+    .check-list { margin-top: 2px; }
+    .check-row { display: flex; align-items: center; gap: 8px; min-height: 44px; border-bottom: 1px solid var(--rule); }
+    .check-row:last-child { border-bottom: 0; }
+    .check-mark { display: grid; place-items: center; width: 16px; height: 16px; border: 1px solid var(--rule); border-radius: 999px; color: var(--success); flex: none; }
+    .check-mark .icon { width: 10px; height: 10px; }
+    .check-mark.is-wait { color: var(--warning); }
+    .check-main { min-width: 0; flex: 1; }
+    .check-title { font-size: 10.5px; line-height: 15px; }
+    .check-meta { margin-top: 1px; font-size: 9px; line-height: 13px; color: var(--muted); }
+    .approval-step { display: flex; align-items: center; gap: 8px; min-height: 44px; border-bottom: 1px solid var(--rule); }
+    .approval-step:last-child { border-bottom: 0; }
+    .step-index { display: grid; place-items: center; width: 16px; height: 16px; border: 1px solid var(--rule); border-radius: 999px; font-family: var(--mono); font-size: 8px; color: var(--muted); flex: none; }
+    .step-index.is-done { border-color: var(--success); color: var(--success); }
+    .step-index.is-current { border-color: var(--ink); color: var(--ink); }
+    .step-main { min-width: 0; flex: 1; }
+    .step-title { font-size: 10.5px; line-height: 15px; }
+    .step-meta { margin-top: 1px; font-size: 9px; line-height: 13px; color: var(--muted); }
+    .step-state { font-size: 9px; color: var(--muted); }
+
+    /* ---------- analytics ---------- */
+    .analysis-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 32px; padding-top: 20px; flex: 1; min-height: 0; }
+    .bar-row { display: grid; grid-template-columns: 48px 1fr 34px; align-items: center; gap: 9px; padding: 7px 0; font-size: 10px; }
+    .bar-track { height: 2px; background: var(--rule); }
+    .bar-fill { height: 2px; background: var(--ink); }
+    .bar-fill.is-teal { background: var(--accent); }
+    .bar-fill.is-amber { background: var(--warning); }
+    .bar-fill.is-red { background: var(--danger); }
+    .rank-badge { display: inline-flex; align-items: center; justify-content: flex-start; font-family: var(--mono); font-size: 9px; color: var(--muted-2); }
+    .attention-row { display: flex; align-items: center; gap: 8px; min-height: 42px; border-bottom: 1px solid var(--rule); }
+    .attention-row:last-child { border-bottom: 0; }
+    .attention-mark { width: 5px; height: 5px; flex: none; background: var(--warning); }
+    .attention-mark.is-high { background: var(--danger); }
+    .attention-name { flex: 1; min-width: 0; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .attention-score { font-size: 9.5px; color: var(--muted); }
+
+    /* ---------- design system screen ---------- */
+    .system-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 44px; padding-top: 20px; flex: 1; min-height: 0; }
+    .system-stack { min-width: 0; display: flex; flex-direction: column; }
+    .system-block { border-top: 1px solid var(--rule); padding-top: 14px; margin-top: 20px; }
+    .system-stack > .system-block:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+    .swatch-grid { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--rule); border-left: 1px solid var(--rule); margin-top: 4px; }
+    .swatch { min-width: 0; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding: 10px; }
+    .swatch-color { height: 34px; border: 1px solid rgb(28 28 28 / 8%); margin-bottom: 6px; }
+    .swatch-name { font-size: 9.5px; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .swatch-hex { font-family: var(--mono); font-size: 8.5px; line-height: 13px; color: var(--muted); }
+    .type-list { border-top: 1px solid var(--ink); margin-top: 4px; }
+    .type-row { display: grid; grid-template-columns: 90px 1fr auto; align-items: baseline; gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--rule); }
+    .type-label { font-size: 8px; letter-spacing: 0.12em; color: var(--muted-2); text-transform: uppercase; }
+    .type-sample { font-size: 12px; line-height: 20px; }
+    .type-sample.is-serif { font-family: var(--serif); font-size: 18px; line-height: 26px; }
+    .type-sample.is-mono { font-family: var(--mono); font-size: 9.5px; }
+    .type-spec { font-family: var(--mono); font-size: 8.5px; color: var(--muted); white-space: nowrap; }
+    .component-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 11px 0; border-bottom: 1px solid var(--rule); }
+    .component-row:last-child { border-bottom: 0; }
+    .component-label { width: 76px; flex: none; font-size: 8px; letter-spacing: 0.12em; color: var(--muted-2); text-transform: uppercase; }
+
+    /* ---------- review nav ---------- */
+    .review-nav {
+      position: fixed;
+      z-index: 9;
+      left: 50%;
+      bottom: 14px;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 5px;
+      border-radius: 2px;
+      background: var(--ink);
+      color: var(--paper);
+      box-shadow: 0 8px 24px rgb(28 28 28 / 16%);
+    }
+    .review-nav span { padding: 0 8px; font-family: var(--mono); font-size: 9px; color: rgb(247 244 237 / 55%); }
+    .review-nav a { padding: 6px 9px; border-radius: 1px; font-size: 10px; color: rgb(247 244 237 / 65%); }
+    .review-nav a.is-active { background: var(--paper); color: var(--ink); }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 19V5M4 19h16"/><path d="m7 15 3-4 3 2 4-6"/></symbol>
+      <symbol id="i-building" viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12"/><path d="M9 20v-5h6v5"/><path d="M8 9h.01M12 9h.01M16 9h.01"/></symbol>
+      <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+      <symbol id="i-clipboard" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M8 9h8M8 13h8M8 17h5"/></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m8 12 3 3 5-5"/></symbol>
+      <symbol id="i-check-small" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.83 1.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V20h-2.6v-.09a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-1.83-1.83.06-.06A1.7 1.7 0 0 0 8.6 15a1.7 1.7 0 0 0-1.56-1.03H7v-2.6h.09A1.7 1.7 0 0 0 8.6 10.3a1.7 1.7 0 0 0-.34-1.88l-.06-.06 1.83-1.83.06.06a1.7 1.7 0 0 0 1.88.34A1.7 1.7 0 0 0 13 5.37V5.3h2.6v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 1.83 1.83-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03H22v2.6h-.09A1.7 1.7 0 0 0 19.4 15Z"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+      <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+      <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 4.3 2.3 18a2 2 0 0 0 1.7 3h16a2 2 0 0 0 1.7-3l-8-13.7a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="app" id="app">
+    <aside class="sidebar">
+      <a class="brand" href="#dashboard">
+        <span class="brand-mark">S</span>
+        <span><span class="brand-name">SPE</span><span class="brand-sub">Supplier performance</span></span>
+      </a>
+
+      <div class="nav-group">
+        <div class="nav-label">总览 / Overview</div>
+        <a class="nav-item" data-nav="dashboard" href="#dashboard"><svg class="icon"><use href="#i-grid"/></svg>工作台</a>
+        <a class="nav-item" data-nav="analytics" href="#analytics"><svg class="icon"><use href="#i-chart"/></svg>分析看板</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">运营 / Operations</div>
+        <a class="nav-item" data-nav="suppliers" href="#suppliers"><svg class="icon"><use href="#i-building"/></svg>供应商管理</a>
+        <a class="nav-item" data-nav="task-detail" href="#task-detail"><svg class="icon"><use href="#i-clipboard"/></svg>评估任务<span class="nav-count">3</span></a>
+        <a class="nav-item" data-nav="scoring" href="#scoring"><svg class="icon"><use href="#i-edit"/></svg>评分工作</a>
+        <a class="nav-item" data-nav="approvals" href="#task-detail"><svg class="icon"><use href="#i-check"/></svg>审批中心</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">配置 / Config</div>
+        <a class="nav-item" data-nav="templates" href="#system"><svg class="icon"><use href="#i-layers"/></svg>模板配置</a>
+        <a class="nav-item" data-nav="alerts" href="#analytics"><svg class="icon"><use href="#i-bell"/></svg>预警规则</a>
+        <a class="nav-item" data-nav="users" href="#system"><svg class="icon"><use href="#i-users"/></svg>用户与权限</a>
+      </div>
+      <div class="sidebar-spacer"></div>
+      <div class="sidebar-user">
+        <span class="avatar">管</span>
+        <div><div class="user-name">系统管理员</div><div class="user-role">ADMIN · 采购部</div></div>
+        <svg class="icon"><use href="#i-down"/></svg>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="crumbs"><strong>SPE</strong><span>/</span><span>供应链绩效</span><span>/</span><span id="crumb">工作台</span></div>
+        <div class="top-actions">
+          <label class="top-search"><svg class="icon"><use href="#i-search"/></svg><input placeholder="搜索供应商、任务、编号…" /></label>
+          <button class="top-icon" aria-label="通知"><svg class="icon"><use href="#i-bell"/></svg><i class="notify-dot"></i></button>
+          <button class="top-icon" aria-label="设置"><svg class="icon"><use href="#i-settings"/></svg></button>
+          <div class="top-user"><span class="avatar">管</span><svg class="icon"><use href="#i-down"/></svg></div>
+        </div>
+      </header>
+
+      <main class="content">
+        <!-- ============ 工作台 ============ -->
+        <section class="screen is-active" data-screen="dashboard">
+          <div class="page-head">
+            <div>
+              <div class="eyebrow">Overview / 2026 Q3</div>
+              <h1 class="page-title">供应商绩效</h1>
+              <p class="page-lede">2026 Q3 评估周期 · 28 家供应商 · 截止 10 月 31 日 18:00</p>
+            </div>
+            <div class="page-actions">
+              <button class="btn btn-secondary"><svg class="icon"><use href="#i-download"/></svg>导出周报</button>
+              <button class="btn btn-primary"><svg class="icon"><use href="#i-plus"/></svg>新建任务</button>
+            </div>
+          </div>
+
+          <div class="kpi-row">
+            <div class="kpi"><div class="kpi-label">进行中任务</div><div class="kpi-value num">3</div><div class="kpi-meta">2 待发布 · 1 评分中</div></div>
+            <div class="kpi"><div class="kpi-label">待我处理</div><div class="kpi-value num">7</div><div class="kpi-meta">审批 3 · 评分 4</div></div>
+            <div class="kpi"><div class="kpi-label">本期预警</div><div class="kpi-value num">5</div><div class="kpi-meta">2 条未读 · 较上期 -2</div></div>
+            <div class="kpi"><div class="kpi-label">平均总分</div><div class="kpi-value num">86.4</div><div class="kpi-meta"><span class="up">↑ 2.1</span> 较上期</div></div>
+          </div>
+
+          <div class="dash-grid">
+            <div class="stack">
+              <section class="block">
+                <div class="block-head">
+                  <div><h2 class="block-title">评估进度</h2><p class="block-note">2026 Q3 · 按周统计已完成评分单</p></div>
+                  <div class="legend"><span><i></i>已完成</span><span><i class="dashed"></i>进行中</span></div>
+                </div>
+                <div class="chart">
+                  <svg viewBox="0 0 760 220" preserveAspectRatio="none" aria-label="评估进度折线图">
+                    <defs><linearGradient id="dashFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#816d70" stop-opacity=".10"/><stop offset="100%" stop-color="#816d70" stop-opacity="0"/></linearGradient></defs>
+                    <line class="chart-grid" x1="38" y1="22" x2="750" y2="22"/><line class="chart-grid" x1="38" y1="68" x2="750" y2="68"/><line class="chart-grid" x1="38" y1="114" x2="750" y2="114"/><line class="chart-grid" x1="38" y1="160" x2="750" y2="160"/><line class="chart-grid" x1="38" y1="206" x2="750" y2="206"/>
+                    <text class="chart-axis" x="30" y="25" text-anchor="end">100</text><text class="chart-axis" x="30" y="71" text-anchor="end">75</text><text class="chart-axis" x="30" y="117" text-anchor="end">50</text><text class="chart-axis" x="30" y="163" text-anchor="end">25</text><text class="chart-axis" x="30" y="209" text-anchor="end">0</text>
+                    <path fill="url(#dashFill)" d="M38 178 C90 169 120 156 174 149 S272 129 326 120 S416 97 470 84 S564 63 618 51 S710 35 750 28 L750 206 L38 206 Z"/>
+                    <path class="chart-line" d="M38 178 C90 169 120 156 174 149 S272 129 326 120 S416 97 470 84 S564 63 618 51 S710 35 750 28"/>
+                    <path class="chart-target" d="M38 192 C100 188 142 174 196 179 S298 157 352 162 S448 140 502 145 S596 122 646 128 S720 110 750 114"/>
+                    <circle class="chart-dot" cx="38" cy="178" r="2.6"/><circle class="chart-dot" cx="174" cy="149" r="2.6"/><circle class="chart-dot" cx="326" cy="120" r="2.6"/><circle class="chart-dot" cx="470" cy="84" r="2.6"/><circle class="chart-dot" cx="618" cy="51" r="2.6"/><circle class="chart-dot" cx="750" cy="28" r="2.6"/>
+                    <text class="chart-axis" x="38" y="219">W1</text><text class="chart-axis" x="174" y="219">W2</text><text class="chart-axis" x="326" y="219">W3</text><text class="chart-axis" x="470" y="219">W4</text><text class="chart-axis" x="618" y="219">W5</text><text class="chart-axis" x="750" y="219" text-anchor="end">W6</text>
+                  </svg>
+                </div>
+                <div class="stat-row">
+                  <div class="stat"><div class="stat-label">已完成评分单</div><div class="stat-value num">84 <small>/ 112</small></div></div>
+                  <div class="stat"><div class="stat-label">待提交</div><div class="stat-value num">18</div></div>
+                  <div class="stat"><div class="stat-label">审批中</div><div class="stat-value num">10</div></div>
+                  <div class="stat"><div class="stat-label">按期完成率</div><div class="stat-value num is-success">92.4%</div></div>
+                </div>
+              </section>
+
+              <section class="block">
+                <div class="block-head">
+                  <div><h2 class="block-title">供应商排名</h2><p class="block-note">按本期总分 · 已生效结果</p></div>
+                  <a class="block-link" href="#suppliers">查看全部</a>
+                </div>
+                <table class="data-table">
+                  <thead><tr><th style="width:44px">#</th><th>供应商</th><th class="num" style="width:82px">总分</th><th style="width:70px">等级</th><th class="num" style="width:78px">环比</th></tr></thead>
+                  <tbody>
+                    <tr><td class="num">01</td><td><div class="cell-name"><span class="company-mark">华</span><div><span class="strong">华东精密制造</span><span class="sub">SUP-001 · 电子</span></div></div></td><td class="num strong">94.2</td><td><span class="grade grade-a">A</span></td><td class="num delta-up">↑ 1.8</td></tr>
+                    <tr><td class="num">02</td><td><div class="cell-name"><span class="company-mark">江</span><div><span class="strong">江南电子科技</span><span class="sub">SUP-014 · 电子</span></div></div></td><td class="num strong">91.7</td><td><span class="grade grade-a">A</span></td><td class="num delta-up">↑ 0.6</td></tr>
+                    <tr><td class="num">03</td><td><div class="cell-name"><span class="company-mark">恒</span><div><span class="strong">恒信机电设备</span><span class="sub">SUP-063 · 设备</span></div></div></td><td class="num strong">89.6</td><td><span class="grade grade-b">B</span></td><td class="num delta-up">↑ 0.8</td></tr>
+                    <tr><td class="num">04</td><td><div class="cell-name"><span class="company-mark">北</span><div><span class="strong">北方物流集团</span><span class="sub">SUP-027 · 物流</span></div></div></td><td class="num strong">88.5</td><td><span class="grade grade-b">B</span></td><td class="num delta-down">↓ 0.4</td></tr>
+                    <tr><td class="num">05</td><td><div class="cell-name"><span class="company-mark">星</span><div><span class="strong">星海包装材料</span><span class="sub">SUP-032 · 包装</span></div></div></td><td class="num strong">86.9</td><td><span class="grade grade-b">B</span></td><td class="num delta-up">↑ 1.2</td></tr>
+                    <tr><td class="num">06</td><td><div class="cell-name"><span class="company-mark">中</span><div><span class="strong">中原金属制品</span><span class="sub">SUP-041 · 金属</span></div></div></td><td class="num strong">84.3</td><td><span class="grade grade-b">B</span></td><td class="num delta-down">↓ 0.9</td></tr>
+                  </tbody>
+                </table>
+              </section>
+
+              <div class="conclusion">
+                <p>成本维度连续两期低于目标线，是本期主要改进项；华东精密制造与江南电子科技的质量、交付均进入 A 级区间。</p>
+                <a class="block-link" href="#analytics">查看本期结论</a>
+              </div>
+            </div>
+
+            <div class="side-stack">
+              <section class="block">
+                <div class="block-head"><div><h2 class="block-title">待我处理</h2><p class="block-note">按截止时间排序 · 7 项</p></div></div>
+                <div class="list-row"><span class="list-mark is-wait"></span><div class="list-main"><div class="list-title">审批 · 华东精密制造</div><div class="list-meta">质量、交付已提交 · 2 小时前</div></div><span class="list-state is-wait">待通过</span></div>
+                <div class="list-row"><span class="list-mark"></span><div class="list-main"><div class="list-title">评分 · 北方物流集团</div><div class="list-meta">交付维度 · 3/4 指标已填</div></div><span class="list-state">待提交</span></div>
+                <div class="list-row"><span class="list-mark is-wait"></span><div class="list-main"><div class="list-title">审批 · 星海包装材料</div><div class="list-meta">质量维度 · 昨天 16:40</div></div><span class="list-state is-wait">待通过</span></div>
+                <div class="list-row"><span class="list-mark is-off"></span><div class="list-main"><div class="list-title">评分 · 中原金属制品</div><div class="list-meta">成本维度 · 截止 10-31</div></div><span class="list-state">未开始</span></div>
+                <div class="list-row"><span class="list-mark is-wait"></span><div class="list-main"><div class="list-title">审批 · 恒信机电设备</div><div class="list-meta">质量、交付已提交 · 昨天 09:18</div></div><span class="list-state is-wait">待通过</span></div>
+              </section>
+
+              <section class="block">
+                <div class="block-head"><div><h2 class="block-title">最近预警</h2><p class="block-note">规则自动判定 · 未读 2 条</p></div></div>
+                <div class="list-row"><span class="list-mark is-risk"></span><div class="list-main"><div class="list-title">总分低于阈值 · 中原金属制品</div><div class="list-meta">82.6 / 阈值 85 · 高风险</div></div><span class="list-state is-risk">高风险</span></div>
+                <div class="list-row"><span class="list-mark is-wait"></span><div class="list-main"><div class="list-title">关键维度低于阈值 · 星海包装</div><div class="list-meta">质量 78.2 · 中风险</div></div><span class="list-state is-wait">中风险</span></div>
+                <div class="list-row"><span class="list-mark is-wait"></span><div class="list-main"><div class="list-title">连续两期下降 · 北方物流集团</div><div class="list-meta">较上期 -3.2 · 中风险</div></div><span class="list-state is-wait">中风险</span></div>
+                <div class="list-row"><span class="list-mark is-wait"></span><div class="list-main"><div class="list-title">交付准期率下降 · 云港电子</div><div class="list-meta">较上期 -4.1 · 中风险</div></div><span class="list-state is-wait">中风险</span></div>
+              </section>
+
+              <section class="block">
+                <div class="block-head"><div><h2 class="block-title">评分覆盖</h2><p class="block-note">4 个维度 · 112 张评分单</p></div></div>
+                <div class="coverage-row"><div class="coverage-label">质量</div><div class="coverage-track"><span style="width:100%"></span></div><div class="coverage-value num">28 / 28</div></div>
+                <div class="coverage-row"><div class="coverage-label">交付</div><div class="coverage-track"><span style="width:86%"></span></div><div class="coverage-value num">24 / 28</div></div>
+                <div class="coverage-row"><div class="coverage-label">成本</div><div class="coverage-track"><span style="width:71%"></span></div><div class="coverage-value num">20 / 28</div></div>
+                <div class="coverage-row"><div class="coverage-label">服务</div><div class="coverage-track"><span class="is-accent" style="width:43%"></span></div><div class="coverage-value num">12 / 28</div></div>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ 供应商 ============ -->
+        <section class="screen" data-screen="suppliers">
+          <div class="page-head">
+            <div>
+              <div class="eyebrow">Master data / Suppliers</div>
+              <h1 class="page-title">供应商管理</h1>
+              <p class="page-lede">共 128 家 · 启用 121 · 停用 7 · 编码为唯一业务键</p>
+            </div>
+            <div class="page-actions">
+              <button class="btn btn-secondary"><svg class="icon"><use href="#i-download"/></svg>导出</button>
+              <button class="btn btn-primary"><svg class="icon"><use href="#i-plus"/></svg>新增供应商</button>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <label class="field is-wide"><svg class="icon"><use href="#i-search"/></svg><input placeholder="搜索编码或名称" /></label>
+            <div class="field is-select">全部分类<svg class="icon"><use href="#i-down"/></svg></div>
+            <div class="field is-select">全部状态<svg class="icon"><use href="#i-down"/></svg></div>
+            <a class="btn btn-ghost" href="#suppliers">重置</a>
+            <div class="toolbar-spacer"></div>
+            <span class="icon-divider"></span>
+            <button class="top-icon" aria-label="筛选"><svg class="icon"><use href="#i-filter"/></svg></button>
+            <span class="toolbar-note">已选 0 项</span>
+          </div>
+
+          <div class="table-block">
+            <table class="data-table">
+              <thead><tr><th style="width:36px"></th><th style="width:100px">编码</th><th>供应商</th><th style="width:80px">分类</th><th style="width:82px">状态</th><th class="num" style="width:86px">最近评分</th><th style="width:62px">等级</th><th style="width:105px">更新时间</th><th style="width:98px">操作</th></tr></thead>
+              <tbody>
+                <tr><td><span style="display:inline-block;width:13px;height:13px;border:1px solid var(--rule);vertical-align:-2px"></span></td><td class="num" style="color:var(--muted)">SUP-001</td><td><div class="cell-name"><span class="company-mark">华</span><div><span class="strong">华东精密制造</span><span class="sub">上海 · 精密结构件</span></div></div></td><td>电子</td><td><span class="status is-success">启用</span></td><td class="num strong">94.2</td><td><span class="grade grade-a">A</span></td><td class="sub" style="margin-top:0">2026-10-28 <br>09:32</td><td><div class="table-actions"><a href="#task-detail">查看</a><a class="muted" href="#task-detail">编辑</a></div></td></tr>
+                <tr><td><span style="display:inline-block;width:13px;height:13px;border:1px solid var(--rule);vertical-align:-2px"></span></td><td class="num" style="color:var(--muted)">SUP-014</td><td><div class="cell-name"><span class="company-mark">江</span><div><span class="strong">江南电子科技</span><span class="sub">苏州 · 电子元器件</span></div></div></td><td>电子</td><td><span class="status is-success">启用</span></td><td class="num strong">91.7</td><td><span class="grade grade-a">A</span></td><td class="sub" style="margin-top:0">2026-10-27 <br>15:10</td><td><div class="table-actions"><a href="#task-detail">查看</a><a class="muted" href="#task-detail">编辑</a></div></td></tr>
+                <tr><td><span style="display:inline-block;width:13px;height:13px;border:1px solid var(--rule);vertical-align:-2px"></span></td><td class="num" style="color:var(--muted)">SUP-027</td><td><div class="cell-name"><span class="company-mark">北</span><div><span class="strong">北方物流集团</span><span class="sub">天津 · 干线运输</span></div></div></td><td>物流</td><td><span class="status is-success">启用</span></td><td class="num strong">88.5</td><td><span class="grade grade-b">B</span></td><td class="sub" style="margin-top:0">2026-10-26 <br>11:48</td><td><div class="table-actions"><a href="#task-detail">查看</a><a class="muted" href="#task-detail">编辑</a></div></td></tr>
+                <tr><td><span style="display:inline-block;width:13px;height:13px;border:1px solid var(--rule);vertical-align:-2px"></span></td><td class="num" style="color:var(--muted)">SUP-032</td><td><div class="cell-name"><span class="company-mark">星</span><div><span class="strong">星海包装材料</span><span class="sub">宁波 · 包装耗材</span></div></div></td><td>包装</td><td><span class="status is-success">启用</span></td><td class="num strong">86.9</td><td><span class="grade grade-b">B</span></td><td class="sub" style="margin-top:0">2026-10-25 <br>17:22</td><td><div class="table-actions"><a href="#task-detail">查看</a><a class="muted" href="#task-detail">编辑</a></div></td></tr>
+                <tr><td><span style="display:inline-block;width:13px;height:13px;border:1px solid var(--rule);vertical-align:-2px"></span></td><td class="num" style="color:var(--muted)">SUP-041</td><td><div class="cell-name"><span class="company-mark">中</span><div><span class="strong">中原金属制品</span><span class="sub">郑州 · 金属加工</span></div></div></td><td>金属</td><td><span class="status is-success">启用</span></td><td class="num strong">84.3</td><td><span class="grade grade-b">B</span></td><td class="sub" style="margin-top:0">2026-10-24 <br>10:05</td><td><div class="table-actions"><a href="#task-detail">查看</a><a class="muted" href="#task-detail">编辑</a></div></td></tr>
+                <tr><td><span style="display:inline-block;width:13px;height:13px;border:1px solid var(--rule);vertical-align:-2px"></span></td><td class="num" style="color:var(--muted)">SUP-056</td><td><div class="cell-name"><span class="company-mark">远</span><div><span class="strong">远航化工材料</span><span class="sub">青岛 · 化工原料</span></div></div></td><td>化工</td><td><span class="status is-off">停用</span></td><td class="num" style="color:var(--muted-2)">—</td><td style="color:var(--muted-2)">—</td><td class="sub" style="margin-top:0">2026-09-18 <br>14:12</td><td><div class="table-actions"><a href="#task-detail">查看</a><a class="muted" href="#task-detail">编辑</a></div></td></tr>
+                <tr><td><span style="display:inline-block;width:13px;height:13px;border:1px solid var(--rule);vertical-align:-2px"></span></td><td class="num" style="color:var(--muted)">SUP-063</td><td><div class="cell-name"><span class="company-mark">恒</span><div><span class="strong">恒信机电设备</span><span class="sub">无锡 · 机电设备</span></div></div></td><td>设备</td><td><span class="status is-success">启用</span></td><td class="num strong">89.6</td><td><span class="grade grade-b">B</span></td><td class="sub" style="margin-top:0">2026-10-22 <br>09:18</td><td><div class="table-actions"><a href="#task-detail">查看</a><a class="muted" href="#task-detail">编辑</a></div></td></tr>
+                <tr><td><span style="display:inline-block;width:13px;height:13px;border:1px solid var(--rule);vertical-align:-2px"></span></td><td class="num" style="color:var(--muted)">SUP-078</td><td><div class="cell-name"><span class="company-mark">蓝</span><div><span class="strong">蓝湾橡塑制品</span><span class="sub">台州 · 橡塑件</span></div></div></td><td>橡塑</td><td><span class="status is-success">启用</span></td><td class="num strong">81.4</td><td><span class="grade grade-c">C</span></td><td class="sub" style="margin-top:0">2026-10-20 <br>16:30</td><td><div class="table-actions"><a href="#task-detail">查看</a><a class="muted" href="#task-detail">编辑</a></div></td></tr>
+                <tr><td><span style="display:inline-block;width:13px;height:13px;border:1px solid var(--rule);vertical-align:-2px"></span></td><td class="num" style="color:var(--muted)">SUP-089</td><td><div class="cell-name"><span class="company-mark">德</span><div><span class="strong">德茂精工</span><span class="sub">常州 · 精密冲压</span></div></div></td><td>金属</td><td><span class="status is-success">启用</span></td><td class="num strong">80.8</td><td><span class="grade grade-c">C</span></td><td class="sub" style="margin-top:0">2026-10-19 <br>10:42</td><td><div class="table-actions"><a href="#task-detail">查看</a><a class="muted" href="#task-detail">编辑</a></div></td></tr>
+                <tr><td><span style="display:inline-block;width:13px;height:13px;border:1px solid var(--rule);vertical-align:-2px"></span></td><td class="num" style="color:var(--muted)">SUP-102</td><td><div class="cell-name"><span class="company-mark">云</span><div><span class="strong">云港电子</span><span class="sub">连云港 · 连接器</span></div></div></td><td>电子</td><td><span class="status is-success">启用</span></td><td class="num strong">79.6</td><td><span class="grade grade-c">C</span></td><td class="sub" style="margin-top:0">2026-10-18 <br>15:26</td><td><div class="table-actions"><a href="#task-detail">查看</a><a class="muted" href="#task-detail">编辑</a></div></td></tr>
+                <tr><td><span style="display:inline-block;width:13px;height:13px;border:1px solid var(--rule);vertical-align:-2px"></span></td><td class="num" style="color:var(--muted)">SUP-110</td><td><div class="cell-name"><span class="company-mark">嘉</span><div><span class="strong">嘉禾包装材料</span><span class="sub">嘉兴 · 纸箱包装</span></div></div></td><td>包装</td><td><span class="status is-success">启用</span></td><td class="num strong">78.9</td><td><span class="grade grade-c">C</span></td><td class="sub" style="margin-top:0">2026-10-17 <br>13:08</td><td><div class="table-actions"><a href="#task-detail">查看</a><a class="muted" href="#task-detail">编辑</a></div></td></tr>
+              </tbody>
+            </table>
+            <div class="pagination"><span>共 128 条 · 每页 20 条</span><div class="pager"><button>‹</button><button class="is-active">1</button><button>2</button><button>3</button><button>…</button><button>13</button><button>›</button></div></div>
+          </div>
+        </section>
+
+        <!-- ============ 任务详情 ============ -->
+        <section class="screen" data-screen="task-detail">
+          <div class="page-head">
+            <div>
+              <div class="eyebrow">Evaluation task / T-2026-031</div>
+              <div class="title-row"><h1 class="page-title" style="margin-top:8px">2026 Q3 供应商季度评估</h1><span class="title-status">进行中</span></div>
+              <p class="page-lede">季度绩效默认模板 v3 · 28 家供应商 · 截止 2026-10-31</p>
+            </div>
+            <div class="page-actions">
+              <button class="btn btn-secondary"><svg class="icon"><use href="#i-download"/></svg>导出进度</button>
+              <button class="btn btn-secondary" aria-label="更多"><svg class="icon"><use href="#i-more"/></svg></button>
+            </div>
+          </div>
+
+          <div class="meta-strip">
+            <div class="meta-item"><div class="meta-label">评估周期</div><div class="meta-value">2026 Q3</div></div>
+            <div class="meta-item"><div class="meta-label">截止时间</div><div class="meta-value">10 月 31 日 18:00</div></div>
+            <div class="meta-item"><div class="meta-label">模板版本</div><div class="meta-value">默认模板 v3 <span class="muted">· 4 维度</span></div></div>
+            <div class="meta-item"><div class="meta-label">整体进度</div><div class="meta-value">68% <span class="muted">· 19/28 已完成</span></div><div class="progress-line meta-progress"><span style="width:68%"></span></div></div>
+          </div>
+
+          <div class="task-layout">
+            <div class="task-main">
+              <div class="block-head">
+                <div><h2 class="block-title">进度看板</h2><p class="block-note">按供应商查看当前节点与试算分</p></div>
+                <button class="btn btn-secondary btn-sm">筛选状态<svg class="icon"><use href="#i-down"/></svg></button>
+              </div>
+              <table class="data-table" style="margin-top:12px">
+                <thead><tr><th>供应商</th><th style="width:94px">评估单状态</th><th style="width:78px">当前节点</th><th style="width:150px">评分进度</th><th class="num" style="width:72px">试算分</th><th style="width:58px">等级</th></tr></thead>
+                <tbody>
+                  <tr><td><div class="cell-name"><span class="company-mark">华</span><div><span class="strong">华东精密制造</span><span class="sub">SUP-001</span></div></div></td><td><span class="status is-wait">审批中</span></td><td style="color:var(--muted)">2 / 3</td><td><div class="progress-cell"><div class="progress-line"><span class="is-success" style="width:100%"></span></div><small>4/4</small></div></td><td class="num strong">92.4</td><td><span class="grade grade-a">A</span></td></tr>
+                  <tr><td><div class="cell-name"><span class="company-mark">江</span><div><span class="strong">江南电子科技</span><span class="sub">SUP-014</span></div></div></td><td><span class="status is-progress">评分中</span></td><td style="color:var(--muted)">1 / 3</td><td><div class="progress-cell"><div class="progress-line"><span style="width:75%"></span></div><small>3/4</small></div></td><td class="num strong">88.7</td><td><span class="grade grade-b">B</span></td></tr>
+                  <tr><td><div class="cell-name"><span class="company-mark">北</span><div><span class="strong">北方物流集团</span><span class="sub">SUP-027</span></div></div></td><td><span class="status is-progress">评分中</span></td><td style="color:var(--muted)">1 / 3</td><td><div class="progress-cell"><div class="progress-line"><span style="width:50%"></span></div><small>2/4</small></div></td><td class="num strong">84.1</td><td><span class="grade grade-b">B</span></td></tr>
+                  <tr><td><div class="cell-name"><span class="company-mark">星</span><div><span class="strong">星海包装材料</span><span class="sub">SUP-032</span></div></div></td><td><span class="status is-success">已生效</span></td><td style="color:var(--muted)">—</td><td><div class="progress-cell"><div class="progress-line"><span class="is-success" style="width:100%"></span></div><small>4/4</small></div></td><td class="num strong">86.9</td><td><span class="grade grade-b">B</span></td></tr>
+                  <tr><td><div class="cell-name"><span class="company-mark">中</span><div><span class="strong">中原金属制品</span><span class="sub">SUP-041</span></div></div></td><td><span class="status is-off">待提交</span></td><td style="color:var(--muted)">0 / 3</td><td><div class="progress-cell"><div class="progress-line"><span style="width:0%"></span></div><small>0/4</small></div></td><td class="num" style="color:var(--muted-2)">—</td><td style="color:var(--muted-2)">—</td></tr>
+                  <tr><td><div class="cell-name"><span class="company-mark">恒</span><div><span class="strong">恒信机电设备</span><span class="sub">SUP-063</span></div></div></td><td><span class="status is-progress">评分中</span></td><td style="color:var(--muted)">2 / 3</td><td><div class="progress-cell"><div class="progress-line"><span class="is-success" style="width:100%"></span></div><small>4/4</small></div></td><td class="num strong">86.2</td><td><span class="grade grade-b">B</span></td></tr>
+                  <tr><td><div class="cell-name"><span class="company-mark">蓝</span><div><span class="strong">蓝湾橡塑制品</span><span class="sub">SUP-078</span></div></div></td><td><span class="status is-progress">评分中</span></td><td style="color:var(--muted)">1 / 3</td><td><div class="progress-cell"><div class="progress-line"><span style="width:50%"></span></div><small>2/4</small></div></td><td class="num strong">80.9</td><td><span class="grade grade-c">C</span></td></tr>
+                  <tr><td><div class="cell-name"><span class="company-mark">德</span><div><span class="strong">德茂精工</span><span class="sub">SUP-089</span></div></div></td><td><span class="status is-off">待提交</span></td><td style="color:var(--muted)">0 / 3</td><td><div class="progress-cell"><div class="progress-line"><span style="width:0%"></span></div><small>0/4</small></div></td><td class="num" style="color:var(--muted-2)">—</td><td style="color:var(--muted-2)">—</td></tr>
+                  <tr><td><div class="cell-name"><span class="company-mark">云</span><div><span class="strong">云港电子</span><span class="sub">SUP-102</span></div></div></td><td><span class="status is-progress">评分中</span></td><td style="color:var(--muted)">1 / 3</td><td><div class="progress-cell"><div class="progress-line"><span style="width:25%"></span></div><small>1/4</small></div></td><td class="num strong">79.6</td><td><span class="grade grade-c">C</span></td></tr>
+                  <tr><td><div class="cell-name"><span class="company-mark">嘉</span><div><span class="strong">嘉禾包装材料</span><span class="sub">SUP-110</span></div></div></td><td><span class="status is-off">待提交</span></td><td style="color:var(--muted)">0 / 3</td><td><div class="progress-cell"><div class="progress-line"><span style="width:0%"></span></div><small>0/4</small></div></td><td class="num" style="color:var(--muted-2)">—</td><td style="color:var(--muted-2)">—</td></tr>
+                </tbody>
+              </table>
+              <div class="pagination"><span>共 28 家 · 显示 1–10</span><div class="pager"><button>‹</button><button class="is-active">1</button><button>2</button><button>3</button><button>›</button></div></div>
+            </div>
+
+            <div class="side-stack">
+              <section class="aside-block">
+                <div class="block-head"><div><h2 class="block-title">审批链</h2><p class="block-note">串行审批 · 2/3 已完成</p></div><span class="title-status" style="margin-top:0">进行中</span></div>
+                <div class="timeline">
+                  <div class="timeline-item is-done"><i class="timeline-dot"></i><div class="timeline-title">王芳 · 采购专员</div><div class="timeline-meta">提交质量评分 · 10-27 09:30</div></div>
+                  <div class="timeline-item is-done"><i class="timeline-dot"></i><div class="timeline-title">张明 · 采购经理</div><div class="timeline-meta">已通过 · 10-28 14:20</div></div>
+                  <div class="timeline-item is-current"><i class="timeline-dot"></i><div class="timeline-title">李静 · 质量总监</div><div class="timeline-meta">审批中 · 等待处理</div></div>
+                  <div class="timeline-item"><i class="timeline-dot"></i><div class="timeline-title">王强 · 运营总监</div><div class="timeline-meta">待处理</div></div>
+                </div>
+                <div class="callout">当前节点：李静。完成全部节点后评估单自动生效，结果进入分析看板。</div>
+              </section>
+              <section class="aside-block">
+                <div class="block-head"><div><h2 class="block-title">评分覆盖</h2><p class="block-note">4 个维度 · 112 张评分单</p></div></div>
+                <div class="coverage-row"><div class="coverage-label">质量</div><div class="coverage-track"><span style="width:100%"></span></div><div class="coverage-value num">28 / 28</div></div>
+                <div class="coverage-row"><div class="coverage-label">交付</div><div class="coverage-track"><span style="width:86%"></span></div><div class="coverage-value num">24 / 28</div></div>
+                <div class="coverage-row"><div class="coverage-label">成本</div><div class="coverage-track"><span style="width:71%"></span></div><div class="coverage-value num">20 / 28</div></div>
+                <div class="coverage-row"><div class="coverage-label">服务</div><div class="coverage-track"><span class="is-accent" style="width:43%"></span></div><div class="coverage-value num">12 / 28</div></div>
+              </section>
+              <section class="aside-block">
+                <div class="block-head"><div><h2 class="block-title">审批时效</h2><p class="block-note">本季度节点平均</p></div></div>
+                <div class="coverage-row"><div class="coverage-label">平均耗时</div><div class="coverage-track"><span style="width:62%"></span></div><div class="coverage-value">1.8 天</div></div>
+                <div class="coverage-row"><div class="coverage-label">超时提醒</div><div class="coverage-track"><span class="is-accent" style="width:25%"></span></div><div class="coverage-value">24 小时</div></div>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ 评分 ============ -->
+        <section class="screen" data-screen="scoring">
+          <div class="page-head">
+            <div>
+              <div class="eyebrow">Scoring · Sheet #S-2026-031-01</div>
+              <div class="title-row"><h1 class="page-title" style="margin-top:8px">华东精密制造 · 质量维度</h1><span class="title-status">评分中</span></div>
+              <p class="page-lede">任务：2026 Q3 供应商季度评估 · 截止 10 月 31 日 18:00</p>
+            </div>
+            <div class="page-actions">
+              <button class="btn btn-secondary"><svg class="icon"><use href="#i-download"/></svg>下载导入模板</button>
+              <button class="btn btn-primary">提交审批<svg class="icon"><use href="#i-chevron"/></svg></button>
+            </div>
+          </div>
+
+          <div class="scoring-layout">
+            <div class="stack">
+              <section class="block">
+                <div class="block-head"><div><h2 class="block-title">质量指标</h2><p class="block-note">4 项指标 · 权重合计 100% · 已填 4/4</p></div><span class="tag" style="color:var(--success);border-color:rgb(63 97 72 / 30%)">完整</span></div>
+                <table class="data-table" style="margin-top:12px">
+                  <thead><tr><th style="width:38px">#</th><th>指标</th><th class="num" style="width:64px">权重</th><th style="width:74px">类型</th><th style="width:142px">录入值</th><th class="num" style="width:64px">得分</th></tr></thead>
+                  <tbody>
+                    <tr><td class="num" style="color:var(--muted)">01</td><td><span class="strong">IQC 来料合格率</span><span class="sub">目标达成率 · 目标 ≥ 98%</span></td><td class="num">30%</td><td><span class="tag">定量</span></td><td><input class="score-input is-filled" value="98.50" aria-label="IQC 来料合格率" /><span class="sub" style="display:inline;margin-left:5px">%</span></td><td class="num strong">98.5</td></tr>
+                    <tr><td class="num" style="color:var(--muted)">02</td><td><span class="strong">过程审核得分</span><span class="sub">直接打分 · 0–100</span></td><td class="num">25%</td><td><span class="tag">定量</span></td><td><input class="score-input is-filled" value="92" aria-label="过程审核得分" /><span class="sub" style="display:inline;margin-left:5px">分</span></td><td class="num strong">92.0</td></tr>
+                    <tr><td class="num" style="color:var(--muted)">03</td><td><span class="strong">客诉响应及时率</span><span class="sub">目标达成率 · 目标 ≥ 95%</span></td><td class="num">25%</td><td><span class="tag">定量</span></td><td><input class="score-input is-filled" value="96.00" aria-label="客诉响应及时率" /><span class="sub" style="display:inline;margin-left:5px">%</span></td><td class="num strong">96.0</td></tr>
+                    <tr><td class="num" style="color:var(--muted)">04</td><td><span class="strong">质量体系认证</span><span class="sub">定性档位 · A-优秀（90 分）</span></td><td class="num">20%</td><td><span class="tag is-qual">定性</span></td><td><select class="select"><option>A-优秀（90 分）</option><option>B-良好（75 分）</option><option>C-合格（60 分）</option></select></td><td class="num strong">90.0</td></tr>
+                  </tbody>
+                </table>
+                <div class="callout">评分标准：定量指标按“目标达成率”换算；定性指标按档位计分。提交后不可修改，需管理员解锁重评。</div>
+                <div class="scoring-foot"><span class="toolbar-note">自动保存 · 10:24</span><div class="page-actions"><button class="btn btn-secondary">暂存</button><button class="btn btn-primary">提交审批</button></div></div>
+              </section>
+
+              <section class="block">
+                <div class="block-head"><div><h2 class="block-title">上一期参考</h2><p class="block-note">2026 Q2 · 同供应商同维度 · 只读</p></div><span class="tag">历史</span></div>
+                <table class="data-table" style="margin-top:12px">
+                  <thead><tr><th>指标</th><th class="num" style="width:118px">上期录入</th><th class="num" style="width:76px">上期得分</th><th class="num" style="width:64px">变化</th></tr></thead>
+                  <tbody>
+                    <tr><td class="strong">IQC 来料合格率</td><td class="num">97.80%</td><td class="num strong">97.8</td><td class="num delta-up">↑ 0.7</td></tr>
+                    <tr><td class="strong">过程审核得分</td><td class="num">89.0</td><td class="num strong">89.0</td><td class="num delta-up">↑ 3.0</td></tr>
+                    <tr><td class="strong">客诉响应及时率</td><td class="num">93.00%</td><td class="num strong">93.0</td><td class="num delta-up">↑ 3.0</td></tr>
+                    <tr><td class="strong">质量体系认证</td><td>B-良好（75 分）</td><td class="num strong">75.0</td><td class="num delta-up">↑ 15.0</td></tr>
+                  </tbody>
+                </table>
+                <div class="data-footnote">上期维度均分 88.7 · 本期试算 94.3，提升主要来自质量体系认证档位。</div>
+              </section>
+            </div>
+
+            <div class="side-stack">
+              <section class="aside-block">
+                <div class="eyebrow" style="margin-bottom:9px">Live calculation</div>
+                <div><span class="score-number num">94.3</span><span class="score-grade">A</span></div>
+                <div class="score-hint">按当前 4 条录入值计算 · 提交后以后端定稿为准</div>
+                <div style="margin-top:14px">
+                  <div class="dimension-row"><div class="dimension-top"><strong>质量</strong><span class="num">94.3 / 100</span></div><div class="progress-line"><span class="is-success" style="width:94%"></span></div></div>
+                  <div class="dimension-row"><div class="dimension-top"><strong>交付</strong><span class="num">89.2 / 100</span></div><div class="progress-line"><span style="width:89%"></span></div></div>
+                  <div class="dimension-row"><div class="dimension-top"><strong>成本</strong><span class="num">85.6 / 100</span></div><div class="progress-line"><span class="is-accent" style="width:86%"></span></div></div>
+                  <div class="dimension-row"><div class="dimension-top"><strong>服务</strong><span class="num">90.1 / 100</span></div><div class="progress-line"><span style="width:90%"></span></div></div>
+                </div>
+              </section>
+              <section class="aside-block">
+                <div class="block-head"><div><h2 class="block-title">提交检查</h2><p class="block-note">提交前自动校验</p></div></div>
+                <div class="check-list">
+                  <div class="check-row"><span class="check-mark"><svg class="icon"><use href="#i-check-small"/></svg></span><div class="check-main"><div class="check-title">4/4 指标已完成</div><div class="check-meta">无缺项</div></div></div>
+                  <div class="check-row"><span class="check-mark"><svg class="icon"><use href="#i-check-small"/></svg></span><div class="check-main"><div class="check-title">权重合计 100%</div><div class="check-meta">30 + 25 + 25 + 20</div></div></div>
+                  <div class="check-row"><span class="check-mark is-wait"><svg class="icon"><use href="#i-alert"/></svg></span><div class="check-main"><div class="check-title">提交后将通知审批人</div><div class="check-meta">当前审批链 2/3 节点待处理</div></div></div>
+                </div>
+              </section>
+              <section class="aside-block">
+                <div class="block-head"><div><h2 class="block-title">审批流转</h2><p class="block-note">提交后依次进入串行审批</p></div></div>
+                <div class="approval-step"><span class="step-index is-done">01</span><div class="step-main"><div class="step-title">张明 · 采购经理</div><div class="step-meta">已通过 · 10-28 14:20</div></div><span class="step-state" style="color:var(--success)">已完成</span></div>
+                <div class="approval-step"><span class="step-index is-current">02</span><div class="step-main"><div class="step-title">李静 · 质量总监</div><div class="step-meta">审批中 · 等待处理</div></div><span class="step-state" style="color:var(--warning)">待审批</span></div>
+                <div class="approval-step"><span class="step-index">03</span><div class="step-main"><div class="step-title">王强 · 运营总监</div><div class="step-meta">待处理</div></div><span class="step-state">未开始</span></div>
+                <div class="data-footnote">提交后不可修改；如需重评，需管理员解锁。</div>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ 分析 ============ -->
+        <section class="screen" data-screen="analytics">
+          <div class="page-head">
+            <div>
+              <div class="eyebrow">Analytics / 2026 Q3</div>
+              <h1 class="page-title">分析看板</h1>
+              <p class="page-lede">仅统计已生效结果 · 环比只与上一个日历季度比较</p>
+            </div>
+            <div class="page-actions">
+              <div class="field is-select" style="min-width:108px">2026 Q3<svg class="icon"><use href="#i-down"/></svg></div>
+              <div class="field is-select" style="min-width:112px">全部分类<svg class="icon"><use href="#i-down"/></svg></div>
+              <div class="field is-select" style="min-width:108px">全部等级<svg class="icon"><use href="#i-down"/></svg></div>
+            </div>
+          </div>
+
+          <div class="kpi-row">
+            <div class="kpi"><div class="kpi-label">平均总分</div><div class="kpi-value num">86.4</div><div class="kpi-meta"><span class="up">↑ 2.1</span> 较 2026 Q2</div></div>
+            <div class="kpi"><div class="kpi-label">参评供应商</div><div class="kpi-value num">28</div><div class="kpi-meta">已生效 24 · 审批中 4</div></div>
+            <div class="kpi"><div class="kpi-label">A 级供应商</div><div class="kpi-value num">9</div><div class="kpi-meta">32% 占比</div></div>
+            <div class="kpi"><div class="kpi-label">本期预警</div><div class="kpi-value num">5</div><div class="kpi-meta"><span class="up">↓ 2</span> 较上期</div></div>
+          </div>
+
+          <div class="analysis-grid">
+            <div class="stack">
+              <section class="block">
+                <div class="block-head">
+                  <div><h2 class="block-title">总分趋势</h2><p class="block-note">2026 Q1–Q3 · 全量供应商平均</p></div>
+                  <div class="legend"><span><i></i>平均分</span><span><i class="dashed"></i>目标线 85</span></div>
+                </div>
+                <div class="chart">
+                  <svg viewBox="0 0 760 220" preserveAspectRatio="none" aria-label="总分趋势">
+                    <line class="chart-grid" x1="38" y1="22" x2="750" y2="22"/><line class="chart-grid" x1="38" y1="62" x2="750" y2="62"/><line class="chart-grid" x1="38" y1="102" x2="750" y2="102"/><line class="chart-grid" x1="38" y1="142" x2="750" y2="142"/><line class="chart-grid" x1="38" y1="182" x2="750" y2="182"/>
+                    <text class="chart-axis" x="30" y="25" text-anchor="end">100</text><text class="chart-axis" x="30" y="65" text-anchor="end">90</text><text class="chart-axis" x="30" y="105" text-anchor="end">80</text><text class="chart-axis" x="30" y="145" text-anchor="end">70</text><text class="chart-axis" x="30" y="185" text-anchor="end">60</text>
+                    <path class="chart-line" d="M38 162 C120 157 160 137 236 132 S360 112 438 96 S586 70 654 58 S728 52 750 48"/>
+                    <path class="chart-target" d="M38 112 L750 112"/>
+                    <circle class="chart-dot" cx="38" cy="162" r="2.6"/><circle class="chart-dot" cx="236" cy="132" r="2.6"/><circle class="chart-dot" cx="438" cy="96" r="2.6"/><circle class="chart-dot" cx="654" cy="58" r="2.6"/><circle class="chart-dot" cx="750" cy="48" r="2.6"/>
+                    <text class="chart-axis" x="38" y="204">Q1</text><text class="chart-axis" x="236" y="204">Q2</text><text class="chart-axis" x="438" y="204">Q3</text><text class="chart-axis" x="654" y="204">Q4</text><text class="chart-axis" x="750" y="204" text-anchor="end">目标</text>
+                  </svg>
+                </div>
+              </section>
+
+              <section class="block">
+                <div class="block-head"><div><h2 class="block-title">本期排名</h2><p class="block-note">2026 Q3 · 总分降序</p></div><a class="block-link" href="#suppliers">查看供应商</a></div>
+                <table class="data-table" style="margin-top:10px">
+                  <thead><tr><th style="width:38px">#</th><th>供应商</th><th class="num" style="width:72px">总分</th><th style="width:60px">等级</th><th class="num" style="width:68px">环比</th></tr></thead>
+                  <tbody>
+                    <tr><td class="num"><span class="rank-badge">01</span></td><td><div class="cell-name"><span class="company-mark">华</span><span class="strong">华东精密制造</span></div></td><td class="num strong">94.2</td><td><span class="grade grade-a">A</span></td><td class="num delta-up">↑ 1.8</td></tr>
+                    <tr><td class="num"><span class="rank-badge">02</span></td><td><div class="cell-name"><span class="company-mark">江</span><span class="strong">江南电子科技</span></div></td><td class="num strong">91.7</td><td><span class="grade grade-a">A</span></td><td class="num delta-up">↑ 0.6</td></tr>
+                    <tr><td class="num"><span class="rank-badge">03</span></td><td><div class="cell-name"><span class="company-mark">恒</span><span class="strong">恒信机电设备</span></div></td><td class="num strong">89.6</td><td><span class="grade grade-b">B</span></td><td class="num delta-up">↑ 0.8</td></tr>
+                    <tr><td class="num"><span class="rank-badge">04</span></td><td><div class="cell-name"><span class="company-mark">北</span><span class="strong">北方物流集团</span></div></td><td class="num strong">88.5</td><td><span class="grade grade-b">B</span></td><td class="num delta-down">↓ 0.4</td></tr>
+                    <tr><td class="num"><span class="rank-badge">05</span></td><td><div class="cell-name"><span class="company-mark">星</span><span class="strong">星海包装材料</span></div></td><td class="num strong">86.9</td><td><span class="grade grade-b">B</span></td><td class="num delta-up">↑ 1.2</td></tr>
+                    <tr><td class="num"><span class="rank-badge">06</span></td><td><div class="cell-name"><span class="company-mark">中</span><span class="strong">中原金属制品</span></div></td><td class="num strong">84.3</td><td><span class="grade grade-b">B</span></td><td class="num delta-down">↓ 0.9</td></tr>
+                    <tr><td class="num"><span class="rank-badge">07</span></td><td><div class="cell-name"><span class="company-mark">蓝</span><span class="strong">蓝湾橡塑制品</span></div></td><td class="num strong">81.4</td><td><span class="grade grade-c">C</span></td><td class="num delta-up">↑ 0.3</td></tr>
+                    <tr><td class="num"><span class="rank-badge">08</span></td><td><div class="cell-name"><span class="company-mark">德</span><span class="strong">德茂精工</span></div></td><td class="num strong">80.8</td><td><span class="grade grade-c">C</span></td><td class="num delta-down">↓ 1.1</td></tr>
+                  </tbody>
+                </table>
+              </section>
+            </div>
+
+            <div class="side-stack">
+              <section class="aside-block">
+                <div class="block-head"><div><h2 class="block-title">等级分布</h2><p class="block-note">已生效 24 家</p></div></div>
+                <div class="bar-row"><span class="grade grade-a">A</span><div class="bar-track"><div class="bar-fill" style="width:38%"></div></div><span class="num" style="text-align:right">9</span></div>
+                <div class="bar-row"><span class="grade grade-b">B</span><div class="bar-track"><div class="bar-fill is-teal" style="width:46%"></div></div><span class="num" style="text-align:right">11</span></div>
+                <div class="bar-row"><span class="grade grade-c">C</span><div class="bar-track"><div class="bar-fill is-amber" style="width:13%"></div></div><span class="num" style="text-align:right">3</span></div>
+                <div class="bar-row"><span class="grade grade-d">D</span><div class="bar-track"><div class="bar-fill is-red" style="width:4%"></div></div><span class="num" style="text-align:right">1</span></div>
+              </section>
+              <section class="aside-block">
+                <div class="block-head"><div><h2 class="block-title">维度均分</h2><p class="block-note">全量供应商 · 本期</p></div></div>
+                <div class="dimension-row"><div class="dimension-top"><strong>质量</strong><span class="num">89.1</span></div><div class="progress-line"><span class="is-success" style="width:89%"></span></div></div>
+                <div class="dimension-row"><div class="dimension-top"><strong>交付</strong><span class="num">87.6</span></div><div class="progress-line"><span style="width:88%"></span></div></div>
+                <div class="dimension-row"><div class="dimension-top"><strong>成本</strong><span class="num">83.2</span></div><div class="progress-line"><span class="is-accent" style="width:83%"></span></div></div>
+                <div class="dimension-row"><div class="dimension-top"><strong>服务</strong><span class="num">85.8</span></div><div class="progress-line"><span style="width:86%"></span></div></div>
+                <div class="callout">成本维度连续两期低于 85，是本期主要改进项。</div>
+              </section>
+              <section class="aside-block">
+                <div class="block-head"><div><h2 class="block-title">重点改进</h2><p class="block-note">低于目标线 85 的维度</p></div></div>
+                <div class="attention-row"><span class="attention-mark is-high"></span><span class="attention-name">中原金属制品</span><span class="attention-score">成本 75.8</span></div>
+                <div class="attention-row"><span class="attention-mark"></span><span class="attention-name">星海包装材料</span><span class="attention-score">质量 78.2</span></div>
+                <div class="attention-row"><span class="attention-mark"></span><span class="attention-name">蓝湾橡塑制品</span><span class="attention-score">交付 79.4</span></div>
+                <div class="attention-row"><span class="attention-mark"></span><span class="attention-name">云港电子</span><span class="attention-score">成本 82.0</span></div>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ 设计规范 ============ -->
+        <section class="screen" data-screen="system">
+          <div class="page-head">
+            <div>
+              <div class="eyebrow">Design system / Editorial Ledger v1</div>
+              <h1 class="page-title">设计规范</h1>
+              <p class="page-lede">与 tokens.json 一一对应 · 颜色、字体、组件与表格模式</p>
+            </div>
+            <div class="page-actions"><button class="btn btn-secondary"><svg class="icon"><use href="#i-download"/></svg>导出 tokens</button></div>
+          </div>
+
+          <div class="system-grid">
+            <div class="system-stack">
+              <section class="system-block">
+                <div class="block-head"><div><h2 class="block-title">颜色</h2><p class="block-note">纸面 + 墨色 + 一枚灰褐强调色</p></div><span class="tag">v1.0.0</span></div>
+                <div class="swatch-grid">
+                  <div class="swatch"><div class="swatch-color" style="background:#f7f4ed"></div><div class="swatch-name">Paper</div><div class="swatch-hex">#F7F4ED</div></div>
+                  <div class="swatch"><div class="swatch-color" style="background:#fffdf9"></div><div class="swatch-name">Surface</div><div class="swatch-hex">#FFFDF9</div></div>
+                  <div class="swatch"><div class="swatch-color" style="background:#1c1c1c"></div><div class="swatch-name">Ink</div><div class="swatch-hex">#1C1C1C</div></div>
+                  <div class="swatch"><div class="swatch-color" style="background:#6b6a65"></div><div class="swatch-name">Muted</div><div class="swatch-hex">#6B6A65</div></div>
+                  <div class="swatch"><div class="swatch-color" style="background:#ded8cc"></div><div class="swatch-name">Rule</div><div class="swatch-hex">#DED8CC</div></div>
+                  <div class="swatch"><div class="swatch-color" style="background:#816d70"></div><div class="swatch-name">Accent</div><div class="swatch-hex">#816D70</div></div>
+                  <div class="swatch"><div class="swatch-color" style="background:#3f6148"></div><div class="swatch-name">Success</div><div class="swatch-hex">#3F6148</div></div>
+                  <div class="swatch"><div class="swatch-color" style="background:#8a6a2f"></div><div class="swatch-name">Warning</div><div class="swatch-hex">#8A6A2F</div></div>
+                  <div class="swatch"><div class="swatch-color" style="background:#a33a32"></div><div class="swatch-name">Danger</div><div class="swatch-hex">#A33A32</div></div>
+                  <div class="swatch"><div class="swatch-color" style="background:#4b5563"></div><div class="swatch-name">Info</div><div class="swatch-hex">#4B5563</div></div>
+                </div>
+              </section>
+              <section class="system-block">
+                <div class="block-head"><div><h2 class="block-title">语义用法</h2><p class="block-note">颜色只表达角色与状态</p></div></div>
+                <div class="type-list">
+                  <div class="type-row"><div class="type-label">Ink</div><div class="type-sample">主操作、选中、关键数字</div><div class="type-spec">#1C1C1C</div></div>
+                  <div class="type-row"><div class="type-label">Accent</div><div class="type-sample">激活标记、图表目标线、焦点环</div><div class="type-spec">#816D70</div></div>
+                  <div class="type-row"><div class="type-label">Status</div><div class="type-sample">只用于生效、待处理与风险</div><div class="type-spec">4 colors</div></div>
+                  <div class="type-row"><div class="type-label">Rules</div><div class="type-sample">1px 线优先于阴影与渐变</div><div class="type-spec">#DED8CC</div></div>
+                </div>
+              </section>
+              <section class="system-block">
+                <div class="block-head"><div><h2 class="block-title">字体</h2><p class="block-note">衬线数字 + 无衬线工作文本</p></div></div>
+                <div class="type-list">
+                  <div class="type-row"><div class="type-label">Display</div><div class="type-sample is-serif">Editorial Ledger</div><div class="type-spec">Playfair 500 · 56/60</div></div>
+                  <div class="type-row"><div class="type-label">Page</div><div class="type-sample is-serif">供应商绩效</div><div class="type-spec">Noto Serif 500 · 38/44</div></div>
+                  <div class="type-row"><div class="type-label">Body</div><div class="type-sample">供应商绩效评估 · 2026 Q3</div><div class="type-spec">Albert / Noto Sans · 13/20</div></div>
+                  <div class="type-row"><div class="type-label">Table</div><div class="type-sample num">94.2　88.5　86.9</div><div class="type-spec">Albert Sans · 12/20</div></div>
+                  <div class="type-row"><div class="type-label">Label</div><div class="type-sample" style="font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)">Supplier / score / cycle</div><div class="type-spec">Albert 500 · 9/13</div></div>
+                  <div class="type-row"><div class="type-label">Code</div><div class="type-sample is-mono">SUP-001 · 2026-10-31</div><div class="type-spec">JetBrains Mono · 10/16</div></div>
+                </div>
+              </section>
+            </div>
+
+            <div class="system-stack">
+              <section class="system-block">
+                <div class="block-head"><div><h2 class="block-title">组件</h2><p class="block-note">墨黑主操作 · 1px 描边 · 2px 圆角</p></div></div>
+                <div class="component-row"><span class="component-label">Buttons</span><button class="btn btn-primary">提交审批</button><button class="btn btn-secondary">暂存</button><button class="btn btn-ghost">查看全部</button><button class="btn btn-danger">拒绝</button></div>
+                <div class="component-row"><span class="component-label">Fields</span><div class="field" style="min-width:170px"><svg class="icon"><use href="#i-search"/></svg><input placeholder="搜索供应商" /></div><div class="field is-select">全部状态<svg class="icon"><use href="#i-down"/></svg></div><input class="score-input" value="94.3" /></div>
+                <div class="component-row"><span class="component-label">Status</span><span class="status is-success">已生效</span><span class="status is-progress">进行中</span><span class="status is-wait">待处理</span><span class="status is-risk">高风险</span><span class="status is-off">停用</span></div>
+                <div class="component-row"><span class="component-label">Tags</span><span class="tag">定量</span><span class="tag is-qual">定性</span><span class="tag is-code">SUP-001</span><span class="tag">HIGH-CONTRAST</span></div>
+              </section>
+              <section class="system-block">
+                <div class="block-head"><div><h2 class="block-title">表格模式</h2><p class="block-note">52px 行高 · 数字右对齐 · 状态用方形色点</p></div></div>
+                <table class="data-table" style="margin-top:10px">
+                  <thead><tr><th>供应商</th><th class="num" style="width:64px">总分</th><th style="width:54px">等级</th><th style="width:72px">状态</th></tr></thead>
+                  <tbody>
+                    <tr><td><div class="cell-name"><span class="company-mark">华</span><div><span class="strong">华东精密制造</span><span class="sub">SUP-001 · 电子</span></div></div></td><td class="num strong">94.2</td><td><span class="grade grade-a">A</span></td><td><span class="status is-success">已生效</span></td></tr>
+                    <tr><td><div class="cell-name"><span class="company-mark">北</span><div><span class="strong">北方物流集团</span><span class="sub">SUP-027 · 物流</span></div></div></td><td class="num strong">88.5</td><td><span class="grade grade-b">B</span></td><td><span class="status is-wait">审批中</span></td></tr>
+                  </tbody>
+                </table>
+              </section>
+              <section class="system-block">
+                <div class="block-head"><div><h2 class="block-title">布局</h2><p class="block-note">侧栏 216 · 顶栏 72 · 内容 32</p></div></div>
+                <div class="type-list">
+                  <div class="type-row"><div class="type-label">Grid</div><div class="type-sample">主表 1.65fr / 侧栏 1fr</div><div class="type-spec">gap 32</div></div>
+                  <div class="type-row"><div class="type-label">Density</div><div class="type-sample">表格行 52 · 控件 36–38</div><div class="type-spec">radius 2</div></div>
+                  <div class="type-row"><div class="type-label">Rules</div><div class="type-sample">1px 边框分层 · 无阴影</div><div class="type-spec">#DED8CC</div></div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <nav class="review-nav" aria-label="切换屏幕">
+    <span>1440 · Editorial Ledger</span>
+    <a href="#dashboard" data-review="dashboard">工作台</a>
+    <a href="#suppliers" data-review="suppliers">供应商</a>
+    <a href="#task-detail" data-review="task-detail">任务详情</a>
+    <a href="#scoring" data-review="scoring">评分</a>
+    <a href="#analytics" data-review="analytics">分析</a>
+    <a href="#system" data-review="system">规范</a>
+  </nav>
+
+  <script>
+    const screens = [...document.querySelectorAll('.screen')];
+    const navItems = [...document.querySelectorAll('[data-nav]')];
+    const reviewItems = [...document.querySelectorAll('[data-review]')];
+    const crumb = document.getElementById('crumb');
+    const labels = {
+      dashboard: '工作台',
+      suppliers: '供应商管理',
+      'task-detail': '评估任务',
+      scoring: '评分工作',
+      analytics: '分析看板',
+      system: '设计规范'
+    };
+    const heights = {
+      dashboard: 1200,
+      suppliers: 1000,
+      'task-detail': 1000,
+      scoring: 1080,
+      analytics: 1200,
+      system: 1080
+    };
+    const navMap = {
+      dashboard: 'dashboard',
+      suppliers: 'suppliers',
+      'task-detail': 'task-detail',
+      scoring: 'scoring',
+      analytics: 'analytics',
+      system: null
+    };
+
+    function show(id) {
+      if (!labels[id]) id = 'dashboard';
+      document.getElementById('app').style.setProperty('--frame-height', heights[id] + 'px');
+      screens.forEach((screen) => screen.classList.toggle('is-active', screen.dataset.screen === id));
+      navItems.forEach((item) => item.classList.toggle('active', item.dataset.nav === navMap[id]));
+      reviewItems.forEach((item) => item.classList.toggle('is-active', item.dataset.review === id));
+      crumb.textContent = labels[id];
+    }
+
+    reviewItems.forEach((item) => item.addEventListener('click', (event) => {
+      event.preventDefault();
+      location.hash = item.dataset.review;
+    }));
+    window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+    show(location.hash.slice(1) || 'dashboard');
+
+    function fitPreview() {
+      document.getElementById('app').style.zoom = Math.min(1, window.innerWidth / 1440);
+    }
+    window.addEventListener('resize', fitPreview);
+    fitPreview();
+  </script>
+</body>
+</html>
