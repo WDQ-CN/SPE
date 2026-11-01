@@ -13,6 +13,9 @@ RUN pnpm build
 
 # 运行阶段：Nginx 托管静态资源并反代 /api（05 §4.2）
 FROM nginx:1.30-alpine
+# OSV 镜像核对（28 W4）：基础镜像自带的 curl/libcurl 8.22.0-r0 命中 24 条
+# ALPINE-CVE-2026-*；Alpine 仓库已有修复版 8.23.0-r0，构建时显式升级并复扫。
+RUN apk upgrade --no-cache curl libcurl
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 # 安全响应头片段（含 CSP）：放在 snippets 而非 conf.d，避免被主配置的 `include *.conf` 当成 server 配置
 COPY security-headers.conf /etc/nginx/snippets/security-headers.conf
