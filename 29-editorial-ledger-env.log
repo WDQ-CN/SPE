@@ -1,0 +1,9 @@
+# Editorial Ledger verification environment
+utc=2026-11-01T12:19:05Z
+head=7b718c2b0a92477d8c2b65dcd0ee3a9bcfdd060e
+spe-nginx Up 4 minutes (healthy) specs-nginx
+spe-mysql Up 4 minutes (healthy) 854b334a099b
+spe-backend Up 4 minutes (healthy) 4acddc1f8148
+specs-nginx sha256:53da047a1862ec580bc4f09364c2be4c80adc3fe89939f6c32efdd7fadba7b6c created=2026-11-01T12:15:03.197366218Z
+nginx_http=200
+backend_health_http=200

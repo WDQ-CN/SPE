@@ -1,0 +1,54 @@
+
+> spe-frontend@0.0.0 test D:\ZhuoMian\SPECS\frontend
+> vitest run
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.2 [39m[90mD:/ZhuoMian/SPECS/frontend[39m
+
+ [32m✓[39m src/app/menu.spec.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/result-sort.spec.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m src/shared/composables/usePagedList.spec.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m src/app/notification-store.spec.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32m✓[39m src/features/auth/store.spec.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/shared/components/PageHeader.spec.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 31[2mms[22m[39m
+ [32m✓[39m src/shared/approval-timeline.spec.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m src/shared/composables/useSubmit.spec.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m src/features/template/weight.spec.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/shared/validation.spec.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/raw-value.spec.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/features/template/effective-version.spec.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/radar.spec.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/features/analytics/charts.spec.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/sheet-status.spec.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/features/setting/alert-rules.spec.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/shared/redirect.spec.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/shared/components/SectionCard.spec.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 64[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/components/ScoreRadar.spec.ts [2m([22m[2m1 test[22m[2m)[22m[32m 45[2mms[22m[39m
+ [32m✓[39m src/shared/components/ApprovalTimeline.spec.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 80[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/components/ScoreBreakdown.spec.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 203[2mms[22m[39m
+[90mstderr[2m | src/features/auth/views/LoginView.spec.ts[2m > [22m[2m登录页[2m > [22m[2m账号或密码为空时不发请求（前端先挡住明显缺项）
+[22m[39masync-validator: [ [32m'username is required'[39m ]
+
+[90mstderr[2m | src/features/auth/views/LoginView.spec.ts[2m > [22m[2m登录页[2m > [22m[2m账号或密码为空时不发请求（前端先挡住明显缺项）
+[22m[39masync-validator: [ [32m'password is required'[39m ]
+
+ [32m✓[39m src/features/auth/views/LoginView.spec.ts [2m([22m[2m7 tests[22m[2m)[22m[33m 348[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/views/SheetScoringView.spec.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 715[2mms[22m[39m
+ [32m✓[39m src/features/template/views/TemplateEditorView.spec.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 1355[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/views/TaskSupplierReportView.spec.ts [2m([22m[2m1 test[22m[2m)[22m[32m 78[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/views/TaskListView.spec.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 5901[2mms[22m[39m
+   [32m✓[39m TaskListView（建任务弹窗） [2m(4)[22m
+     [33m[2m✓[22m[39m 模板切换的迟到响应不会覆盖新选择（P1-17）[33m 1429[2mms[22m[39m
+     [33m[2m✓[22m[39m 模板版本加载失败：点名失败项并清空版本列表（P1-17）[33m 1516[2mms[22m[39m
+     [33m[2m✓[22m[39m ADMIN 看不到 MANAGER-only 的写按钮（P2-38）[33m 410[2mms[22m[39m
+     [33m[2m✓[22m[39m 编辑草稿：按详情回填并带 version 调 updateTask（P2-2）[33m 2544[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m26 passed[39m[22m[90m (26)[39m
+[2m      Tests [22m [1m[32m150 passed[39m[22m[90m (150)[39m
+[2m   Start at [22m 20:16:51
+[2m   Duration [22m 26.18s[2m (transform 45%, import 25%, environment 25%, tests 4%)[22m
+
+[2m  Transform [22m [33mtransforming modules took 102.17s[39m[2m · 45% of tracked time, re-done on every run[22m
+[2m            [22m [2mpersist transforms across runs with [22m[33mfsModuleCache: true[39m
+[2m            [22m [2mlearn more: https://vitest.dev/guide/improving-performance#caching-between-reruns[22m
+
