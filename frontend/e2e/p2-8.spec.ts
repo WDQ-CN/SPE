@@ -22,13 +22,21 @@ test('用户页：管理员停用自己 → 警告提示、状态不变、控制
   const row = page.locator('.el-table__row', { hasText: '系统管理员' }).first()
   await expect(row).toContainText('启用')
 
+  // 拒绝后拦截器必须触发一次列表刷新：只断言"状态仍是启用"无法区分"刷新过"与"没刷新"（03 §50 P3-9）。
+  const usersReloaded = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      /\/api\/users(?:\?|$)/.test(response.url()) &&
+      response.status() === 200,
+  )
   await row.getByRole('button', { name: '停用' }).click()
   await expect(page.locator('.el-message-box')).toBeVisible()
   await page.getByRole('button', { name: '确定' }).click()
 
   // 3xxx 走全局警告提示（文案来自 ErrorCode.SELF_DISABLE_FORBIDDEN）
   await expect(page.locator('.el-message--warning')).toContainText('不能停用当前登录账号')
-  // 拦截器会刷新当前视图；刷新后状态必须仍是启用
+  await usersReloaded
+  // 刷新后状态必须仍是启用
   await expect(page.locator('.el-table__row', { hasText: '系统管理员' }).first()).toContainText('启用')
 
   expect(console_.all, `控制台报错：\n${console_.all.join('\n')}`).toEqual([])

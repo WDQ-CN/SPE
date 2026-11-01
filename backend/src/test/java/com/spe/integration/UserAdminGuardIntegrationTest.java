@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
@@ -38,6 +39,7 @@ import org.springframework.beans.factory.annotation.Autowired;
  * <p>并发用例直接调用 {@link UserService}（与 `ApprovalFlowIntegrationTest` 的并发用例同形），
  * 每次调用各占一个事务；HTTP 语义由 I1~I4 覆盖。
  */
+@ResourceLock("user-admin-roster")
 class UserAdminGuardIntegrationTest extends AbstractIntegrationTest {
 
   private static final String PREFIX = "p28-";
@@ -58,15 +60,9 @@ class UserAdminGuardIntegrationTest extends AbstractIntegrationTest {
           id);
     }
     temporarilyDisabled.clear();
-    // 兜底：种子 admin 必须保持可登录（其他类的用例依赖它）
-    jdbcTemplate.update(
-        "UPDATE sys_user SET status = 'ENABLED', version = version + 1"
-            + " WHERE username = ? AND status = 'DISABLED'",
-        ADMIN_USERNAME);
-    // 本类创建的账号一律停用，保证下一个用例的起点干净
-    jdbcTemplate.update(
-        "UPDATE sys_user SET status = 'DISABLED', version = version + 1"
-            + " WHERE username LIKE 'p28-%' AND status = 'ENABLED'");
+    // 本类创建的账号直接删除：只停用会在共享 Testcontainers 库里逐轮累积（03 §50 P3-7）。
+    // 审计行保留（operator_name 已落库），且 sys_user 没有外键引用，删除是安全的。
+    jdbcTemplate.update("DELETE FROM sys_user WHERE username LIKE ?", PREFIX + "%");
   }
 
   @Test
