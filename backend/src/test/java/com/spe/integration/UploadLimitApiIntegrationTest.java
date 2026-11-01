@@ -2,14 +2,13 @@ package com.spe.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
@@ -21,6 +20,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 上传超限与缺部件必须走**真 Tomcat**（03 §38 的 P1-6/P1-7 欠的那两条用例）。
@@ -36,6 +37,7 @@ import org.springframework.util.MultiValueMap;
  * 生产值（20MB/22MB）与 nginx 的一致性另有门禁 {@code upload-limits} 守着（B4 已落地）。
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureTestRestTemplate
 @Import(TestcontainersConfiguration.class)
 @TestPropertySource(
     properties = {
@@ -74,7 +76,7 @@ class UploadLimitApiIntegrationTest {
 
     assertThat(response.getStatusCode())
         .as("响应体：%s", response.getBody())
-        .isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
+        .isEqualTo(HttpStatus.CONTENT_TOO_LARGE);
     JsonNode body = json(response);
     assertThat(body.path("code").asInt())
         .as("2030 = IMPORT_FILE_TOO_LARGE（响应体：%s）", response.getBody())

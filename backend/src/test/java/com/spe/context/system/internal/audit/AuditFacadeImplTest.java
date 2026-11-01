@@ -3,10 +3,9 @@ package com.spe.context.system.internal.audit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.spe.common.security.AuthenticatedOperator;
 import com.spe.context.system.api.AuditAction;
 import com.spe.context.system.api.AuditTargetType;
-import com.spe.common.security.AuthenticatedOperator;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -21,6 +20,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 审计落库行为锁定（05 §5.5 T6 / 06 §2.8）：

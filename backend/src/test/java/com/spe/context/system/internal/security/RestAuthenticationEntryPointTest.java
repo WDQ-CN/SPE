@@ -2,7 +2,6 @@ package com.spe.context.system.internal.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.spe.common.web.ErrorCode;
 import com.spe.common.web.Result;
 import org.junit.jupiter.api.DisplayName;
@@ -11,6 +10,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
+import tools.jackson.databind.ObjectMapper;
 
 /** 未认证响应锁定（09 D6、出口判据 2）：401 + Result(1xxx) + RFC 7235 的 Bearer challenge。 */
 class RestAuthenticationEntryPointTest {

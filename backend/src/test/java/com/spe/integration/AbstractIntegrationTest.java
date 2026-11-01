@@ -1,13 +1,12 @@
 package com.spe.integration;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -16,7 +15,9 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.AbstractMockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 集成测试基类（09 D7 / 10 §E6）：真起 MySQL 8.4 容器 + 走完整安全链（`MockMvc` 带 servlet 过滤器）。
@@ -71,7 +72,7 @@ public abstract class AbstractIntegrationTest {
     return builder.contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(body));
   }
 
-  protected MockHttpServletRequestBuilder authed(MockHttpServletRequestBuilder builder, String token) {
+  protected AbstractMockHttpServletRequestBuilder<?> authed(AbstractMockHttpServletRequestBuilder<?> builder, String token) {
     return builder.header("Authorization", "Bearer " + token);
   }
 

@@ -75,7 +75,7 @@ public enum ErrorCode {
    * ⚠️ 它是 2xxx 段里**第一个**带 413 的码：`ErrorCodeTest` 的分段合法集合因此从 `{400}` 扩成
    * `{400, 413}`，`06 §2.6` 的分段表同步（1xxx 早有 401+429 的同族先例）。
    */
-  IMPORT_FILE_TOO_LARGE(2030, "上传文件超过大小限制", HttpStatus.PAYLOAD_TOO_LARGE),
+  IMPORT_FILE_TOO_LARGE(2030, "上传文件超过大小限制", HttpStatus.CONTENT_TOO_LARGE),
   /**
    * 模板版本不属于所选模板（`21 §3.W1-2`）。
    *

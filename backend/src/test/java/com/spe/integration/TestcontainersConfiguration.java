@@ -8,7 +8,7 @@ import java.util.List;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
-import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.mysql.MySQLContainer;
 
 /**
  * 集成测试的 MySQL 容器（10 §E6）。容器作为一个 Spring Bean 被上下文缓存共享——同一批测试只起**一次**
@@ -31,8 +31,8 @@ import org.testcontainers.containers.MySQLContainer;
 @TestConfiguration(proxyBeanMethods = false)
 public class TestcontainersConfiguration {
 
-  private static final MySQLContainer<?> MYSQL =
-      new MySQLContainer<>("mysql:8.4")
+  private static final MySQLContainer MYSQL =
+      new MySQLContainer("mysql:8.4")
           .withDatabaseName("spe")
           // 给测试容器也设内存上限。宿主 Docker 引擎的内存上限约 7.8 GB，而 MySQL 默认按宿主机内存
           // 自行放大缓冲池；连续跑多轮全量测试时，无限制的测试容器叠加应用容器曾把引擎压垮
@@ -93,7 +93,7 @@ public class TestcontainersConfiguration {
 
   @Bean
   @ServiceConnection
-  MySQLContainer<?> mysqlContainer() {
+  MySQLContainer mysqlContainer() {
     return MYSQL;
   }
 }

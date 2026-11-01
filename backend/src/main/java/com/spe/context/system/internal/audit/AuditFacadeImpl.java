@@ -1,12 +1,10 @@
 package com.spe.context.system.internal.audit;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.spe.common.security.AuthenticatedOperator;
 import com.spe.common.web.ClientIpResolver;
 import com.spe.context.system.api.AuditAction;
 import com.spe.context.system.api.AuditFacade;
 import com.spe.context.system.api.AuditTargetType;
-import com.spe.common.security.AuthenticatedOperator;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +12,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * {@link AuditFacade} 的实现（05 §5.5 T6 / 06 §2.8）。
@@ -87,7 +87,7 @@ public class AuditFacadeImpl implements AuditFacade {
     }
     try {
       return objectMapper.writeValueAsString(detail);
-    } catch (JsonProcessingException ex) {
+    } catch (JacksonException ex) {
       throw new IllegalStateException("审计 detail 序列化失败，按 T6 回滚业务", ex);
     }
   }

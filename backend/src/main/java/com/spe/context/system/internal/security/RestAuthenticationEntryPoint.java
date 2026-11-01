@@ -1,6 +1,5 @@
 package com.spe.context.system.internal.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.spe.common.web.ErrorCode;
 import com.spe.common.web.Result;
 import jakarta.servlet.http.HttpServletRequest;
@@ -13,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
 
 /** 未认证访问受保护资源：输出 401 + Result（1xxx 段），替代 Spring Security 默认的空响应（09 D6、出口判据 2）。 */
 @Component

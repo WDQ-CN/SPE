@@ -5,8 +5,8 @@ server:
   # ⚠️ **刻意不采信转发头**（03 §38 的 P1-4/P1-5，用户裁决 `18 §6` 点 9）。三条实测事实：
   # ① 本机是单机 Docker Compose：经 nginx 的请求在容器侧看到的对端恒为网桥地址，采信 XFF
   #    也换不回真实客户端 IP——换来的只有"任何直连者都能伪造 audit_log.ip 与 IP 限流键"；
-  # ② Tomcat 10.1（pom 钉的 10.1.59）把 `internalProxies` 当**正则**读，CIDR 写法是 11 才支持的，
-  #    照 `172.16.0.0/12` 配会得到"谁都不匹配"的静默失效（原方案就在这里，已推翻）；
+  # ② Tomcat 11（Boot 4.1.2 BOM）对 internalProxies 的支持已变化；本部署仍用 none 策略，
+  #    不依赖容器解析转发头（历史依据见 03 §38 的 P1-4/P1-5）；
   # ③ 原先 `framework` + 宿主 18080 发布的组合下，实测 25 个伪造 IP × 25 个账号 ⇒ 0 次 429，
   #    且伪造值直接落进 audit_log。
   # 代价（登记进 11 §9）：将来若搬到有真实源 IP 的环境，需要改回 `native` + **正则**可信清单，
@@ -16,6 +16,9 @@ server:
 spring:
   application:
     name: spe-backend
+  cache:
+    # Boot 4 不再默认提供可动态建 cache 的 CacheManager；显式强制 simple（ConcurrentMapCacheManager）
+    type: simple
   # Excel 导入的体积上限（03 §38 的 P1-7）。Boot 默认 max-file-size=1MB，而 nginx 允许 20m
   # ⇒ 真实导入先撞一条到不了后端的裸 413，01 E3 的行级定位契约（2027）永远走不到。
   # ⚠️ 这两个数与 `frontend/nginx.conf` 的 `client_max_body_size` 是同一事实的两处副本，

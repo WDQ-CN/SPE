@@ -1,6 +1,5 @@
 package com.spe.integration;
 
-import com.spe.integration.support.TestFixtures;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -9,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.alibaba.excel.EasyExcel;
+import com.spe.integration.support.TestFixtures;
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -275,7 +275,7 @@ class EvaluationAuditAcceptanceTest extends AbstractIntegrationTest {
 
   private long insertSupplier(String code) { return TestFixtures.insertSupplier(jdbcTemplate, code, "供应商 " + code, "W5 留痕"); }
 
-  private com.fasterxml.jackson.databind.JsonNode data(
+  private tools.jackson.databind.JsonNode data(
       org.springframework.test.web.servlet.MvcResult result) throws Exception {
     return objectMapper
         .readTree(result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8))

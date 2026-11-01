@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.5.16</version>
+    <version>4.1.2</version>
     <relativePath/>
   </parent>
 
@@ -19,9 +19,9 @@
 
   <properties>
     <java.version>17</java.version>
-    <mybatis-plus.version>3.5.17</mybatis-plus.version>
+    <mybatis-plus.version>3.5.18.1</mybatis-plus.version>
     <jjwt.version>0.12.7</jjwt.version>
-    <archunit.version>1.5.0</archunit.version>
+    <archunit.version>1.5.1</archunit.version>
     <!-- Excel（01 E3）：4.0.3 是 2026-10 的稳定线；升级前先复跑导入的集成用例与 11 §5.3 的核对表 -->
     <easyexcel.version>4.0.3</easyexcel.version>
     <!--
@@ -31,21 +31,12 @@
     -->
     <commons-compress.version>1.27.1</commons-compress.version>
 
-    <!-- 供应链核对（03 §20 / P5-W4）发现的升级项。除 commons-lang3 外都由 Spring Boot BOM 管理，
-         这里用 Boot 认可的属性覆盖到**同一补丁线**内的修复版本（只动补丁位，不跨次版本）：
-           - tomcat-embed-core 10.1.55 → 10.1.59：3 个 CRITICAL（DIGEST 认证重放绕过、访问控制、
-             FORM 认证授权）。**不能写 10.1.58**——OSV 报的修复版本是它，但该版本在 Maven Central 上
-             不存在（目录 404，被跳过/撤回），10.1.59 是修复点之后第一个可用版本，故取它。
-           - jackson 2.21.5 → 2.21.7（P5，2026-10-24）：OSV 新收录 5 条 HIGH（core ReDoS/无界 StringBuilder、
-             databind 多个反序列化绕过）；2.21.7 是 2.21 线的修复版。
-           - commons-lang3 3.17.0 → 3.18.0（P5，2026-10-24）：1 条 MODERATE（超长输入递归）；Boot 3.5.16
-             的 BOM 管理 3.17.0，这里用属性覆盖到 3.18.0（次版本，需全量回归）。
-           - log4j-api 2.24.3 → 2.25.5：1 个 MODERATE（MapMessage 的 JSON 序列化对非有限浮点数编码不当）
-         升级后复跑全量测试与端到端，处置记录见 03 §20 / 20 §7。 -->
-    <tomcat.version>10.1.59</tomcat.version>
-    <jackson-bom.version>2.21.7</jackson-bom.version>
-    <commons-lang3.version>3.18.0</commons-lang3.version>
-    <log4j2.version>2.25.5</log4j2.version>
+    <!--
+      Boot 4.1.2 起由 BOM 管理 Tomcat 11 / Jackson 3 / commons-lang3 / log4j2；
+      原 Boot 3 的 tomcat.version、jackson-bom.version、commons-lang3.version、log4j2.version
+      覆盖已删除（27 已实测旧 jackson-bom 属性会让 Boot 4 误解析 Jackson 3 BOM）。
+      供应链处置记录见 03 §20 / 28 的 W4。
+    -->
   </properties>
 
   <!--
@@ -87,7 +78,7 @@
   <dependencies>
     <dependency>
       <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-web</artifactId>
+      <artifactId>spring-boot-starter-webmvc</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -101,6 +92,11 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
+    <!-- Boot 4 模块化：Cache 自动配置不再位于核心；W0 实测缺此 starter 时 @EnableCaching 没有 CacheManager -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-cache</artifactId>
+    </dependency>
     <!-- 指标暴露格式（03 §19）：actuator 自带 micrometer-core + SimpleMeterRegistry，
          但 Prometheus 抓取需要这个 registry 才有多文本格式的 /actuator/prometheus。
          版本随 Boot BOM，不手写（06 §8 第 20 条）。 -->
@@ -109,10 +105,10 @@
       <artifactId>micrometer-registry-prometheus</artifactId>
     </dependency>
 
-    <!-- 持久层：MyBatis-Plus（Boot 3 starter）+ MySQL 8.4 + Flyway -->
+    <!-- 持久层：MyBatis-Plus（Boot 4 starter）+ MySQL 8.4 + Flyway（Boot 4 需 starter-flyway 提供自动配置） -->
     <dependency>
       <groupId>com.baomidou</groupId>
-      <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+      <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
       <version>${mybatis-plus.version}</version>
     </dependency>
     <dependency>
@@ -121,8 +117,8 @@
       <scope>runtime</scope>
     </dependency>
     <dependency>
-      <groupId>org.flywaydb</groupId>
-      <artifactId>flyway-core</artifactId>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-flyway</artifactId>
     </dependency>
     <dependency>
       <groupId>org.flywaydb</groupId>
@@ -168,17 +164,19 @@
 
     <dependency>
       <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-test</artifactId>
+      <artifactId>spring-boot-starter-webmvc-test</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- Boot 4 的 TestRestTemplate 自动配置需要 RestTemplateBuilder（spring-boot-restclient） -->
     <dependency>
-      <groupId>org.springframework.security</groupId>
-      <artifactId>spring-security-test</artifactId>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-restclient</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- JUnit 6 配套：ArchUnit 1.5.x 的 JUnit 6 引擎是独立坐标 archunit-junit6 -->
     <dependency>
       <groupId>com.tngtech.archunit</groupId>
-      <artifactId>archunit-junit5</artifactId>
+      <artifactId>archunit-junit6</artifactId>
       <version>${archunit.version}</version>
       <scope>test</scope>
     </dependency>
@@ -191,12 +189,7 @@
     </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
-      <artifactId>mysql</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>junit-jupiter</artifactId>
+      <artifactId>testcontainers-mysql</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

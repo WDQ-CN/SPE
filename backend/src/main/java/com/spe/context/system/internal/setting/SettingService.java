@@ -1,7 +1,5 @@
 package com.spe.context.system.internal.setting;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
 import com.spe.context.system.api.AlertRules;
@@ -18,6 +16,8 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 系统设置服务（01 SM2 / §6.3）。
@@ -99,7 +99,7 @@ public class SettingService {
     try {
       GradeThresholds thresholds = objectMapper.readValue(json, GradeThresholds.class);
       return thresholds.satisfiesOrdering() ? thresholds : GradeThresholds.defaults();
-    } catch (JsonProcessingException ex) {
+    } catch (JacksonException ex) {
       log.warn("等级阈值存量值无法解析，回落默认值：{}", ex.getMessage());
       return GradeThresholds.defaults();
     }
@@ -145,7 +145,7 @@ public class SettingService {
     try {
       AlertRules rules = objectMapper.readValue(json, AlertRules.class);
       return rules.satisfies() ? rules : AlertRules.defaults();
-    } catch (JsonProcessingException ex) {
+    } catch (JacksonException ex) {
       log.warn("预警规则存量值无法解析，回落默认值：{}", ex.getMessage());
       return AlertRules.defaults();
     }
@@ -159,7 +159,7 @@ public class SettingService {
   private String writeJson(Object value) {
     try {
       return objectMapper.writeValueAsString(value);
-    } catch (JsonProcessingException ex) {
+    } catch (JacksonException ex) {
       throw new IllegalStateException("设置值序列化失败", ex);
     }
   }

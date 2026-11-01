@@ -1,16 +1,15 @@
 package com.spe.integration;
 
-import com.spe.integration.support.TestFixtures;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.spe.common.page.PageQuery;
 import com.spe.context.notify.internal.NotificationService;
 import com.spe.context.notify.internal.NotificationSummary;
+import com.spe.integration.support.TestFixtures;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
@@ -22,6 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.MvcResult;
+import tools.jackson.databind.JsonNode;
 
 /**
  * P4-W5：审批 / 结果 / 报告三类端点的 HTTP 契约与两层权限（02 §4、15 §E8/E15）。
@@ -101,7 +101,7 @@ class ApprovalApiIntegrationTest extends AbstractIntegrationTest {
                     .andExpect(status().isOk())
                     .andReturn());
     assertThat(resultTasks.path("total").asLong()).as("结果入口对 VIEWER 可读").isGreaterThanOrEqualTo(1);
-    assertThat(resultTasks.path("list").findValuesAsText("taskName"))
+    assertThat(resultTasks.path("list").findValuesAsString("taskName"))
         .as("本轮任务必须出现在结果入口")
         .contains("P4 API 任务-" + fixture.year());
 
