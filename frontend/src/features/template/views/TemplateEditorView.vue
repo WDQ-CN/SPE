@@ -94,6 +94,12 @@ const report = computed(() =>
 
 const isDraft = computed(() => tree.value?.status === 'DRAFT')
 const canPublish = computed(() => canWrite.value && isDraft.value && report.value.publishable)
+const indicatorCount = computed(() =>
+  dimensions.value.reduce((total, dimension) => total + dimension.indicators.length, 0),
+)
+const dimensionWeightSum = computed(() =>
+  dimensions.value.reduce((total, dimension) => total + dimension.weight, 0),
+)
 
 const publishHint = computed(() => {
   if (!tree.value) {
@@ -433,51 +439,58 @@ function statusTagType(): 'success' | 'warning' | 'info' {
 
 <template>
   <PageHeader
-    eyebrow="TEMPLATE EDITOR"
-    title="模板编辑器"
-  />
-
-  <!-- 刻意不走 SectionCard（03 §35 登记在案的例外）：这里的头部是"标题 + 状态 tag + 副标题 + 按钮组"
-       的复合结构，SectionCard 的 title + actions 两个槽装不下它的四层信息。 -->
-  <el-card
-    v-loading="loading"
-    class="page-block"
-    style="animation-delay: 0.1s"
+    eyebrow="TEMPLATE / EDITOR"
+    :title="tree?.templateName ?? '模板编辑器'"
+    :description="tree ? `版本 v${tree.versionNo}（版本 id ${tree.versionId}）· 共 ${dimensions.length} 个维度` : ''"
   >
-    <div class="editor__header">
-      <div>
-        <h2 class="editor__title">
-          {{ tree?.templateName ?? '模板编辑器' }}
-          <el-tag
-            v-if="tree"
-            :type="statusTagType()"
-            class="editor__status"
-          >
-            {{ TEMPLATE_VERSION_STATUS_LABEL[tree.status] }}
-          </el-tag>
-        </h2>
-        <p
-          v-if="tree"
-          class="editor__subtitle"
-        >
-          版本 v{{ tree.versionNo }}（版本 id {{ tree.versionId }}）· 共 {{ dimensions.length }} 个维度
-        </p>
+    <template #actions>
+      <el-tag
+        v-if="tree"
+        :type="statusTagType()"
+        class="editor__status"
+      >
+        {{ TEMPLATE_VERSION_STATUS_LABEL[tree.status] }}
+      </el-tag>
+      <el-button @click="router.push({ name: 'templates' })">
+        返回列表
+      </el-button>
+      <el-button
+        v-if="canWrite && tree"
+        type="primary"
+        :disabled="!canPublish"
+        :loading="submitting"
+        @click="publish"
+      >
+        发布 v{{ tree.versionNo }}
+      </el-button>
+    </template>
+  </PageHeader>
+
+  <div
+    v-loading="loading"
+    class="editor-page page-block"
+  >
+    <section
+      v-if="tree"
+      class="meta-grid meta-grid--4 editor-summary"
+    >
+      <div class="meta-grid__item">
+        <span>版本</span>
+        <strong>v{{ tree.versionNo }} <small>id {{ tree.versionId }}</small></strong>
       </div>
-      <div>
-        <el-button @click="router.push({ name: 'templates' })">
-          返回列表
-        </el-button>
-        <el-button
-          v-if="canWrite && tree"
-          type="primary"
-          :disabled="!canPublish"
-          :loading="submitting"
-          @click="publish"
-        >
-          发布 v{{ tree.versionNo }}
-        </el-button>
+      <div class="meta-grid__item">
+        <span>维度数量</span>
+        <strong>{{ dimensions.length }} 个</strong>
       </div>
-    </div>
+      <div class="meta-grid__item">
+        <span>指标数量</span>
+        <strong>{{ indicatorCount }} 项</strong>
+      </div>
+      <div class="meta-grid__item">
+        <span>维度权重合计</span>
+        <strong>{{ formatWeight(dimensionWeightSum) }} <small>/ 100.00</small></strong>
+      </div>
+    </section>
 
     <el-alert
       v-if="loadError"
@@ -489,7 +502,6 @@ function statusTagType(): 'success' | 'warning' | 'info' {
     >
       <el-button
         link
-        type="primary"
         @click="loadTree"
       >
         重试
@@ -515,39 +527,46 @@ function statusTagType(): 'success' | 'warning' | 'info' {
     />
 
     <div
-      v-for="dimension in dimensions"
+      v-for="(dimension, index) in dimensions"
       :key="dimension.id"
       class="editor__dimension"
     >
       <div class="editor__dimension-head">
-        <div>
-          <strong>{{ dimension.name }}</strong>
-          <el-tag
-            v-if="dimension.isKey"
-            type="danger"
-            size="small"
-            class="editor__key-tag"
-          >
-            关键
-          </el-tag>
-          <span class="editor__muted">
-            权重 {{ formatWeight(dimension.weight) }}
-            <template v-if="dimension.suggestedDept">
-              · 建议部门 {{ dimension.suggestedDept }}
-            </template>
-          </span>
+        <div class="editor__dimension-title">
+          <span class="editor__dimension-index">{{ String(index + 1).padStart(2, '0') }}</span>
+          <div>
+            <h2 class="editor__dimension-name">
+              {{ dimension.name }}
+              <el-tag
+                v-if="dimension.isKey"
+                type="danger"
+                size="small"
+                class="editor__key-tag"
+              >
+                关键
+              </el-tag>
+            </h2>
+            <p class="editor__dimension-meta">
+              权重 {{ formatWeight(dimension.weight) }}
+              <template v-if="dimension.suggestedDept">
+                · 建议部门 {{ dimension.suggestedDept }}
+              </template>
+              · {{ dimension.indicators.length }} 项指标
+            </p>
+          </div>
         </div>
-        <div v-if="canWrite">
+        <div
+          v-if="canWrite"
+          class="editor__dimension-actions"
+        >
           <el-button
             link
-            type="primary"
             @click="openIndicatorDialog(dimension, null)"
           >
             加指标
           </el-button>
           <el-button
             link
-            type="primary"
             @click="openDimensionDialog(dimension)"
           >
             改维度
@@ -565,7 +584,7 @@ function statusTagType(): 'success' | 'warning' | 'info' {
       <el-table
         :data="dimension.indicators"
         size="small"
-        border
+        class="table-list editor-table"
       >
         <el-table-column
           prop="code"
@@ -866,30 +885,16 @@ function statusTagType(): 'success' | 'warning' | 'info' {
         </el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </div>
 </template>
 
 <style scoped>
-.editor__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 12px;
+.editor-page {
+  min-height: 160px;
 }
 
-.editor__title {
-  margin: 0;
-}
-
-.editor__status {
-  margin-left: 8px;
-  vertical-align: middle;
-}
-
-.editor__subtitle {
-  margin: 4px 0 0;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
+.editor-summary {
+  margin-bottom: 18px;
 }
 
 .editor__weight,
@@ -898,30 +903,81 @@ function statusTagType(): 'success' | 'warning' | 'info' {
 }
 
 .editor__dimension {
-  margin-bottom: 20px;
+  padding-top: 20px;
+  margin-top: 22px;
+  border-top: 1px solid var(--rule-strong);
 }
 
 .editor__dimension-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 8px;
+  gap: 24px;
+  margin-bottom: 10px;
+}
+
+.editor__dimension-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+}
+
+.editor__dimension-index {
+  padding-top: 4px;
+  color: var(--muted-2);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 15px;
+}
+
+.editor__dimension-name {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 21px;
+  line-height: 28px;
+  font-weight: 500;
+  letter-spacing: -0.4px;
+}
+
+.editor__dimension-meta {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.editor__dimension-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 14px;
+  padding-top: 4px;
 }
 
 .editor__key-tag {
-  margin: 0 6px;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 .editor__muted {
   margin-left: 8px;
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.editor-table {
+  border-top-color: var(--rule);
 }
 
 .editor__empty {
-  padding: 24px 0;
+  padding: 34px 0;
+  border-top: 1px solid var(--rule-strong);
+  border-bottom: 1px solid var(--rule);
   text-align: center;
-  color: var(--el-text-color-secondary);
+  color: var(--muted);
+  font-size: 11px;
 }
 
 /* ⚠️ 2xxx（如"编码重复 2014"、"维度不存在 2015"）由 useSubmit 只写进 errorMessage，
@@ -929,8 +985,8 @@ function statusTagType(): 'success' | 'warning' | 'info' {
    对话框内提交失败时看不到任何原因（页面级那个 alert 在模态遮罩之下）。见 03 §30 的 P1-1。 */
 .editor__error-text {
   margin: 0 0 4px;
-  color: var(--el-color-danger);
-  font-size: 13px;
+  color: var(--danger);
+  font-size: 11px;
 }
 
 .editor__add-dimension {

@@ -13,7 +13,7 @@ import AnalyticsChart from '@/features/analytics/components/AnalyticsChart.vue'
 import { compareOption, gradeOption, periodLabel, trendOption } from '@/features/analytics/charts'
 import { useAsyncData } from '@/shared/composables/useAsyncData'
 import { GRADE_ORDER } from '@/shared/labels'
-import { formatScore } from '@/shared/format'
+import { formatScore, gradeClass } from '@/shared/format'
 import type {
   AnalyticsCompare,
   AnalyticsGradeCount,
@@ -106,6 +106,21 @@ const {
 )
 const ranking = computed(() => rankingData.value.ranking)
 const gradeCounts = computed(() => rankingData.value.gradeCounts)
+const rankingRows = computed(() => ranking.value?.rows ?? [])
+const scoredRows = computed(() => rankingRows.value.filter((row) => row.totalScore != null))
+const averageScore = computed(() => {
+  if (scoredRows.value.length === 0) {
+    return null
+  }
+  const sum = scoredRows.value.reduce((total, row) => total + (row.totalScore as number), 0)
+  return sum / scoredRows.value.length
+})
+const aGradeCount = computed(
+  () => gradeCounts.value.find((item) => item.grade === 'A')?.count ?? 0,
+)
+const risingCount = computed(
+  () => rankingRows.value.filter((row) => row.delta != null && row.delta > 0).length,
+)
 
 const {
   data: trendData,
@@ -188,8 +203,9 @@ function deltaClass(value: number | null): string {
 
 <template>
   <PageHeader
-    eyebrow="ANALYTICS"
+    eyebrow="ANALYTICS / PERFORMANCE"
     title="分析看板"
+    description="已生效评估单的周期口径 — 排行、等级分布、历史趋势与多供应商对比"
   />
 
   <el-alert
@@ -209,8 +225,9 @@ function deltaClass(value: number | null): string {
     description="还没有已生效的评估结果（末级审批通过并定稿后才会出现在这里）"
   />
   <template v-else>
-    <SectionCard title="筛选">
-      <div class="analytics__filters">
+    <section class="analytics-bar">
+      <div class="analytics-bar__field">
+        <span>评估周期</span>
         <el-select
           v-model="periodKey"
           placeholder="选择周期"
@@ -223,6 +240,9 @@ function deltaClass(value: number | null): string {
             :value="keyOf(period)"
           />
         </el-select>
+      </div>
+      <div class="analytics-bar__field">
+        <span>供应商分类</span>
         <el-select
           v-model="category"
           placeholder="全部分类"
@@ -236,6 +256,9 @@ function deltaClass(value: number | null): string {
             :value="item"
           />
         </el-select>
+      </div>
+      <div class="analytics-bar__field">
+        <span>等级</span>
         <el-select
           v-model="grade"
           placeholder="全部等级"
@@ -249,94 +272,155 @@ function deltaClass(value: number | null): string {
             :value="item"
           />
         </el-select>
-        <span class="analytics__hint">分类/等级只作用于排行；趋势与对比按所选供应商取数。</span>
       </div>
-    </SectionCard>
-
-    <SectionCard title="总分排行（含环比）">
-      <el-alert
-        v-if="rankingError"
-        type="error"
-        :title="rankingError"
-        :closable="false"
-        show-icon
-      />
-      <el-empty
-        v-else-if="!loadingRanking && ranking && ranking.rows.length === 0"
-        description="该周期没有符合条件的生效结果"
-      />
-      <el-table
-        v-else
-        v-loading="loadingRanking"
-        :data="ranking?.rows ?? []"
-      >
-        <el-table-column
-          prop="supplierCode"
-          label="供应商编码"
-          width="140"
-        />
-        <el-table-column
-          prop="supplierName"
-          label="供应商"
-          min-width="160"
-        />
-        <el-table-column
-          label="分类"
-          width="120"
-        >
-          <template #default="{ row }">
-            {{ row.category ?? '—' }}
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="总分"
-          width="100"
-        >
-          <template #default="{ row }">
-            {{ formatScore(row.totalScore) }}
-          </template>
-        </el-table-column>
-        <el-table-column
-          prop="totalGrade"
-          label="等级"
-          width="80"
-        />
-        <el-table-column
-          label="上期总分"
-          width="100"
-        >
-          <template #default="{ row }">
-            {{ row.previousScore == null ? '–' : formatScore(row.previousScore) }}
-          </template>
-        </el-table-column>
-        <el-table-column
-          label="环比"
-          width="100"
-        >
-          <template #default="{ row }">
-            <span :class="deltaClass(row.delta)">{{ deltaText(row.delta) }}</span>
-          </template>
-        </el-table-column>
-      </el-table>
-      <p class="analytics__hint">
-        环比只与<strong>上一个日历季度</strong>比较；该季度没有生效结果时显示「–」（不跨缺口回溯）。
+      <p class="analytics-bar__note">
+        分类/等级只作用于排行；趋势与对比按所选供应商取数。
       </p>
-    </SectionCard>
+    </section>
 
-    <SectionCard title="等级分布">
-      <AnalyticsChart
-        v-if="gradeChart"
-        :option="gradeChart"
-        height="280px"
-      />
-      <el-empty
-        v-else
-        description="该周期没有生效结果"
-      />
-    </SectionCard>
+    <section class="figure-strip analytics-figures">
+      <div class="figure">
+        <span class="figure__label">参与供应商</span>
+        <div class="figure__value">
+          {{ rankingRows.length }}<small>家</small>
+        </div>
+        <p class="figure__note">
+          本周期已生效
+        </p>
+      </div>
+      <div class="figure">
+        <span class="figure__label">平均总分</span>
+        <div class="figure__value">
+          {{ formatScore(averageScore) }}
+        </div>
+        <p class="figure__note">
+          基于 {{ scoredRows.length }} 家有总分记录
+        </p>
+      </div>
+      <div class="figure">
+        <span class="figure__label">A 档供应商</span>
+        <div class="figure__value">
+          {{ aGradeCount }}<small>家</small>
+        </div>
+        <p class="figure__note">
+          等级分布固定 A–D
+        </p>
+      </div>
+      <div class="figure">
+        <span class="figure__label">环比上升</span>
+        <div class="figure__value">
+          {{ risingCount }}<small>家</small>
+        </div>
+        <p class="figure__note">
+          仅与上一日历季度比较
+        </p>
+      </div>
+    </section>
+
+    <div class="analytics-layout">
+      <SectionCard title="总分排行">
+        <el-alert
+          v-if="rankingError"
+          type="error"
+          :title="rankingError"
+          :closable="false"
+          show-icon
+        />
+        <el-empty
+          v-else-if="!loadingRanking && ranking && ranking.rows.length === 0"
+          description="该周期没有符合条件的生效结果"
+        />
+        <el-table
+          v-else
+          v-loading="loadingRanking"
+          :data="ranking?.rows ?? []"
+        >
+          <el-table-column
+            label="序"
+            width="52"
+          >
+            <template #default="{ $index }">
+              <span class="mono">{{ String($index + 1).padStart(2, '0') }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="供应商"
+            min-width="190"
+          >
+            <template #default="{ row }">
+              <span class="analytics-supplier-name">{{ row.supplierName }}</span>
+              <span class="analytics-supplier-code">{{ row.supplierCode }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="分类"
+            width="110"
+          >
+            <template #default="{ row }">
+              {{ row.category ?? '—' }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="总分"
+            width="100"
+            align="right"
+          >
+            <template #default="{ row }">
+              <span class="analytics-score">{{ formatScore(row.totalScore) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="等级"
+            width="80"
+          >
+            <template #default="{ row }">
+              <span
+                class="status-mark"
+                :class="gradeClass(row.totalGrade)"
+              >
+                {{ row.totalGrade ?? '—' }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="上期"
+            width="90"
+            align="right"
+          >
+            <template #default="{ row }">
+              {{ row.previousScore == null ? '–' : formatScore(row.previousScore) }}
+            </template>
+          </el-table-column>
+          <el-table-column
+            label="环比"
+            width="90"
+            align="right"
+          >
+            <template #default="{ row }">
+              <span :class="deltaClass(row.delta)">{{ deltaText(row.delta) }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+        <p class="section-note">
+          环比只与<strong>上一个日历季度</strong>比较；该季度没有生效结果时显示「–」（不跨缺口回溯）。
+        </p>
+      </SectionCard>
+
+      <SectionCard title="等级分布">
+        <AnalyticsChart
+          v-if="gradeChart"
+          :option="gradeChart"
+          height="300px"
+        />
+        <el-empty
+          v-else
+          description="该周期没有生效结果"
+        />
+      </SectionCard>
+    </div>
 
     <SectionCard title="历史趋势">
-      <div class="analytics__filters">
+      <template #actions>
         <el-select
           v-model="trendSupplierId"
           placeholder="选择供应商"
@@ -350,7 +434,7 @@ function deltaClass(value: number | null): string {
             :value="item.id"
           />
         </el-select>
-      </div>
+      </template>
       <el-alert
         v-if="trendError"
         type="error"
@@ -369,26 +453,25 @@ function deltaClass(value: number | null): string {
     </SectionCard>
 
     <SectionCard title="多供应商对比">
-      <div class="analytics__filters">
-        <el-select
-          v-model="compareIds"
-          multiple
-          filterable
-          collapse-tags
-          :multiple-limit="10"
-          placeholder="选择 1~10 个供应商"
-          class="analytics__compare"
-        >
-          <el-option
-            v-for="item in suppliers"
-            :key="item.id"
-            :label="`${item.code} ${item.name}`"
-            :value="item.id"
-          />
-        </el-select>
-      </div>
+      <el-select
+        v-model="compareIds"
+        multiple
+        filterable
+        collapse-tags
+        :multiple-limit="10"
+        placeholder="选择 1~10 个供应商"
+        class="analytics__compare"
+      >
+        <el-option
+          v-for="item in suppliers"
+          :key="item.id"
+          :label="`${item.code} ${item.name}`"
+          :value="item.id"
+        />
+      </el-select>
       <el-alert
         v-if="compareError"
+        class="page-alert"
         type="error"
         :title="compareError"
         :closable="false"
@@ -407,35 +490,95 @@ function deltaClass(value: number | null): string {
 </template>
 
 <style scoped>
-.analytics__filters {
+.analytics-bar {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+  align-items: flex-end;
+  gap: 22px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--rule);
+}
+.analytics-bar__field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.analytics-bar__field > span {
+  color: var(--muted-2);
+  font-size: 8.5px;
+  line-height: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.analytics-bar__note {
+  margin: 0 0 2px auto;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 18px;
 }
 .analytics__period {
   width: 150px;
 }
 .analytics__filter {
-  width: 140px;
+  width: 150px;
 }
 .analytics__supplier {
-  width: 260px;
+  width: 280px;
 }
 .analytics__compare {
   width: 100%;
-  max-width: 640px;
+  max-width: 720px;
+  margin-bottom: 16px;
 }
-.analytics__hint {
-  margin: 8px 0 0;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
+.analytics-figures {
+  margin-top: 18px;
+}
+.analytics-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+  gap: 36px;
+  align-items: start;
+}
+.analytics-layout .section-card {
+  margin-top: 24px;
+}
+.analytics-layout .section-card + .section-card {
+  padding-top: 0;
+  border-top: 0;
+}
+.analytics-supplier-name {
+  display: block;
+  color: var(--ink);
+  font-weight: 500;
+}
+.analytics-supplier-code {
+  display: block;
+  margin-top: 1px;
+  color: var(--muted-2);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 13px;
+}
+.analytics-score {
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.2px;
 }
 .delta--up {
-  color: var(--el-color-success);
+  color: var(--success);
 }
 .delta--down {
-  color: var(--el-color-danger);
+  color: var(--danger);
+}
+@media (max-width: 1200px) {
+  .analytics-layout {
+    grid-template-columns: 1fr;
+  }
+  .analytics-layout .section-card + .section-card {
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+  }
 }
 </style>

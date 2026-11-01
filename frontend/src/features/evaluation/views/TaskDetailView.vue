@@ -62,6 +62,9 @@ const {
 const detail = computed(() => loaded.value.detail)
 const progress = computed(() => loaded.value.progress)
 const sheets = computed(() => loaded.value.sheets)
+const approvers = computed(() =>
+  [...(detail.value?.approvers ?? [])].sort((left, right) => left.seq - right.seq),
+)
 const users = ref<UserOption[]>([])
 /** 改派是写操作：闸门 + 错误回显一律走 useSubmit（03 §38 的 P1-14——原来没有防重复闸门） */
 const assign = useSubmit()
@@ -157,8 +160,9 @@ onMounted(load)
 <template>
   <div v-loading="loading">
     <PageHeader
-      eyebrow="TASK DETAIL"
-      title="任务详情"
+      eyebrow="EVALUATION TASK / TASK DETAIL"
+      :title="detail?.name || '任务详情'"
+      :description="detail ? '任务详情 · 任务概况与评分单指派' : ''"
     />
 
     <el-alert
@@ -169,99 +173,136 @@ onMounted(load)
       show-icon
     />
     <template v-else-if="detail">
-      <SectionCard :title="detail.name">
-        <el-descriptions :column="3">
-          <el-descriptions-item label="周期">
-            {{ detail.year }} 年 Q{{ detail.quarter }}
-          </el-descriptions-item>
-          <el-descriptions-item label="截止日期">
-            {{ detail.deadline }}
-          </el-descriptions-item>
-          <el-descriptions-item label="状态">
-            {{ EVAL_TASK_STATUS_LABEL[detail.status] }}
-          </el-descriptions-item>
-          <el-descriptions-item label="参评供应商">
-            {{ detail.suppliers.length }} 家
-          </el-descriptions-item>
-          <el-descriptions-item label="评分单">
-            共 {{ detail.sheetCount }} 张，未提交 {{ detail.unsubmittedSheetCount }} 张
-          </el-descriptions-item>
-          <el-descriptions-item label="审批链">
-            {{ detail.approvers.map((item) => item.name).join(' → ') || '未配置' }}
-          </el-descriptions-item>
-        </el-descriptions>
-      </SectionCard>
+      <section class="meta-grid">
+        <div class="meta-grid__item">
+          <span>评估周期</span>
+          <strong>{{ detail.year }} 年 Q{{ detail.quarter }}</strong>
+        </div>
+        <div class="meta-grid__item">
+          <span>截止日期</span>
+          <strong>{{ detail.deadline }}</strong>
+        </div>
+        <div class="meta-grid__item">
+          <span>任务状态</span>
+          <strong>{{ EVAL_TASK_STATUS_LABEL[detail.status] }}</strong>
+        </div>
+        <div class="meta-grid__item">
+          <span>参评供应商</span>
+          <strong>{{ detail.suppliers.length }} 家</strong>
+        </div>
+        <div class="meta-grid__item">
+          <span>评分单</span>
+          <strong>共 {{ detail.sheetCount }} 张 <small>未提交 {{ detail.unsubmittedSheetCount }}</small></strong>
+        </div>
+        <div class="meta-grid__item">
+          <span>审批链</span>
+          <strong>{{ approvers.map((item) => item.name || '未命名').join(' → ') || '未配置' }}</strong>
+        </div>
+      </section>
 
-      <SectionCard title="进度看板">
-        <el-table :data="pagedProgress">
-          <el-table-column
-            prop="supplierName"
-            label="供应商"
-            min-width="160"
+      <div class="task-layout">
+        <SectionCard title="进度看板">
+          <el-table :data="pagedProgress">
+            <el-table-column
+              prop="supplierName"
+              label="供应商"
+              min-width="170"
+            />
+            <el-table-column
+              label="评估单状态"
+              width="120"
+            >
+              <template #default="{ row }">
+                {{ TASK_SUPPLIER_STATUS_LABEL[row.status as keyof typeof TASK_SUPPLIER_STATUS_LABEL] }}
+              </template>
+            </el-table-column>
+            <el-table-column
+              label="当前节点"
+              width="96"
+            >
+              <template #default="{ row }">
+                {{ row.currentNode && row.currentNode > 0 ? row.currentNode : '—' }}
+              </template>
+            </el-table-column>
+            <el-table-column
+              label="试算总分"
+              width="112"
+            >
+              <template #default="{ row }">
+                <span v-if="row.complete">{{ row.trialScore }}（{{ row.trialGrade }}）</span>
+                <el-tag
+                  v-else
+                  type="info"
+                  size="small"
+                >
+                  评分未齐
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column
+              label="未指派"
+              width="82"
+            >
+              <template #default="{ row }">
+                {{ row.unassignedSheets }}
+              </template>
+            </el-table-column>
+            <el-table-column
+              label="未提交"
+              width="82"
+            >
+              <template #default="{ row }">
+                {{ row.unsubmittedSheets }}
+              </template>
+            </el-table-column>
+          </el-table>
+          <ListPagination
+            v-model:page="progressPage"
+            v-model:size="progressSize"
+            :total="progress?.rows.length ?? 0"
+            :page-sizes="[20, 50, 100]"
+            class="list-pager"
           />
-          <el-table-column
-            label="评估单状态"
-            width="120"
-          >
-            <template #default="{ row }">
-              {{ TASK_SUPPLIER_STATUS_LABEL[row.status as keyof typeof TASK_SUPPLIER_STATUS_LABEL] }}
-            </template>
-          </el-table-column>
-          <el-table-column
-            label="当前节点"
-            width="100"
-          >
-            <template #default="{ row }">
-              {{ row.currentNode > 0 ? row.currentNode : '—' }}
-            </template>
-          </el-table-column>
-          <el-table-column
-            label="试算总分"
-            width="120"
-          >
-            <template #default="{ row }">
-              <span v-if="row.complete">{{ row.trialScore }}（{{ row.trialGrade }}）</span>
-              <el-tag
-                v-else
-                type="info"
-                size="small"
-              >
-                评分未齐
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column
-            label="未指派"
-            width="90"
-          >
-            <template #default="{ row }">
-              {{ row.unassignedSheets }}
-            </template>
-          </el-table-column>
-          <el-table-column
-            label="未提交"
-            width="90"
-          >
-            <template #default="{ row }">
-              {{ row.unsubmittedSheets }}
-            </template>
-          </el-table-column>
-        </el-table>
-        <ListPagination
-          v-model:page="progressPage"
-          v-model:size="progressSize"
-          :total="progress?.rows.length ?? 0"
-          :page-sizes="[20, 50, 100]"
-          class="detail__pagination"
-        />
-      </SectionCard>
+        </SectionCard>
 
-      <SectionCard title="评分单与指派">
+        <SectionCard title="审批链">
+          <ol
+            v-if="approvers.length"
+            class="approval-list"
+          >
+            <li
+              v-for="(approver, index) in approvers"
+              :key="`${approver.userId}-${approver.seq}`"
+              class="approval-item"
+            >
+              <span class="approval-index">{{ String(index + 1).padStart(2, '0') }}</span>
+              <div class="approval-main">
+                <span class="approval-name">{{ approver.name || '未命名' }}</span>
+                <span class="approval-meta">审批顺序 {{ approver.seq }}</span>
+              </div>
+            </li>
+          </ol>
+          <p
+            v-else
+            class="approval-empty"
+          >
+            尚未配置审批链。
+          </p>
+          <div class="approval-note">
+            审批按配置顺序串行流转；当前任务状态：{{ EVAL_TASK_STATUS_LABEL[detail.status] }}。
+          </div>
+        </SectionCard>
+      </div>
+
+      <SectionCard
+        title="评分单与指派"
+        class="detail-sheets"
+      >
         <el-table :data="pagedSheets">
           <el-table-column
             prop="supplierName"
             label="供应商"
-            min-width="150"
+            min-width="170"
           />
           <el-table-column
             prop="dimensionName"
@@ -270,7 +311,7 @@ onMounted(load)
           />
           <el-table-column
             label="指派给"
-            min-width="140"
+            min-width="150"
           >
             <template #default="{ row }">
               <span v-if="row.assigneeName">{{ row.assigneeName }}</span>
@@ -293,13 +334,13 @@ onMounted(load)
           </el-table-column>
           <el-table-column
             label="操作"
-            width="120"
+            width="100"
+            align="right"
           >
             <template #default="{ row }">
               <el-button
                 v-if="canReassign(row as SheetBrief)"
                 link
-                type="primary"
                 @click="openAssign(row as SheetBrief)"
               >
                 改派
@@ -312,7 +353,7 @@ onMounted(load)
           v-model:size="sheetsSize"
           :total="sheets.length"
           :page-sizes="[20, 50, 100]"
-          class="detail__pagination"
+          class="list-pager"
         />
       </SectionCard>
     </template>
@@ -322,13 +363,14 @@ onMounted(load)
       title="改派评分单"
       width="420px"
     >
-      <p>
+      <p class="assign-summary">
         {{ assignTarget?.supplierName }} · {{ assignTarget?.dimensionName }}
       </p>
       <el-select
         v-model="assigneeId"
         filterable
         placeholder="选择评估人"
+        style="width: 100%"
       >
         <el-option
           v-for="item in users"
@@ -362,9 +404,100 @@ onMounted(load)
 </template>
 
 <style scoped>
-.detail__pagination {
-  justify-content: flex-end;
-  margin-top: 12px;
+.task-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
 }
-</style>
 
+.task-layout .section-card {
+  margin-top: 0;
+}
+
+.task-layout .section-card + .section-card {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.approval-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  border-top: 1px solid var(--ink);
+}
+
+.approval-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.approval-index {
+  padding-top: 1px;
+  color: var(--muted-2);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 15px;
+}
+
+.approval-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.approval-name {
+  color: var(--ink-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 17px;
+}
+
+.approval-meta {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 14px;
+}
+
+.approval-empty {
+  margin: 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.approval-note {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink-secondary);
+  font-size: 10.5px;
+  line-height: 18px;
+}
+
+.detail-sheets {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule);
+}
+
+.assign-summary {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+@media (max-width: 1300px) {
+  .task-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+</style>

@@ -130,14 +130,24 @@ onMounted(() => void load())
 
 <template>
   <PageHeader
-    eyebrow="APPROVAL"
+    eyebrow="APPROVAL / DECISION"
     title="审批评估单"
-  />
+    :description="report ? `${report.supplierName ?? '供应商'} · ${report.taskName}` : '试算/快照口径与审批记录'"
+  >
+    <template #actions>
+      <el-button
+        link
+        @click="router.push({ name: 'approvals' })"
+      >
+        返回列表
+      </el-button>
+    </template>
+  </PageHeader>
 
   <el-alert
     v-if="error"
-    :title="error"
     type="error"
+    :title="error"
     :closable="false"
     show-icon
   />
@@ -147,67 +157,72 @@ onMounted(() => void load())
     animated
   />
   <template v-else-if="report">
-    <SectionCard title="评估单信息">
-      <template #actions>
-        <el-button
-          link
-          type="primary"
-          @click="router.push({ name: 'approvals' })"
-        >
-          返回列表
-        </el-button>
-      </template>
-      <el-descriptions :column="3">
-        <el-descriptions-item label="供应商">
-          {{ report.supplierCode }} · {{ report.supplierName }}
-        </el-descriptions-item>
-        <el-descriptions-item label="评估任务">
-          {{ report.taskName }}
-        </el-descriptions-item>
-        <el-descriptions-item label="周期">
-          {{ report.year }} 年 Q{{ report.quarter }}
-        </el-descriptions-item>
-        <el-descriptions-item label="当前状态">
-          <el-tag
-            :type="report.status === 'EFFECTIVE' ? 'success' : 'warning'"
+    <section class="meta-grid">
+      <div class="meta-grid__item">
+        <span>供应商</span>
+        <strong>{{ report.supplierCode }} · {{ report.supplierName }}</strong>
+      </div>
+      <div class="meta-grid__item">
+        <span>评估任务</span>
+        <strong>{{ report.taskName }}</strong>
+      </div>
+      <div class="meta-grid__item">
+        <span>周期</span>
+        <strong>{{ report.year }} 年 Q{{ report.quarter }}</strong>
+      </div>
+      <div class="meta-grid__item">
+        <span>当前状态</span>
+        <strong>
+          <span
+            class="status-mark"
+            :class="report.status === 'EFFECTIVE' ? 'is-success' : 'is-warning'"
           >
             {{
               TASK_SUPPLIER_STATUS_LABEL[
                 report.status as keyof typeof TASK_SUPPLIER_STATUS_LABEL
               ]
             }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="轮次 / 节点">
-          {{ roundNodeLabel }}
-        </el-descriptions-item>
-        <el-descriptions-item label="总分 / 等级">
-          {{ formatScore(report.totalScore) }} / {{ formatGrade(report.totalGrade) }}
-        </el-descriptions-item>
-      </el-descriptions>
+          </span>
+        </strong>
+      </div>
+      <div class="meta-grid__item">
+        <span>轮次 / 节点</span>
+        <strong>{{ roundNodeLabel }}</strong>
+      </div>
+      <div class="meta-grid__item">
+        <span>总分 / 等级</span>
+        <strong class="approval-score">
+          {{ formatScore(report.totalScore) }} <small>{{ formatGrade(report.totalGrade) }}</small>
+        </strong>
+      </div>
+    </section>
 
+    <div class="approval-notices">
       <el-alert
         v-if="isTrial"
-        class="approval__hint"
         title="当前为试算口径：评分单还在审批中，最终分数以末级通过后的定稿为准（01 R1）。"
         type="warning"
         :closable="false"
         show-icon
       />
-
       <el-alert
         v-if="approve.errorMessage.value"
-        class="approval__hint"
         :title="approve.errorMessage.value"
         type="error"
         :closable="false"
         show-icon
       />
+    </div>
 
-      <div
-        v-if="canAct"
-        class="approval__actions"
-      >
+    <section
+      v-if="canAct"
+      class="approval-decision"
+    >
+      <div class="approval-decision__copy">
+        <span class="approval-decision__label">决策</span>
+        <p>通过/驳回都以本页读到的版本 {{ report.version }} 提交；末级通过立即定稿并生效。</p>
+      </div>
+      <div class="approval-decision__actions">
         <el-button
           type="primary"
           :loading="approve.submitting.value"
@@ -224,29 +239,30 @@ onMounted(() => void load())
         >
           驳回
         </el-button>
-        <span class="approval__hint">通过/驳回都以本页读到的版本 {{ report.version }} 提交。</span>
       </div>
-      <el-alert
-        v-else
-        class="approval__hint"
-        :title="notActableHint"
-        type="info"
-        :closable="false"
-        show-icon
-      />
-    </SectionCard>
+    </section>
+    <el-alert
+      v-else
+      class="approval-notice-single"
+      :title="notActableHint"
+      type="info"
+      :closable="false"
+      show-icon
+    />
 
-    <SectionCard title="维度与指标明细">
-      <ScoreBreakdown :dimensions="report.dimensions" />
-    </SectionCard>
+    <div class="approval-layout">
+      <SectionCard title="维度与指标明细">
+        <ScoreBreakdown :dimensions="report.dimensions" />
+      </SectionCard>
 
-    <SectionCard title="审批记录">
-      <ApprovalTimeline
-        :entries="report.timeline"
-        :current-round="report.round"
-        :current-node="report.currentNode"
-      />
-    </SectionCard>
+      <SectionCard title="审批记录">
+        <ApprovalTimeline
+          :entries="report.timeline"
+          :current-round="report.round"
+          :current-node="report.currentNode"
+        />
+      </SectionCard>
+    </div>
   </template>
 
   <el-dialog
@@ -293,18 +309,77 @@ onMounted(() => void load())
 </template>
 
 <style scoped>
-.approval__hint {
-  margin-top: 12px;
+.approval-score {
+  font-family: var(--font-serif);
+  font-size: 19px;
+  line-height: 24px;
+  letter-spacing: -0.3px;
 }
-.approval__actions {
+.approval-score small {
+  font-family: var(--font-sans);
+  font-size: 10px;
+}
+.approval-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+.approval-notice-single {
+  margin-top: 14px;
+}
+.approval-decision {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 16px;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 18px;
+  padding: 14px 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
 }
-.approval__actions .approval__hint {
-  margin-top: 0;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
+.approval-decision__label {
+  color: var(--muted-2);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.approval-decision__copy p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 18px;
+}
+.approval-decision__actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+.approval-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 36px;
+  align-items: start;
+}
+.approval-layout .section-card {
+  margin-top: 24px;
+}
+.approval-layout .section-card + .section-card {
+  padding-top: 0;
+  border-top: 0;
+}
+@media (max-width: 1200px) {
+  .approval-layout {
+    grid-template-columns: 1fr;
+  }
+  .approval-layout .section-card + .section-card {
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+  }
+  .approval-decision {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
 }
 </style>

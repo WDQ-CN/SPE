@@ -295,16 +295,22 @@ async function onPublish(row: TaskSummary): Promise<void> {
   publishingId.value = null
 }
 
+function taskStatusClass(status: EvalTaskStatus): string {
+  if (status === 'IN_PROGRESS') {
+    return 'is-warning'
+  }
+  return status === 'COMPLETED' ? 'is-success' : 'is-off'
+}
+
 onMounted(() => void list.load())
 </script>
 
 <template>
   <PageHeader
-    eyebrow="EVALUATION TASKS"
+    eyebrow="EVALUATION / TASKS"
     title="评估任务"
-  />
-
-  <SectionCard title="任务列表">
+    :description="`共 ${list.total.value} 个任务 · 发布后按维度自动生成评分单`"
+  >
     <template #actions>
       <el-button
         v-if="canManage"
@@ -314,21 +320,24 @@ onMounted(() => void list.load())
         新建任务
       </el-button>
     </template>
+  </PageHeader>
 
+  <SectionCard title="任务列表">
     <el-alert
       v-if="publish.errorMessage.value"
+      class="page-alert"
       :title="publish.errorMessage.value"
       type="error"
       :closable="false"
       show-icon
     />
 
-    <div class="filters">
+    <div class="list-toolbar">
       <el-input
         v-model="keyword"
         placeholder="按名称搜索"
         clearable
-        class="filters__keyword"
+        class="list-toolbar__search"
         @keyup.enter="list.load(1)"
         @clear="list.load(1)"
       />
@@ -336,7 +345,7 @@ onMounted(() => void list.load())
         v-model="status"
         placeholder="全部状态"
         clearable
-        class="filters__status"
+        class="list-toolbar__select"
         @change="list.load(1)"
       >
         <el-option
@@ -352,10 +361,12 @@ onMounted(() => void list.load())
       >
         查询
       </el-button>
+      <span class="list-toolbar__note">草稿可编辑与发布；发布后评分单指派不可撤销。</span>
     </div>
 
     <el-alert
       v-if="list.error.value"
+      class="page-alert"
       :title="list.error.value"
       type="error"
       :closable="false"
@@ -365,43 +376,53 @@ onMounted(() => void list.load())
       v-else
       v-loading="list.loading.value"
       :data="list.rows.value"
+      class="table-list"
     >
       <el-table-column
-        prop="name"
         label="任务名称"
-        min-width="200"
-      />
+        min-width="240"
+      >
+        <template #default="{ row }">
+          <span class="task-name">{{ row.name }}</span>
+        </template>
+      </el-table-column>
       <el-table-column
         label="周期"
         width="120"
       >
         <template #default="{ row }">
-          {{ row.year }} 年 Q{{ row.quarter }}
+          <span class="mono">{{ row.year }} Q{{ row.quarter }}</span>
         </template>
       </el-table-column>
       <el-table-column
-        prop="deadline"
         label="截止日期"
         width="130"
-      />
+      >
+        <template #default="{ row }">
+          <span class="mono">{{ row.deadline }}</span>
+        </template>
+      </el-table-column>
       <el-table-column
         label="状态"
         width="110"
       >
         <template #default="{ row }">
-          <el-tag :type="row.status === 'DRAFT' ? 'info' : 'success'">
+          <span
+            class="status-mark"
+            :class="taskStatusClass(row.status)"
+          >
             {{ EVAL_TASK_STATUS_LABEL[row.status as keyof typeof EVAL_TASK_STATUS_LABEL] }}
-          </el-tag>
+          </span>
         </template>
       </el-table-column>
       <el-table-column
         label="操作"
         width="220"
+        align="right"
       >
         <template #default="{ row }">
           <el-button
             link
-            type="primary"
             @click="router.push({ name: 'task-detail', params: { id: row.id } })"
           >
             详情
@@ -409,7 +430,6 @@ onMounted(() => void list.load())
           <el-button
             v-if="canManage && row.status === 'DRAFT'"
             link
-            type="primary"
             @click="openEdit(row as TaskSummary)"
           >
             编辑
@@ -417,7 +437,6 @@ onMounted(() => void list.load())
           <el-button
             v-if="canManage && row.status === 'DRAFT'"
             link
-            type="primary"
             :loading="publish.submitting.value && publishingId === row.id"
             :disabled="publish.submitting.value"
             @click="onPublish(row as TaskSummary)"
@@ -433,6 +452,7 @@ onMounted(() => void list.load())
       v-model:size="list.size.value"
       :total="list.total.value"
       :page-sizes="[10, 20, 50]"
+      class="list-pager"
       @change="list.load"
       @size-change="list.load(1)"
     />
@@ -577,28 +597,20 @@ onMounted(() => void list.load())
 </template>
 
 <style scoped>
-.filters {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.filters__keyword {
-  width: 240px;
-}
-
-.filters__status {
-  width: 160px;
+.task-name {
+  color: var(--ink);
+  font-weight: 500;
 }
 
 .hint {
   margin-left: 8px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--muted);
+  font-size: 10.5px;
 }
 
 .quarter {
   width: 100px;
   margin-left: 8px;
 }
+
 </style>

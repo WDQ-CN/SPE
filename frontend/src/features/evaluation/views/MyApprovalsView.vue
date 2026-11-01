@@ -16,8 +16,8 @@ const router = useRouter()
 
 const list = usePagedList<ApprovalTodoView>((page, size) => listMyApprovals(page, size))
 
-function tagType(status: ApprovalTodoView['status']): 'warning' | 'success' {
-  return status === 'APPROVING' ? 'warning' : 'success'
+function approvalStatusClass(status: ApprovalTodoView['status']): string {
+  return status === 'EFFECTIVE' ? 'is-success' : 'is-warning'
 }
 
 onMounted(() => void list.load())
@@ -25,25 +25,25 @@ onMounted(() => void list.load())
 
 <template>
   <PageHeader
-    eyebrow="APPROVALS"
+    eyebrow="APPROVALS / TODO"
     title="我的审批"
-  />
-
-  <SectionCard title="待我审批">
+    :description="`当前节点为我 · 共 ${list.total.value} 单待审批`"
+  >
     <template #actions>
       <el-button
         link
-        type="primary"
         @click="list.load()"
       >
         刷新
       </el-button>
     </template>
+  </PageHeader>
 
+  <SectionCard title="待我审批">
     <el-alert
       v-if="list.error.value"
-      :title="list.error.value"
       type="error"
+      :title="list.error.value"
       :closable="false"
       show-icon
     />
@@ -55,33 +55,40 @@ onMounted(() => void list.load())
       v-else
       v-loading="list.loading.value"
       :data="list.rows.value"
+      class="table-list"
     >
       <el-table-column
-        prop="taskName"
         label="评估任务"
-        min-width="180"
-      />
-      <el-table-column
-        label="周期"
-        width="110"
+        min-width="190"
       >
         <template #default="{ row }">
-          {{ row.year }} 年 Q{{ row.quarter }}
+          <span class="approval-task">{{ row.taskName }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column
+        label="周期"
+        width="100"
+      >
+        <template #default="{ row }">
+          <span class="mono">{{ row.year }} Q{{ row.quarter }}</span>
         </template>
       </el-table-column>
       <el-table-column
         prop="supplierName"
         label="供应商"
-        min-width="150"
+        min-width="160"
       />
       <el-table-column
-        prop="deadline"
         label="截止日期"
         width="130"
-      />
+      >
+        <template #default="{ row }">
+          <span class="mono">{{ row.deadline }}</span>
+        </template>
+      </el-table-column>
       <el-table-column
         label="轮次 / 节点"
-        width="120"
+        width="130"
       >
         <template #default="{ row }">
           第 {{ row.round }} 轮 · 第 {{ row.currentNode }} 级
@@ -92,19 +99,22 @@ onMounted(() => void list.load())
         width="100"
       >
         <template #default="{ row }">
-          <el-tag :type="tagType(row.status)">
+          <span
+            class="status-mark"
+            :class="approvalStatusClass(row.status)"
+          >
             {{ TASK_SUPPLIER_STATUS_LABEL[row.status as keyof typeof TASK_SUPPLIER_STATUS_LABEL] }}
-          </el-tag>
+          </span>
         </template>
       </el-table-column>
       <el-table-column
         label="操作"
-        width="110"
+        width="100"
+        align="right"
       >
         <template #default="{ row }">
           <el-button
             link
-            type="primary"
             @click="router.push({ name: 'approval-detail', params: { id: row.taskSupplierId } })"
           >
             去审批
@@ -118,8 +128,16 @@ onMounted(() => void list.load())
       v-model:size="list.size.value"
       :total="list.total.value"
       :page-sizes="[10, 20, 50]"
+      class="list-pager"
       @change="list.load"
       @size-change="list.load(1)"
     />
   </SectionCard>
 </template>
+
+<style scoped>
+.approval-task {
+  color: var(--ink);
+  font-weight: 500;
+}
+</style>

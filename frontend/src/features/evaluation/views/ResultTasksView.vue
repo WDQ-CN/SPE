@@ -33,17 +33,18 @@ onMounted(() => void list.load())
 
 <template>
   <PageHeader
-    eyebrow="RESULTS"
+    eyebrow="RESULTS / TASKS"
     title="结果报表"
+    description="只列出已有生效结果的任务，进入后查看供应商总分与维度明细"
   />
 
   <SectionCard title="选择评估任务">
-    <div class="filters">
+    <div class="list-toolbar">
       <el-input
         v-model="keyword"
         placeholder="按任务名称搜索"
         clearable
-        class="filters__keyword"
+        class="list-toolbar__search"
         @keyup.enter="list.load(1)"
         @clear="list.load(1)"
       />
@@ -51,7 +52,7 @@ onMounted(() => void list.load())
         v-model="status"
         placeholder="全部状态"
         clearable
-        class="filters__status"
+        class="list-toolbar__select"
         @change="list.load(1)"
       >
         <el-option
@@ -67,10 +68,12 @@ onMounted(() => void list.load())
       >
         查询
       </el-button>
+      <span class="list-toolbar__note">仅 EFFECTIVE 的评估单会出现在结果页。</span>
     </div>
 
     <el-alert
       v-if="list.error.value"
+      class="page-alert"
       :title="list.error.value"
       type="error"
       :closable="false"
@@ -84,31 +87,40 @@ onMounted(() => void list.load())
       v-else
       v-loading="list.loading.value"
       :data="list.rows.value"
+      class="table-list"
     >
       <el-table-column
-        prop="taskName"
         label="任务名称"
-        min-width="200"
-      />
-      <el-table-column
-        label="周期"
-        width="120"
+        min-width="260"
       >
         <template #default="{ row }">
-          {{ row.year }} 年 Q{{ row.quarter }}
+          <span class="result-task">{{ row.taskName }}</span>
         </template>
       </el-table-column>
       <el-table-column
-        prop="deadline"
-        label="截止日期"
-        width="130"
-      />
-      <el-table-column
-        label="已出结果"
+        label="周期"
         width="100"
       >
         <template #default="{ row }">
-          {{ row.resultCount }} 个供应商
+          <span class="mono">{{ row.year }} Q{{ row.quarter }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column
+        label="截止日期"
+        width="130"
+      >
+        <template #default="{ row }">
+          <span class="mono">{{ row.deadline }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column
+        label="已出结果"
+        width="110"
+        align="right"
+      >
+        <template #default="{ row }">
+          <span class="result-count">{{ row.resultCount }}</span>
+          <span class="result-count__unit">个供应商</span>
         </template>
       </el-table-column>
       <el-table-column
@@ -116,19 +128,22 @@ onMounted(() => void list.load())
         width="110"
       >
         <template #default="{ row }">
-          <el-tag :type="row.status === 'COMPLETED' ? 'success' : 'info'">
+          <span
+            class="status-mark"
+            :class="row.status === 'COMPLETED' ? 'is-success' : 'is-off'"
+          >
             {{ EVAL_TASK_STATUS_LABEL[row.status as keyof typeof EVAL_TASK_STATUS_LABEL] }}
-          </el-tag>
+          </span>
         </template>
       </el-table-column>
       <el-table-column
         label="操作"
-        width="120"
+        width="110"
+        align="right"
       >
         <template #default="{ row }">
           <el-button
             link
-            type="primary"
             @click="router.push({ name: 'task-results', params: { id: row.taskId } })"
           >
             查看结果
@@ -142,6 +157,7 @@ onMounted(() => void list.load())
       v-model:size="list.size.value"
       :total="list.total.value"
       :page-sizes="[10, 20, 50]"
+      class="list-pager"
       @change="list.load"
       @size-change="list.load(1)"
     />
@@ -149,15 +165,18 @@ onMounted(() => void list.load())
 </template>
 
 <style scoped>
-.filters {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 14px;
+.result-task {
+  color: var(--ink);
+  font-weight: 500;
 }
-.filters__keyword {
-  max-width: 260px;
+.result-count {
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 17px;
 }
-.filters__status {
-  width: 160px;
+.result-count__unit {
+  margin-left: 4px;
+  color: var(--muted-2);
+  font-size: 9.5px;
 }
 </style>

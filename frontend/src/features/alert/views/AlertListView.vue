@@ -64,12 +64,13 @@ onMounted(() => void list.load())
 
 <template>
   <PageHeader
-    eyebrow="ALERTS"
+    eyebrow="ALERTS / MONITORING"
     title="预警"
+    :description="`共 ${list.total.value} 条预警 · 生效或重算时自动生成`"
   />
 
   <SectionCard title="预警列表">
-    <div class="alerts__filters">
+    <div class="list-toolbar">
       <el-radio-group
         v-model="status"
         @change="onStatusChange"
@@ -84,11 +85,12 @@ onMounted(() => void list.load())
           已处理
         </el-radio-button>
       </el-radio-group>
-      <span class="alerts__hint">预警在评估单生效/重算时自动生成；已取代的旧预警不在此列出。</span>
+      <span class="list-toolbar__note">已取代的旧预警不在此列出。</span>
     </div>
 
     <el-alert
       v-if="list.error.value"
+      class="page-alert"
       type="error"
       :title="list.error.value"
       :closable="false"
@@ -102,13 +104,15 @@ onMounted(() => void list.load())
       v-else
       v-loading="list.loading.value"
       :data="list.rows.value"
+      class="table-list"
     >
       <el-table-column
         label="供应商"
-        min-width="170"
+        min-width="190"
       >
         <template #default="{ row }">
-          {{ row.supplierCode }} · {{ row.supplierName }}
+          <span class="alert-supplier">{{ row.supplierName }}</span>
+          <span class="mono alert-code">{{ row.supplierCode }}</span>
         </template>
       </el-table-column>
       <el-table-column
@@ -116,12 +120,12 @@ onMounted(() => void list.load())
         width="100"
       >
         <template #default="{ row }">
-          {{ row.year }} Q{{ row.quarter }}
+          <span class="mono">{{ row.year }} Q{{ row.quarter }}</span>
         </template>
       </el-table-column>
       <el-table-column
         label="类型"
-        width="150"
+        width="160"
       >
         <template #default="{ row }">
           {{ ALERT_TYPE_LABEL[row.type] ?? row.type }}
@@ -137,7 +141,7 @@ onMounted(() => void list.load())
         width="170"
       >
         <template #default="{ row }">
-          {{ formatUtcLocal(row.createdAt) }}
+          <span class="mono">{{ formatUtcLocal(row.createdAt) }}</span>
         </template>
       </el-table-column>
       <el-table-column
@@ -145,24 +149,29 @@ onMounted(() => void list.load())
         width="90"
       >
         <template #default="{ row }">
-          <el-tag :type="row.status === 'UNREAD' ? 'warning' : 'success'">
+          <span
+            class="status-mark"
+            :class="row.status === 'UNREAD' ? 'is-warning' : 'is-success'"
+          >
             {{ ALERT_STATUS_LABEL[row.status] ?? row.status }}
-          </el-tag>
+          </span>
         </template>
       </el-table-column>
       <el-table-column
         label="处理"
-        min-width="170"
+        min-width="180"
       >
         <template #default="{ row }">
-          <span v-if="row.status === 'HANDLED'">
+          <span
+            v-if="row.status === 'HANDLED'"
+            class="alert-handled"
+          >
             {{ row.handledByName ?? '—' }}
             <span v-if="row.handledComment">· {{ row.handledComment }}</span>
           </span>
           <el-button
             v-else-if="canHandle"
             link
-            type="primary"
             @click="openHandle(row as AlertView)"
           >
             处理
@@ -177,6 +186,7 @@ onMounted(() => void list.load())
       v-model:size="list.size.value"
       :total="list.total.value"
       :page-sizes="[10, 20, 50]"
+      class="list-pager"
       @change="list.load"
       @size-change="list.load(1)"
     />
@@ -226,19 +236,25 @@ onMounted(() => void list.load())
 </template>
 
 <style scoped>
-.alerts__filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
+.alert-supplier {
+  color: var(--ink);
+  font-weight: 500;
 }
-.alerts__hint {
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
+.alert-code {
+  display: block;
+  margin-top: 1px;
+  font-size: 9px;
+  line-height: 13px;
+}
+.alert-handled {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
 }
 .alerts__target {
   margin: 0 0 12px;
-  font-weight: 600;
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 500;
 }
 </style>

@@ -125,11 +125,10 @@ async function toggleStatus(row: SupplierSummary): Promise<void> {
 
 <template>
   <PageHeader
-    eyebrow="SUPPLIER MASTER DATA"
+    eyebrow="MASTER DATA / SUPPLIERS"
     title="供应商档案"
-  />
-
-  <SectionCard title="供应商列表">
+    :description="`共 ${total} 家 · 编码为唯一业务键`"
+  >
     <template #actions>
       <el-button
         type="primary"
@@ -138,76 +137,97 @@ async function toggleStatus(row: SupplierSummary): Promise<void> {
         新增供应商
       </el-button>
     </template>
+  </PageHeader>
 
-    <el-form
-      class="page__search"
-      :inline="true"
-      @submit.prevent="search"
+  <form
+    class="list-toolbar"
+    @submit.prevent="search"
+  >
+    <el-input
+      v-model="query.keyword"
+      class="list-toolbar__search"
+      placeholder="编码或名称包含"
+      clearable
+      aria-label="编码或名称"
+      @keyup.enter="search"
     >
-      <el-form-item label="关键字">
-        <el-input
-          v-model="query.keyword"
-          placeholder="编码或名称包含"
-          clearable
-          @keyup.enter="search"
-        />
-      </el-form-item>
-      <el-form-item label="分类">
-        <el-input
-          v-model="query.category"
-          placeholder="分类包含"
-          clearable
-          @keyup.enter="search"
-        />
-      </el-form-item>
-      <el-form-item>
-        <el-button
-          type="primary"
-          @click="search"
+      <template #prefix>
+        <svg
+          class="list-toolbar__icon"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
         >
-          查询
-        </el-button>
-        <el-button @click="resetSearch">
-          重置
-        </el-button>
-      </el-form-item>
-    </el-form>
-
-    <el-alert
-      v-if="error"
-      class="page__error"
-      type="error"
-      :title="error"
-      :closable="false"
-      show-icon
+          <circle
+            cx="11"
+            cy="11"
+            r="7"
+          />
+          <path d="m20 20-4-4" />
+        </svg>
+      </template>
+    </el-input>
+    <el-input
+      v-model="query.category"
+      class="list-toolbar__select"
+      placeholder="分类包含"
+      clearable
+      aria-label="分类"
+      @keyup.enter="search"
+    />
+    <el-button
+      type="primary"
+      @click="search"
     >
-      <el-button
-        link
-        type="primary"
-        @click="load()"
-      >
-        重试
-      </el-button>
-    </el-alert>
+      查询
+    </el-button>
+    <el-button @click="resetSearch">
+      重置
+    </el-button>
+  </form>
 
+  <el-alert
+    v-if="error"
+    class="page-alert"
+    type="error"
+    :title="error"
+    :closable="false"
+    show-icon
+  >
+    <el-button
+      link
+      @click="load()"
+    >
+      重试
+    </el-button>
+  </el-alert>
+
+  <section>
     <el-table
       v-loading="loading"
       :data="rows"
-      border
+      :border="false"
+      class="table-list"
     >
       <el-table-column
         prop="code"
         label="编码"
-        min-width="150"
-      />
+        min-width="140"
+      >
+        <template #default="{ row }">
+          <span class="supplier-code">{{ (row as SupplierSummary).code }}</span>
+        </template>
+      </el-table-column>
       <el-table-column
-        prop="name"
-        label="名称"
-        min-width="180"
-      />
+        label="供应商"
+        min-width="230"
+      >
+        <template #default="{ row }">
+          <span class="supplier-name">{{ (row as SupplierSummary).name }}</span>
+        </template>
+      </el-table-column>
       <el-table-column
         label="分类"
-        min-width="120"
+        width="120"
       >
         <template #default="{ row }">
           {{ (row as SupplierSummary).category || '—' }}
@@ -215,33 +235,31 @@ async function toggleStatus(row: SupplierSummary): Promise<void> {
       </el-table-column>
       <el-table-column
         label="状态"
-        width="90"
+        width="110"
       >
         <template #default="{ row }">
-          <el-tag
-            :type="(row as SupplierSummary).status === 'ENABLED' ? 'success' : 'info'"
-            size="small"
+          <span
+            class="status-mark"
+            :class="(row as SupplierSummary).status === 'ENABLED' ? 'is-success' : 'is-off'"
           >
             {{ SUPPLIER_STATUS_LABEL[(row as SupplierSummary).status] }}
-          </el-tag>
+          </span>
         </template>
       </el-table-column>
       <el-table-column
         label="操作"
         width="150"
-        fixed="right"
+        align="right"
       >
         <template #default="{ row }">
           <el-button
             link
-            type="primary"
             @click="openDialog(row as SupplierSummary)"
           >
             编辑
           </el-button>
           <el-button
             link
-            type="primary"
             @click="toggleStatus(row as SupplierSummary)"
           >
             {{ (row as SupplierSummary).status === 'ENABLED' ? '停用' : '启用' }}
@@ -255,83 +273,82 @@ async function toggleStatus(row: SupplierSummary): Promise<void> {
       v-model:size="size"
       :total="total"
       :page-sizes="[10, 20, 50, 100]"
-      class="page__pager"
+      class="list-pager"
       @change="(target: number) => void load(target)"
       @size-change="() => void load(1)"
     />
+  </section>
 
-    <el-dialog
-      v-model="dialogVisible"
-      :title="isEdit ? '编辑供应商' : '新增供应商'"
-      width="480px"
+  <el-dialog
+    v-model="dialogVisible"
+    :title="isEdit ? '编辑供应商' : '新增供应商'"
+    width="480px"
+  >
+    <el-alert
+      v-if="saveError"
+      class="page-alert"
+      type="error"
+      :title="saveError"
+      :closable="false"
+      show-icon
+    />
+    <el-form
+      ref="formRef"
+      :model="form"
+      :rules="rules"
+      label-width="64px"
+      @submit.prevent="submit"
     >
-      <el-alert
-        v-if="saveError"
-        class="page__error"
-        type="error"
-        :title="saveError"
-        :closable="false"
-        show-icon
-      />
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        label-width="72px"
-        @submit.prevent="submit"
+      <el-form-item
+        label="编码"
+        prop="code"
       >
-        <el-form-item
-          label="编码"
-          prop="code"
-        >
-          <el-input
-            v-model="form.code"
-            placeholder="唯一，可修改"
-          />
-        </el-form-item>
-        <el-form-item
-          label="名称"
-          prop="name"
-        >
-          <el-input v-model="form.name" />
-        </el-form-item>
-        <el-form-item
-          label="分类"
-          prop="category"
-        >
-          <el-input
-            v-model="form.category"
-            placeholder="可留空"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">
-          取消
-        </el-button>
-        <el-button
-          type="primary"
-          :loading="saving"
-          @click="submit"
-        >
-          保存
-        </el-button>
-      </template>
-    </el-dialog>
-  </SectionCard>
+        <el-input
+          v-model="form.code"
+          placeholder="唯一，可修改"
+        />
+      </el-form-item>
+      <el-form-item
+        label="名称"
+        prop="name"
+      >
+        <el-input v-model="form.name" />
+      </el-form-item>
+      <el-form-item
+        label="分类"
+        prop="category"
+      >
+        <el-input
+          v-model="form.category"
+          placeholder="可留空"
+        />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="dialogVisible = false">
+        取消
+      </el-button>
+      <el-button
+        type="primary"
+        :loading="saving"
+        @click="submit"
+      >
+        保存
+      </el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <style scoped>
-.page__search {
-  margin-bottom: 4px;
+.supplier-code {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
 }
 
-.page__error {
-  margin-bottom: 12px;
+.supplier-name {
+  color: var(--ink);
+  font-weight: 500;
 }
 
-.page__pager {
-  margin-top: 16px;
-  justify-content: flex-end;
-}
 </style>

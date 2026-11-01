@@ -19,20 +19,32 @@ export interface RadarPoint {
 }
 
 export interface RadarOption {
+  color: string[]
+  textStyle: { fontFamily: string; color: string }
   tooltip: {
     trigger: 'item'
     renderMode: 'richText'
+    backgroundColor: string
+    borderColor: string
+    textStyle: { color: string; fontFamily: string; fontSize: number }
     formatter: (params: { name?: string; value?: number[] }) => string
   }
   radar: {
     indicator: { name: string; max: number }[]
     radius: string
     splitNumber: number
+    axisName: { color: string; fontSize: number }
+    axisLine: { lineStyle: { color: string } }
+    splitLine: { lineStyle: { color: string } }
+    splitArea: { areaStyle: { color: [string, string] } }
   }
   series: {
     type: 'radar'
     data: { value: number[]; name: string }[]
-    areaStyle: { opacity: number }
+    symbolSize: number
+    itemStyle: { color: string }
+    lineStyle: { color: string; width: number }
+    areaStyle: { opacity: number; color: string }
   }[]
 }
 
@@ -44,11 +56,18 @@ export function radarPoints(dimensions: RadarDimension[]): RadarPoint[] {
 
 export function buildRadarOption(dimensions: RadarDimension[]): RadarOption {
   const points = radarPoints(dimensions)
+  const accent = '#816D70'
+  const fontFamily = "'Albert Sans', 'Noto Sans SC', 'Microsoft YaHei', sans-serif"
   return {
+    color: [accent],
+    textStyle: { fontFamily, color: '#3F3B36' },
     tooltip: {
       trigger: 'item',
       // 见文件头的注入面说明：不能改成 'html'
       renderMode: 'richText',
+      backgroundColor: '#FFFDF9',
+      borderColor: '#DED8CC',
+      textStyle: { color: '#1C1C1C', fontFamily, fontSize: 11 },
       formatter: (params) => {
         const values = params.value ?? []
         return points
@@ -60,12 +79,19 @@ export function buildRadarOption(dimensions: RadarDimension[]): RadarOption {
       indicator: points.map((point) => ({ name: point.name, max: 100 })),
       radius: '65%',
       splitNumber: 4,
+      axisName: { color: '#3F3B36', fontSize: 11 },
+      axisLine: { lineStyle: { color: '#DED8CC' } },
+      splitLine: { lineStyle: { color: '#DED8CC' } },
+      splitArea: { areaStyle: { color: ['#FFFDF9', '#FAF7F0'] } },
     },
     series: [
       {
         type: 'radar',
         data: [{ value: points.map((point) => point.score), name: '维度得分' }],
-        areaStyle: { opacity: 0.2 },
+        symbolSize: 4,
+        itemStyle: { color: accent },
+        lineStyle: { color: accent, width: 1.6 },
+        areaStyle: { opacity: 0.18, color: accent },
       },
     ],
   }

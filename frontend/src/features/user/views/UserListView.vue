@@ -178,11 +178,10 @@ async function submitReset(): Promise<void> {
 
 <template>
   <PageHeader
-    eyebrow="USER &amp; ACCESS CONTROL"
+    eyebrow="ACCESS CONTROL / USERS"
     title="用户管理"
-  />
-
-  <SectionCard title="用户列表">
+    :description="`共 ${total} 个账号 · 角色决定可用入口与数据范围`"
+  >
     <template #actions>
       <el-button
         type="primary"
@@ -191,10 +190,12 @@ async function submitReset(): Promise<void> {
         新增用户
       </el-button>
     </template>
+  </PageHeader>
 
+  <SectionCard title="用户列表">
     <el-alert
       v-if="error"
-      class="page__error"
+      class="page-alert"
       type="error"
       :title="error"
       :closable="false"
@@ -202,7 +203,6 @@ async function submitReset(): Promise<void> {
     >
       <el-button
         link
-        type="primary"
         @click="load()"
       >
         重试
@@ -212,18 +212,24 @@ async function submitReset(): Promise<void> {
     <el-table
       v-loading="loading"
       :data="rows"
-      border
+      class="table-list"
     >
       <el-table-column
-        prop="username"
         label="账号"
-        min-width="140"
-      />
+        min-width="160"
+      >
+        <template #default="{ row }">
+          <span class="user-username">{{ (row as UserSummary).username }}</span>
+        </template>
+      </el-table-column>
       <el-table-column
-        prop="name"
         label="姓名"
-        min-width="120"
-      />
+        min-width="130"
+      >
+        <template #default="{ row }">
+          <span class="user-name">{{ (row as UserSummary).name }}</span>
+        </template>
+      </el-table-column>
       <el-table-column
         label="角色"
         min-width="120"
@@ -245,37 +251,35 @@ async function submitReset(): Promise<void> {
         width="90"
       >
         <template #default="{ row }">
-          <el-tag
-            :type="(row as UserSummary).status === 'ENABLED' ? 'success' : 'info'"
-            size="small"
+          <span
+            class="status-mark"
+            :class="(row as UserSummary).status === 'ENABLED' ? 'is-success' : 'is-off'"
           >
             {{ USER_STATUS_LABEL[(row as UserSummary).status] }}
-          </el-tag>
+          </span>
         </template>
       </el-table-column>
       <el-table-column
         label="操作"
         width="240"
+        align="right"
         fixed="right"
       >
         <template #default="{ row }">
           <el-button
             link
-            type="primary"
             @click="openDialog(row as UserSummary)"
           >
             编辑
           </el-button>
           <el-button
             link
-            type="primary"
             @click="toggleStatus(row as UserSummary)"
           >
             {{ (row as UserSummary).status === 'ENABLED' ? '停用' : '启用' }}
           </el-button>
           <el-button
             link
-            type="primary"
             @click="openReset(row as UserSummary)"
           >
             重置口令
@@ -289,7 +293,7 @@ async function submitReset(): Promise<void> {
       v-model:size="size"
       :total="total"
       :page-sizes="[10, 20, 50, 100]"
-      class="page__pager"
+      class="list-pager"
       @change="(target: number) => void load(target)"
       @size-change="() => void load(1)"
     />
@@ -448,14 +452,22 @@ async function submitReset(): Promise<void> {
   margin-bottom: 12px;
 }
 
-.page__pager {
-  margin-top: 16px;
-  justify-content: flex-end;
-}
-
 .page__hint {
   margin: 0 0 12px;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
 }
+
+.user-username {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.user-name {
+  color: var(--ink);
+  font-weight: 500;
+}
+
 </style>

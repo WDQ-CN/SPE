@@ -30,25 +30,25 @@ onMounted(load)
 
 <template>
   <PageHeader
-    eyebrow="MY TODO"
+    eyebrow="MY TODO / SHEETS"
     title="我的待办"
-  />
-
-  <SectionCard title="待办清单">
+    :description="`指派给我的评分单 · 共 ${rows.length} 张`"
+  >
     <template #actions>
       <el-button
         link
-        type="primary"
         @click="load"
       >
         刷新
       </el-button>
     </template>
+  </PageHeader>
 
+  <SectionCard title="待办清单">
     <el-alert
       v-if="error"
-      :title="error"
       type="error"
+      :title="error"
       :closable="false"
       show-icon
     />
@@ -60,52 +60,66 @@ onMounted(load)
       v-else
       v-loading="loading"
       :data="rows"
+      class="table-list"
     >
       <el-table-column
         prop="taskName"
         label="评估任务"
-        min-width="180"
-      />
+        min-width="200"
+      >
+        <template #default="{ row }">
+          <span class="sheet-task">{{ row.taskName }}</span>
+        </template>
+      </el-table-column>
       <el-table-column
-        prop="supplierName"
         label="供应商"
-        min-width="140"
-      />
+        min-width="170"
+      >
+        <template #default="{ row }">
+          <span>{{ row.supplierName }}</span>
+          <span class="mono sheet-supplier-code">{{ row.supplierCode }}</span>
+        </template>
+      </el-table-column>
       <el-table-column
         prop="dimensionName"
         label="评估维度"
         width="120"
       />
       <el-table-column
-        prop="deadline"
         label="截止日期"
         width="130"
-      />
+      >
+        <template #default="{ row }">
+          <span class="mono">{{ row.deadline }}</span>
+        </template>
+      </el-table-column>
       <el-table-column
         label="状态"
         width="100"
       >
         <template #default="{ row }">
-          <el-tag :type="row.status === 'SUBMITTED' ? 'success' : 'warning'">
+          <span
+            class="status-mark"
+            :class="row.status === 'SUBMITTED' ? 'is-success' : 'is-warning'"
+          >
             {{ SHEET_STATUS_LABEL[row.status as keyof typeof SHEET_STATUS_LABEL] }}
-          </el-tag>
+          </span>
         </template>
       </el-table-column>
       <el-table-column
         label="操作"
         width="160"
+        align="right"
       >
         <template #default="{ row }">
           <el-button
             link
-            type="primary"
             @click="router.push({ name: 'sheet-scoring', params: { id: row.sheetId } })"
           >
             去打分
           </el-button>
           <el-button
             link
-            type="primary"
             @click="router.push({ name: 'report', params: { id: row.taskSupplierId } })"
           >
             报告
@@ -115,3 +129,16 @@ onMounted(load)
     </el-table>
   </SectionCard>
 </template>
+
+<style scoped>
+.sheet-task {
+  color: var(--ink);
+  font-weight: 500;
+}
+.sheet-supplier-code {
+  display: block;
+  margin-top: 1px;
+  font-size: 9px;
+  line-height: 13px;
+}
+</style>

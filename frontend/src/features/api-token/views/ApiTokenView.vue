@@ -105,11 +105,10 @@ async function disable(row: ApiTokenSummary): Promise<void> {
 
 <template>
   <PageHeader
-    eyebrow="OPEN API"
+    eyebrow="OPEN API / TOKENS"
     title="开放 API"
-  />
-
-  <SectionCard title="API Token">
+    description="对外只读接口与分数写入凭据 — 明文只在生成时显示一次"
+  >
     <template #actions>
       <el-button
         type="primary"
@@ -118,8 +117,10 @@ async function disable(row: ApiTokenSummary): Promise<void> {
         生成 Token
       </el-button>
     </template>
+  </PageHeader>
 
-    <p class="token__hint">
+  <SectionCard title="API Token">
+    <p class="note-block">
       外部系统使用 <code>Authorization: Bearer &lt;token&gt;</code> 调用
       <code>/open/v1/tasks/active</code>、<code>/open/v1/tasks/{id}/indicators</code> 与
       <code>/open/v1/scores</code>。Token 明文只在生成时显示一次。
@@ -158,19 +159,22 @@ async function disable(row: ApiTokenSummary): Promise<void> {
       v-else
       v-loading="list.loading.value"
       :data="list.rows.value"
-      border
+      class="table-list"
     >
       <el-table-column
-        prop="name"
         label="名称"
-        min-width="170"
-      />
-      <el-table-column
-        label="前缀"
-        min-width="170"
+        min-width="200"
       >
         <template #default="{ row }">
-          <code>{{ (row as ApiTokenSummary).tokenPrefix }}…</code>
+          <span class="token-name">{{ (row as ApiTokenSummary).name }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column
+        label="前缀"
+        min-width="190"
+      >
+        <template #default="{ row }">
+          <code class="token-prefix">{{ (row as ApiTokenSummary).tokenPrefix }}…</code>
         </template>
       </el-table-column>
       <el-table-column
@@ -178,12 +182,12 @@ async function disable(row: ApiTokenSummary): Promise<void> {
         width="100"
       >
         <template #default="{ row }">
-          <el-tag
-            :type="(row as ApiTokenSummary).status === 'ENABLED' ? 'success' : 'info'"
-            size="small"
+          <span
+            class="status-mark"
+            :class="(row as ApiTokenSummary).status === 'ENABLED' ? 'is-success' : 'is-off'"
           >
             {{ API_TOKEN_STATUS_LABEL[(row as ApiTokenSummary).status] }}
-          </el-tag>
+          </span>
         </template>
       </el-table-column>
       <el-table-column
@@ -191,11 +195,14 @@ async function disable(row: ApiTokenSummary): Promise<void> {
         width="180"
       >
         <template #default="{ row }">
-          {{
-            (row as ApiTokenSummary).lastUsedAt
-              ? formatUtcLocal((row as ApiTokenSummary).lastUsedAt as string)
-              : '从未使用'
-          }}
+          <span
+            v-if="(row as ApiTokenSummary).lastUsedAt"
+            class="mono"
+          >{{ formatUtcLocal((row as ApiTokenSummary).lastUsedAt as string) }}</span>
+          <span
+            v-else
+            class="token-muted"
+          >从未使用</span>
         </template>
       </el-table-column>
       <el-table-column
@@ -203,12 +210,13 @@ async function disable(row: ApiTokenSummary): Promise<void> {
         width="180"
       >
         <template #default="{ row }">
-          {{ formatUtcLocal((row as ApiTokenSummary).createdAt) }}
+          <span class="mono">{{ formatUtcLocal((row as ApiTokenSummary).createdAt) }}</span>
         </template>
       </el-table-column>
       <el-table-column
         label="操作"
         width="100"
+        align="right"
         fixed="right"
       >
         <template #default="{ row }">
@@ -230,7 +238,7 @@ async function disable(row: ApiTokenSummary): Promise<void> {
       v-model:size="list.size.value"
       :total="list.total.value"
       :page-sizes="[10, 20, 50]"
-      class="page__pager"
+      class="list-pager"
       @change="list.load"
       @size-change="list.load(1)"
     />
@@ -320,30 +328,40 @@ async function disable(row: ApiTokenSummary): Promise<void> {
 </template>
 
 <style scoped>
-.token__hint {
-  margin: 0 0 14px;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
-  line-height: 1.7;
+.token-name {
+  color: var(--ink);
+  font-weight: 500;
+}
+.token-prefix {
+  color: var(--ink-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.token-muted {
+  color: var(--muted-2);
+  font-size: 10.5px;
 }
 .token__name {
   margin: 14px 0 8px;
-  font-weight: 600;
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 500;
 }
 .token__box {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 12px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 6px;
-  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--rule);
+  background: var(--paper-deep);
 }
 .token__value {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
-  font-family: var(--el-font-family-mono);
-  line-height: 1.6;
+  color: var(--ink-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.7;
 }
 </style>

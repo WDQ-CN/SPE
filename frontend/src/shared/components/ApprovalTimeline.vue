@@ -86,30 +86,55 @@ const displayTime = formatUtcLocal
 
 <style scoped>
 .approval-timeline__round + .approval-timeline__round {
-  margin-top: 18px;
+  margin-top: 22px;
 }
 .approval-timeline__head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  font-weight: 600;
+  gap: 10px;
+  padding-bottom: 8px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-secondary);
+}
+.approval-timeline__head > span:first-child {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.2px;
 }
 .approval-timeline__round--current .approval-timeline__head {
-  color: var(--el-color-primary);
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+.approval-timeline__round--current .approval-timeline__head::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  background: var(--accent);
 }
 .approval-timeline__line {
-  font-size: 14px;
+  color: var(--ink-secondary);
+  font-size: 11.5px;
+  line-height: 19px;
 }
 .approval-timeline__comment {
-  margin-top: 4px;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
+  margin-top: 3px;
+  padding-left: 10px;
+  border-left: 1px solid var(--rule);
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 18px;
   white-space: pre-wrap;
 }
 .approval-timeline__pending {
   margin: 0;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--muted-2);
+  font-size: 10.5px;
+}
+.approval-timeline :deep(.el-timeline-item__content) {
+  color: var(--ink-secondary);
 }
 </style>

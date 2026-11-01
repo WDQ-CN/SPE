@@ -30,6 +30,10 @@ function modeText(type: string, scoreMode: string | null): string {
   const modeLabel = SCORE_MODE_LABEL[scoreMode as keyof typeof SCORE_MODE_LABEL] ?? scoreMode
   return `${typeLabel} · ${modeLabel}`
 }
+
+function scoreLine(dimension: ReportDimension): string {
+  return `得分 ${formatScore(dimension.score)} · ${dimension.grade ?? '—'}`
+}
 </script>
 
 <template>
@@ -49,13 +53,8 @@ function modeText(type: string, scoreMode: string | null): string {
       <template #title>
         <div class="breakdown__title">
           <span class="breakdown__name">{{ dimension.dimensionName }}</span>
-          <el-tag
-            size="small"
-            type="info"
-          >
-            权重 {{ formatWeight(dimension.weight) }}
-          </el-tag>
-          <span>得分 {{ formatScore(dimension.score) }} · {{ dimension.grade ?? '—' }}</span>
+          <span class="breakdown__meta">权重 {{ formatWeight(dimension.weight) }}</span>
+          <span class="breakdown__score">{{ scoreLine(dimension) }}</span>
           <el-tag
             v-if="!dimension.complete"
             size="small"
@@ -133,11 +132,40 @@ function modeText(type: string, scoreMode: string | null): string {
 <style scoped>
 .breakdown__title {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 14px;
+  align-items: baseline;
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+  padding-right: 8px;
 }
 .breakdown__name {
-  font-weight: 600;
+  min-width: 120px;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.2px;
+}
+.breakdown__meta {
+  color: var(--muted-2);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+.breakdown__score {
+  margin-left: auto;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 500;
+}
+.breakdown :deep(.el-table td.el-table__cell) {
+  height: 42px;
+}
+.breakdown :deep(.el-table th.el-table__cell) {
+  height: 34px;
+}
+.breakdown :deep(.el-table .cell) {
+  padding: 0 10px;
 }
 </style>

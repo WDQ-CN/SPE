@@ -118,19 +118,14 @@ async function openEditor(row: TemplateSummary): Promise<void> {
   await router.push({ name: 'template-editor', params: { versionId: row.latestVersionId } })
 }
 
-/** 草稿标记：有草稿说明"改过但还没发布"，这是列表上最需要一眼看到的状态 */
-function draftTagType(row: TemplateSummary): 'warning' | 'info' {
-  return row.draftCount > 0 ? 'warning' : 'info'
-}
 </script>
 
 <template>
   <PageHeader
-    eyebrow="EVALUATION TEMPLATES"
+    eyebrow="TEMPLATES / VERSIONS"
     title="评估模板"
-  />
-
-  <SectionCard title="模板列表">
+    :description="`共 ${total} 个模板 · 任务只能引用已发布版本`"
+  >
     <template #actions>
       <el-button
         v-if="canWrite"
@@ -140,7 +135,9 @@ function draftTagType(row: TemplateSummary): 'warning' | 'info' {
         新建模板
       </el-button>
     </template>
+  </PageHeader>
 
+  <SectionCard title="模板列表">
     <el-alert
       v-if="!canWrite"
       class="page__notice"
@@ -162,19 +159,23 @@ function draftTagType(row: TemplateSummary): 'warning' | 'info' {
     <el-table
       v-loading="loading"
       :data="rows"
-      stripe
+      class="table-list"
     >
       <el-table-column
-        prop="name"
         label="模板名称"
-        min-width="200"
-      />
+        min-width="260"
+      >
+        <template #default="{ row }">
+          <span class="template-name">{{ row.name }}</span>
+        </template>
+      </el-table-column>
       <el-table-column
         label="版本数"
         width="100"
+        align="right"
       >
         <template #default="{ row }">
-          {{ row.versionCount }}
+          <span class="template-count">{{ row.versionCount }}</span>
         </template>
       </el-table-column>
       <el-table-column
@@ -182,8 +183,11 @@ function draftTagType(row: TemplateSummary): 'warning' | 'info' {
         width="120"
       >
         <template #default="{ row }">
-          <span v-if="row.latestPublishedNo === null">—</span>
-          <span v-else>v{{ row.latestPublishedNo }}</span>
+          <span
+            v-if="row.latestPublishedNo !== null"
+            class="mono template-version"
+          >v{{ row.latestPublishedNo }}</span>
+          <span v-else>—</span>
         </template>
       </el-table-column>
       <el-table-column
@@ -191,20 +195,23 @@ function draftTagType(row: TemplateSummary): 'warning' | 'info' {
         width="120"
       >
         <template #default="{ row }">
-          <el-tag :type="draftTagType(row as TemplateSummary)">
+          <span
+            class="status-mark"
+            :class="row.draftCount > 0 ? 'is-warning' : 'is-off'"
+          >
             {{ row.draftCount > 0 ? '有草稿' : '无草稿' }}
-          </el-tag>
+          </span>
         </template>
       </el-table-column>
       <el-table-column
         label="操作"
         width="200"
+        align="right"
         fixed="right"
       >
         <template #default="{ row }">
           <el-button
             link
-            type="primary"
             :disabled="!row.latestVersionId"
             @click="openEditor(row as TemplateSummary)"
           >
@@ -213,7 +220,6 @@ function draftTagType(row: TemplateSummary): 'warning' | 'info' {
           <el-button
             v-if="canWrite"
             link
-            type="primary"
             @click="openRename(row as TemplateSummary)"
           >
             重命名
@@ -230,7 +236,7 @@ function draftTagType(row: TemplateSummary): 'warning' | 'info' {
       v-model:size="size"
       :total="total"
       :page-sizes="[10, 20, 50]"
-      class="page__pager"
+      class="list-pager"
       @change="(target: number) => load(target)"
       @size-change="() => load(1)"
     />
@@ -287,11 +293,24 @@ function draftTagType(row: TemplateSummary): 'warning' | 'info' {
 }
 
 .page__error-text {
-  color: var(--el-color-danger);
+  color: var(--danger);
 }
 
-.page__pager {
-  margin-top: 16px;
-  justify-content: flex-end;
+.template-name {
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 500;
 }
+
+.template-count {
+  color: var(--ink-secondary);
+  font-family: var(--font-serif);
+  font-size: 16px;
+}
+
+.template-version {
+  color: var(--ink-secondary);
+}
+
 </style>

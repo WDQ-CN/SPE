@@ -91,25 +91,12 @@ onMounted(() => void load())
 
 <template>
   <PageHeader
-    eyebrow="REPORT"
+    eyebrow="REPORT / SUPPLIER"
     :title="report ? `${report.supplierName ?? '供应商'} · 评估报告` : '评估报告'"
-  />
-
-  <el-alert
-    v-if="error"
-    :title="error"
-    type="error"
-    :closable="false"
-    show-icon
-  />
-  <el-skeleton
-    v-else-if="loading && !report"
-    :rows="7"
-    animated
-  />
-  <template v-else-if="report">
-    <SectionCard title="评估概要">
-      <template #actions>
+    :description="report ? `${report.taskName} · ${report.year} 年 Q${report.quarter}` : ''"
+  >
+    <template #actions>
+      <template v-if="report">
         <el-button
           v-if="canUnlock"
           type="warning"
@@ -122,7 +109,6 @@ onMounted(() => void load())
         <el-button
           v-if="canOpenResults"
           link
-          type="primary"
           @click="router.push({ name: 'task-results', params: { id: report.taskId } })"
         >
           返回结果列表
@@ -130,54 +116,88 @@ onMounted(() => void load())
         <el-button
           v-else
           link
-          type="primary"
           @click="router.back()"
         >
           返回
         </el-button>
       </template>
+    </template>
+  </PageHeader>
 
-      <el-descriptions :column="3">
-        <el-descriptions-item label="供应商">
-          {{ report.supplierCode }} · {{ report.supplierName }}
-        </el-descriptions-item>
-        <el-descriptions-item label="评估任务">
-          {{ report.taskName }}
-        </el-descriptions-item>
-        <el-descriptions-item label="周期">
-          {{ report.year }} 年 Q{{ report.quarter }}
-        </el-descriptions-item>
-        <el-descriptions-item label="状态">
-          <el-tag :type="report.status === 'EFFECTIVE' ? 'success' : 'warning'">
+  <el-alert
+    v-if="error"
+    type="error"
+    :title="error"
+    :closable="false"
+    show-icon
+  />
+  <el-skeleton
+    v-else-if="loading && !report"
+    :rows="7"
+    animated
+  />
+  <template v-else-if="report">
+    <section class="report-hero">
+      <div class="report-hero__score">
+        <span class="report-kicker">总分 / Total score</span>
+        <div class="report-total">
+          {{ formatScore(report.totalScore) }}
+        </div>
+        <div class="report-hero__badges">
+          <span class="report-grade">{{ formatGrade(report.totalGrade) }}</span>
+          <span
+            class="status-mark"
+            :class="report.status === 'EFFECTIVE' ? 'is-success' : 'is-warning'"
+          >
             {{
               TASK_SUPPLIER_STATUS_LABEL[
                 report.status as keyof typeof TASK_SUPPLIER_STATUS_LABEL
               ]
             }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="总分 / 等级">
-          <strong>{{ formatScore(report.totalScore) }} / {{ formatGrade(report.totalGrade) }}</strong>
-        </el-descriptions-item>
-        <el-descriptions-item label="口径">
+          </span>
           <el-tag :type="report.scoreMode === 'SNAPSHOT' ? 'success' : 'warning'">
             {{ report.scoreMode === 'SNAPSHOT' ? '定稿快照' : '试算（未生效）' }}
           </el-tag>
-        </el-descriptions-item>
-      </el-descriptions>
+        </div>
+        <p class="report-hero__note">
+          {{ report.scoreMode === 'SNAPSHOT'
+            ? '已生效评估单的定稿快照，分数与维度不可再变。'
+            : '试算口径：评估单尚未生效，最终分数以末级通过后的定稿为准。' }}
+        </p>
+      </div>
 
+      <div class="meta-grid meta-grid--2 report-meta">
+        <div class="meta-grid__item">
+          <span>供应商</span>
+          <strong>{{ report.supplierCode }} · {{ report.supplierName }}</strong>
+        </div>
+        <div class="meta-grid__item">
+          <span>评估任务</span>
+          <strong>{{ report.taskName }}</strong>
+        </div>
+        <div class="meta-grid__item">
+          <span>周期</span>
+          <strong>{{ report.year }} 年 Q{{ report.quarter }}</strong>
+        </div>
+        <div class="meta-grid__item">
+          <span>轮次 / 节点</span>
+          <strong>
+            {{ report.currentNode > 0 ? `第 ${report.round} 轮 · 第 ${report.currentNode} 级` : `第 ${report.round} 轮` }}
+          </strong>
+        </div>
+      </div>
+    </section>
+
+    <div class="report-notices">
       <el-alert
         v-if="unlockSubmission.errorMessage.value"
-        class="report__hint"
         type="error"
         :title="unlockSubmission.errorMessage.value"
         :closable="false"
         show-icon
       />
-
       <el-alert
         v-if="report.scoreMode === 'TRIAL'"
-        class="report__hint"
         :title="
           report.complete
             ? '该评估单尚未生效，当前分数为试算口径，仅供审批决策参考（01 R1）。'
@@ -187,28 +207,146 @@ onMounted(() => void load())
         :closable="false"
         show-icon
       />
-    </SectionCard>
+    </div>
 
-    <SectionCard title="维度雷达">
-      <ScoreRadar :dimensions="report.dimensions" />
-    </SectionCard>
+    <div class="report-layout">
+      <SectionCard
+        title="维度雷达"
+        class="report-radar"
+      >
+        <ScoreRadar :dimensions="report.dimensions" />
+      </SectionCard>
 
-    <SectionCard title="维度与指标明细">
-      <ScoreBreakdown :dimensions="report.dimensions" />
-    </SectionCard>
+      <SectionCard
+        title="维度与指标明细"
+        class="report-breakdown"
+      >
+        <ScoreBreakdown :dimensions="report.dimensions" />
+      </SectionCard>
 
-    <SectionCard title="审批时间线">
-      <ApprovalTimeline
-        :entries="report.timeline"
-        :current-round="report.round"
-        :current-node="report.currentNode"
-      />
-    </SectionCard>
+      <SectionCard
+        title="审批时间线"
+        class="report-timeline"
+      >
+        <ApprovalTimeline
+          :entries="report.timeline"
+          :current-round="report.round"
+          :current-node="report.currentNode"
+        />
+      </SectionCard>
+    </div>
   </template>
 </template>
 
 <style scoped>
-.report__hint {
-  margin-top: 12px;
+.report-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.6fr);
+  gap: 40px;
+  align-items: stretch;
+}
+.report-hero__score {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-right: 40px;
+  border-right: 1px solid var(--rule);
+}
+.report-kicker {
+  color: var(--muted-2);
+  font-size: 8.5px;
+  line-height: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.report-total {
+  margin-top: 4px;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 62px;
+  line-height: 66px;
+  font-weight: 500;
+  letter-spacing: -2.4px;
+}
+.report-hero__badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.report-grade {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--ink);
+  font-family: var(--font-serif);
+  font-size: 15px;
+  line-height: 1;
+}
+.report-hero__note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 18px;
+}
+.report-meta {
+  align-self: center;
+}
+.report-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+.report-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  grid-template-areas:
+    'radar breakdown'
+    'timeline breakdown';
+  gap: 0 36px;
+  align-items: start;
+}
+.report-layout .section-card {
+  margin-top: 24px;
+}
+.report-layout .section-card + .section-card {
+  padding-top: 0;
+  border-top: 0;
+}
+.report-radar {
+  grid-area: radar;
+}
+.report-breakdown {
+  grid-area: breakdown;
+}
+.report-timeline {
+  grid-area: timeline;
+  padding-top: 18px !important;
+  border-top: 1px solid var(--rule) !important;
+}
+@media (max-width: 1200px) {
+  .report-hero {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .report-hero__score {
+    padding: 0 0 20px;
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .report-total {
+    font-size: 48px;
+    line-height: 52px;
+  }
+  .report-layout {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'radar'
+      'breakdown'
+      'timeline';
+  }
 }
 </style>

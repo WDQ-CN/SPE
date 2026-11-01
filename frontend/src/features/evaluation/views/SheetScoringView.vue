@@ -20,6 +20,7 @@ import { sheetPermissions } from '@/features/evaluation/sheet-status'
 import { useAsyncData } from '@/shared/composables/useAsyncData'
 import { useSubmit } from '@/shared/composables/useSubmit'
 import { saveBlob } from '@/shared/download'
+import { formatScore } from '@/shared/format'
 import { SHEET_STATUS_LABEL } from '@/shared/labels'
 import type { SheetIndicatorEntry, SheetPreview, SheetScoreView } from '@/shared/types/dto'
 
@@ -122,6 +123,18 @@ const dimensionPreview = computed(() => {
   }
   return current.taskSupplier.sheets.find((item) => item.dimensionId === currentSheet.dimensionId) ?? null
 })
+
+const indicatorCount = computed(() => sheet.value?.indicators.length ?? 0)
+const filledCount = computed(
+  () =>
+    (sheet.value?.indicators ?? []).filter((entry) => {
+      const value = values.value[entry.indicatorId]
+      return value != null && !Number.isNaN(value)
+    }).length,
+)
+const fillPercent = computed(() =>
+  indicatorCount.value === 0 ? 0 : Math.round((filledCount.value / indicatorCount.value) * 100),
+)
 
 /** 某格的校验结果（用于输入框下方的红字提示） */
 function cellError(entry: SheetIndicatorEntry): string {
@@ -290,8 +303,9 @@ watch(() => route.params.id, () => void load())
 <template>
   <div v-loading="loading">
     <PageHeader
-      eyebrow="SCORE SHEET"
+      eyebrow="SCORE SHEET / DIMENSION"
       :title="sheet ? `打分 · ${sheet.dimensionName}` : '打分'"
+      :description="sheet ? `逐指标录入原始值；试算随录入实时更新，保存不进入审批。` : ''"
     />
 
     <el-alert
@@ -302,9 +316,35 @@ watch(() => route.params.id, () => void load())
       show-icon
     />
     <template v-else-if="sheet">
-      <SectionCard :title="`评分：${sheet.dimensionName}`">
+      <section class="meta-grid score-meta">
+        <div class="meta-grid__item">
+          <span>评分单</span>
+          <strong>#{{ sheet.sheetId }}</strong>
+        </div>
+        <div class="meta-grid__item">
+          <span>评估维度</span>
+          <strong>{{ sheet.dimensionName }}</strong>
+        </div>
+        <div class="meta-grid__item">
+          <span>状态</span>
+          <strong>{{ SHEET_STATUS_LABEL[sheet.status] }}</strong>
+        </div>
+        <div class="meta-grid__item">
+          <span>指标数量</span>
+          <strong>{{ indicatorCount }} 项</strong>
+        </div>
+        <div class="meta-grid__item">
+          <span>已填写</span>
+          <strong>{{ filledCount }} 项 <small>{{ fillPercent }}%</small></strong>
+        </div>
+        <div class="meta-grid__item">
+          <span>提交守卫</span>
+          <strong>版本 {{ sheet.version }}</strong>
+        </div>
+      </section>
+
+      <SectionCard title="指标录入">
         <template #actions>
-          <el-tag>{{ SHEET_STATUS_LABEL[sheet.status] }}</el-tag>
           <el-button
             link
             type="primary"
@@ -339,12 +379,19 @@ watch(() => route.params.id, () => void load())
           show-icon
         />
 
-        <el-table :data="sheet.indicators">
+        <el-table
+          :data="sheet.indicators"
+          class="table-list"
+        >
           <el-table-column
             prop="code"
             label="编码"
             width="170"
-          />
+          >
+            <template #default="{ row }">
+              <span class="mono">{{ row.code }}</span>
+            </template>
+          </el-table-column>
           <el-table-column
             prop="name"
             label="指标"
@@ -401,45 +448,102 @@ watch(() => route.params.id, () => void load())
       </SectionCard>
 
       <SectionCard title="试算（不落库）">
-        <el-descriptions :column="3">
-          <el-descriptions-item label="本维度得分">
-            <span v-if="dimensionPreview?.complete">{{ dimensionPreview.score }}（{{ dimensionPreview.grade }}）</span>
-            <el-tag
-              v-else
-              type="info"
-              size="small"
-            >
-              评分未齐
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="总分">
-            <span v-if="preview?.taskSupplier.complete">
-              {{ preview?.taskSupplier.totalScore }}（{{ preview?.taskSupplier.totalGrade }}）
-            </span>
-            <el-tag
-              v-else
-              type="info"
-              size="small"
-            >
-              评分未齐
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="维度进度">
-            {{ preview?.taskSupplier.sheets.filter((item) => item.complete).length ?? 0 }} /
-            {{ preview?.taskSupplier.sheets.length ?? 0 }}
-          </el-descriptions-item>
-        </el-descriptions>
+        <div class="score-trial">
+          <p class="score-trial__note">
+            试算使用本页当前录入值，来源为后端计算；未填满时维度分与总分都显示为未齐，而不是 0 分。
+          </p>
+          <div class="figure-strip figure-strip--3">
+            <div class="figure">
+              <span class="figure__label">本维度得分</span>
+              <div
+                v-if="dimensionPreview?.complete"
+                class="figure__value"
+              >
+                {{ formatScore(dimensionPreview.score) }}<small>{{ dimensionPreview.grade }}</small>
+              </div>
+              <div
+                v-else
+                class="figure__value figure__value--empty"
+              >
+                —
+              </div>
+              <p class="figure__note">
+                <el-tag
+                  v-if="!dimensionPreview?.complete"
+                  type="info"
+                  size="small"
+                >
+                  评分未齐
+                </el-tag>
+                <template v-else>
+                  维度已齐
+                </template>
+              </p>
+            </div>
+            <div class="figure">
+              <span class="figure__label">总分</span>
+              <div
+                v-if="preview?.taskSupplier.complete"
+                class="figure__value"
+              >
+                {{ formatScore(preview?.taskSupplier.totalScore) }}<small>{{ preview?.taskSupplier.totalGrade }}</small>
+              </div>
+              <div
+                v-else
+                class="figure__value figure__value--empty"
+              >
+                —
+              </div>
+              <p class="figure__note">
+                <el-tag
+                  v-if="!preview?.taskSupplier.complete"
+                  type="info"
+                  size="small"
+                >
+                  评分未齐
+                </el-tag>
+                <template v-else>
+                  全部维度已齐
+                </template>
+              </p>
+            </div>
+            <div class="figure">
+              <span class="figure__label">维度进度</span>
+              <div class="figure__value">
+                {{ preview?.taskSupplier.sheets.filter((item) => item.complete).length ?? 0 }}<small>/
+                  {{ preview?.taskSupplier.sheets.length ?? 0 }} 个维度</small>
+              </div>
+              <p class="figure__note">
+                已完成维度 / 全部维度
+              </p>
+            </div>
+          </div>
+          <div class="score-progress">
+            <div class="score-progress__head">
+              <span>本维度录入进度</span>
+              <span class="mono">{{ filledCount }} / {{ indicatorCount }} 项 · {{ fillPercent }}%</span>
+            </div>
+            <el-progress
+              :percentage="fillPercent"
+              :show-text="false"
+            />
+          </div>
+        </div>
       </SectionCard>
 
       <el-alert
         v-if="actionError"
+        class="page-alert"
         :title="actionError"
         type="error"
         :closable="false"
         show-icon
       />
 
-      <div class="footer">
+      <div class="score-footer">
+        <p class="score-footer__note">
+          保存只暂存本页录入；提交后本维度锁定，需修改须由采购经理驳回。
+        </p>
         <el-button
           :disabled="!permissions.canEdit"
           :loading="saving"
@@ -465,23 +569,69 @@ watch(() => route.params.id, () => void load())
 </template>
 
 <style scoped>
+.score-meta {
+  margin-bottom: 24px;
+}
+
 .input {
   width: 100%;
 }
 
 .hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  margin-top: 2px;
+  color: var(--muted-2);
+  font-size: 9px;
+  line-height: 14px;
 }
 
 .error {
-  font-size: 12px;
-  color: var(--el-color-danger);
+  margin-top: 1px;
+  color: var(--danger);
+  font-size: 9px;
+  line-height: 14px;
 }
 
-.footer {
+.score-trial__note {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 18px;
+}
+
+.figure__value--empty {
+  color: var(--muted-2);
+}
+
+.score-progress {
+  margin-top: 18px;
+  max-width: 420px;
+}
+
+.score-progress__head {
   display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.score-footer {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  justify-content: flex-end;
+  margin-top: 26px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+}
+
+.score-footer__note {
+  flex: 1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 17px;
 }
 </style>

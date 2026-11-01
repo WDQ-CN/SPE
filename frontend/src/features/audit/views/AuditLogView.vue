@@ -68,12 +68,13 @@ onMounted(async () => {
 
 <template>
   <PageHeader
-    eyebrow="AUDIT LOG"
+    eyebrow="AUDIT / LOG"
     title="操作日志"
+    description="审计留痕 — 时间、操作人、动作与来源 IP 均按 UTC 存储、本地展示"
   />
 
   <SectionCard title="查询">
-    <div class="audit__filters">
+    <div class="list-toolbar audit__filters">
       <el-select
         v-model="filters.action"
         placeholder="全部动作"
@@ -115,6 +116,7 @@ onMounted(async () => {
         start-placeholder="开始日期"
         end-placeholder="结束日期"
         class="audit__range"
+        style="width: 280px; flex: 0 0 280px"
       />
       <el-button
         type="primary"
@@ -126,6 +128,7 @@ onMounted(async () => {
 
     <el-alert
       v-if="list.error.value"
+      class="page-alert"
       type="error"
       :title="list.error.value"
       :closable="false"
@@ -139,6 +142,7 @@ onMounted(async () => {
       v-else
       v-loading="list.loading.value"
       :data="list.rows.value"
+      class="table-list"
     >
       <el-table-column
         type="expand"
@@ -165,10 +169,13 @@ onMounted(async () => {
         </template>
       </el-table-column>
       <el-table-column
-        prop="action"
         label="动作"
-        width="210"
-      />
+        width="220"
+      >
+        <template #default="{ row }">
+          <span class="audit__action">{{ row.action }}</span>
+        </template>
+      </el-table-column>
       <el-table-column
         label="目标"
         width="140"
@@ -182,7 +189,11 @@ onMounted(async () => {
         prop="ip"
         label="来源 IP"
         width="140"
-      />
+      >
+        <template #default="{ row }">
+          <span class="mono">{{ row.ip }}</span>
+        </template>
+      </el-table-column>
     </el-table>
 
     <ListPagination
@@ -190,6 +201,7 @@ onMounted(async () => {
       v-model:size="list.size.value"
       :total="list.total.value"
       :page-sizes="[20, 50, 100]"
+      class="list-pager"
       @change="list.load"
       @size-change="list.load(1)"
     />
@@ -197,15 +209,11 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.audit__filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-}
 .audit__action {
   width: 220px;
+  color: var(--ink-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
 }
 .audit__target {
   width: 150px;
@@ -213,16 +221,17 @@ onMounted(async () => {
 .audit__operator {
   width: 200px;
 }
-.audit__range {
-  width: 260px;
-}
 .audit__detail {
   margin: 0;
-  padding: 8px 16px;
+  padding: 12px 16px;
   max-height: 320px;
   overflow: auto;
-  background: var(--el-fill-color-light);
-  font-size: 12px;
+  border-left: 2px solid var(--rule);
+  background: var(--paper-deep);
+  color: var(--ink-secondary);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 18px;
   white-space: pre-wrap;
 }
 </style>
