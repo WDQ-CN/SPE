@@ -34,10 +34,11 @@ export default defineConfig(({ mode }) => {
       alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
     },
     server: {
-      // 镜像 Nginx 反代行为：开发期只代理 /api（09 D4）。
+      // 镜像 Nginx 反代行为：开发期只代理 /api/（09 D4）。键必须带尾斜杠——
+      // 否则 SPA 路由 `/api-tokens` 也会被当成接口代理出去，页面直接 500。
       // 目标默认 18080（宿主直跑后端的端口，见 09 D3）；shell 环境变量优先于 frontend/.env。
       proxy: {
-        '/api': {
+        '/api/': {
           target: process.env.VITE_API_TARGET ?? env.VITE_API_TARGET ?? 'http://localhost:18080',
           changeOrigin: true,
         },
