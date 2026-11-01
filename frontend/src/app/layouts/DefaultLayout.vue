@@ -7,7 +7,6 @@ import { useNotificationStore } from '@/app/notification-store'
 import { useViewKey } from '@/app/view-state'
 import { useAuthStore } from '@/features/auth/store'
 import { listNotifications } from '@/features/evaluation/api'
-import { APP_NAME } from '@/shared/constants'
 import type { NotificationSummary } from '@/shared/types/dto'
 
 const auth = useAuthStore()
@@ -16,10 +15,18 @@ const router = useRouter()
 const viewKey = useViewKey()
 const notifications = useNotificationStore()
 
-// 角色驱动的菜单：真正的过滤规则在 app/menu.ts（与路由守卫共用），这里只做渲染
 const menus = computed(() => visibleMenus(auth.roles))
+const activeMenu = computed(() => {
+  const path = route.path
+  if (path.startsWith('/tasks')) return '/tasks'
+  if (path.startsWith('/templates')) return '/templates'
+  if (path.startsWith('/approvals')) return '/approvals'
+  if (path.startsWith('/results') || path.startsWith('/reports')) return '/results'
+  if (path.startsWith('/sheets')) return '/my'
+  return path || '/'
+})
+const avatarText = computed(() => auth.name?.trim().slice(0, 1) || '管')
 
-/** 下拉里的最近几条（角标只给数字，点开要能"真的看到写了什么"——13 §9.2 的"写了没人消费"问题） */
 const recent = ref<NotificationSummary[]>([])
 const recentLoading = ref(false)
 
@@ -29,14 +36,12 @@ async function loadRecent(): Promise<void> {
     const page = await listNotifications(1, 5)
     recent.value = page.list
   } catch {
-    // 下拉失败不该把布局打断（03 §41.3 的 P2-31）：清空列表，错误由 onOpen/onReadAll 提示一次
     recent.value = []
   } finally {
     recentLoading.value = false
   }
 }
 
-/** 点开下拉时同时刷新列表与角标（别人刚发布任务时这里能立刻看到） */
 async function onOpen(): Promise<void> {
   try {
     await Promise.all([loadRecent(), notifications.refresh()])
@@ -60,19 +65,37 @@ function logout(): void {
   auth.clearSession()
   void router.replace({ name: 'login' })
 }
+
+function navigateFromMobile(command: string): void {
+  if (command === '__logout__') {
+    logout()
+    return
+  }
+  void router.push(command)
+}
 </script>
 
 <template>
-  <el-container class="layout">
-    <el-aside
-      width="200px"
-      class="layout__aside"
-    >
-      <div class="layout__brand">
-        {{ APP_NAME }}
-      </div>
+  <div class="layout">
+    <aside class="layout__aside">
+      <RouterLink
+        class="layout__brand"
+        to="/"
+      >
+        <span class="layout__brand-mark">S</span>
+        <span class="layout__brand-copy">
+          <strong>SPE</strong>
+          <small>Supplier Performance</small>
+        </span>
+      </RouterLink>
+
+      <p class="layout__nav-label">
+        Navigation / 导航
+      </p>
       <el-menu
-        :default-active="route.path"
+        :key="activeMenu"
+        :default-active="activeMenu"
+        class="layout__menu"
         router
       >
         <el-menu-item
@@ -80,64 +103,19 @@ function logout(): void {
           :key="menu.path"
           :index="menu.path"
         >
-          {{ menu.title }}
+          <span class="layout__menu-mark" />
+          <span>{{ menu.title }}</span>
         </el-menu-item>
       </el-menu>
-    </el-aside>
 
-    <el-container>
-      <el-header class="layout__header">
-        <el-popover
-          width="340"
-          trigger="click"
-          @show="onOpen"
-        >
-          <template #reference>
-            <el-badge
-              :value="notifications.unread"
-              :hidden="notifications.unread === 0"
-              :max="99"
-            >
-              <el-button
-                link
-                type="primary"
-              >
-                通知
-              </el-button>
-            </el-badge>
-          </template>
-          <div v-loading="recentLoading">
-            <el-empty
-              v-if="recent.length === 0"
-              description="暂无通知"
-              :image-size="60"
-            />
-            <div
-              v-for="item in recent"
-              :key="item.id"
-              class="notice"
-            >
-              <div class="notice__title">
-                {{ item.title }}
-              </div>
-              <div class="notice__content">
-                {{ item.content }}
-              </div>
-            </div>
-            <div class="notice__footer">
-              <el-button
-                link
-                type="primary"
-                :disabled="notifications.unread === 0"
-                @click="onReadAll"
-              >
-                全部已读
-              </el-button>
-            </div>
+      <div class="layout__spacer" />
+
+      <div class="layout__user">
+        <span class="layout__avatar">{{ avatarText }}</span>
+        <div class="layout__user-meta">
+          <div class="layout__user-name">
+            {{ auth.name || '未登录' }}
           </div>
-        </el-popover>
-        <span class="layout__user">
-          {{ auth.name || '未登录' }}
           <el-tag
             v-if="auth.roleText"
             size="small"
@@ -145,114 +123,433 @@ function logout(): void {
           >
             {{ auth.roleText }}
           </el-tag>
-        </span>
-        <el-button
-          link
-          type="primary"
+        </div>
+        <button
+          class="layout__logout"
+          type="button"
           @click="logout"
         >
           退出
-        </el-button>
-      </el-header>
-      <el-main class="layout__main">
-        <router-view :key="viewKey" />
-      </el-main>
-    </el-container>
-  </el-container>
+        </button>
+      </div>
+    </aside>
+
+    <div class="layout__main">
+      <header class="layout__topbar">
+        <div class="layout__crumbs">
+          <strong>SPE</strong><span>/</span><span>供应链绩效</span>
+        </div>
+        <div class="layout__actions">
+          <el-dropdown
+            class="layout__mobile-nav"
+            trigger="click"
+            @command="navigateFromMobile"
+          >
+            <button
+              class="layout__icon-btn"
+              type="button"
+              aria-label="菜单"
+            >
+              <svg
+                class="layout__icon"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item
+                  v-for="menu in menus"
+                  :key="menu.path"
+                  :command="menu.path"
+                >
+                  {{ menu.title }}
+                </el-dropdown-item>
+                <el-dropdown-item
+                  divided
+                  command="__logout__"
+                >
+                  退出
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-popover
+            width="360"
+            trigger="click"
+            @show="onOpen"
+          >
+            <template #reference>
+              <el-badge
+                :value="notifications.unread"
+                :hidden="notifications.unread === 0"
+                :max="99"
+              >
+                <button
+                  class="layout__icon-btn"
+                  type="button"
+                  aria-label="通知"
+                >
+                  <svg
+                    class="layout__icon"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+                    <path d="M10 21h4" />
+                  </svg>
+                </button>
+              </el-badge>
+            </template>
+            <div v-loading="recentLoading">
+              <el-empty
+                v-if="recent.length === 0"
+                description="暂无通知"
+                :image-size="48"
+              />
+              <div
+                v-for="item in recent"
+                :key="item.id"
+                class="notice"
+              >
+                <div class="notice__title">
+                  {{ item.title }}
+                </div>
+                <div class="notice__content">
+                  {{ item.content }}
+                </div>
+              </div>
+              <div class="notice__footer">
+                <el-button
+                  link
+                  :disabled="notifications.unread === 0"
+                  @click="onReadAll"
+                >
+                  全部已读
+                </el-button>
+              </div>
+            </div>
+          </el-popover>
+        </div>
+      </header>
+
+      <main class="layout__content">
+        <div class="layout__page">
+          <router-view :key="viewKey" />
+        </div>
+      </main>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-/* ============================================================================
-   Sentra 视觉语言落到后台（2026-10-04）
-   设计提示词给的是**落地页**：页面黑 #000 + 亮区块 #E8E5E9/#f0eded 交替。
-   后台不能整页黑（表格与表单的可读性会垮），所以映射成 **暗壳 + 亮内容区**：
-   侧栏与顶栏吃 #000，内容区吃 #E8E5E9，卡片用 #EBE8EB / #fff——
-   色板、圆角、缓动、字体全部来自提示词，只是分区方式适配了管理系统。
-   ========================================================================== */
-
 .layout {
-  height: 100%;
+  display: grid;
+  grid-template-columns: var(--sidebar) minmax(0, 1fr);
+  height: 100vh;
+  min-height: 0;
+  background: var(--paper);
 }
 
-/* ---- 暗壳：侧栏 ---- */
 .layout__aside {
   display: flex;
   flex-direction: column;
-  background: #000;
-  border-right: 1px solid rgb(255 255 255 / 8%);
+  min-height: 0;
+  padding: 18px 14px 14px;
+  background: var(--surface);
+  border-right: 1px solid var(--rule);
+  overflow-y: auto;
 }
 
 .layout__brand {
-  padding: 18px 20px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 14px;
-  font-weight: 600;
-  color: #fff;
-  letter-spacing: 0.02em;
-  border-bottom: 1px solid rgb(255 255 255 / 8%);
-}
-
-/* 菜单在暗底上的取值（那组 `--el-menu-*` 覆盖）已提到 `app/styles/base.css`：
-   它描述的是"EP 菜单在暗色导航里的取值"，属**全局主题**而不是本布局私有，
-   放全局后任何暗底导航都能复用（03 §35 第 6 条）。 */
-
-/* ---- 暗壳：顶栏 ---- */
-.layout__header {
   display: flex;
-  gap: 12px;
   align-items: center;
-  justify-content: flex-end;
-  color: rgb(255 255 255 / 75%);
-  background: #000;
-  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  gap: 10px;
+  padding: 0 6px;
+  color: inherit;
+  text-decoration: none;
 }
 
-/* 顶栏里的 link 按钮（通知 / 退出）默认是 EP 的主题色，在纯黑上看不清 */
-.layout__header :deep(.el-button.is-link) {
-  color: rgb(255 255 255 / 70%);
+.layout__brand-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  font-family: var(--font-serif);
+  font-size: 13px;
+  line-height: 1;
 }
 
-.layout__header :deep(.el-button.is-link:hover) {
-  color: #f64302;
+.layout__brand-copy strong {
+  display: block;
+  font-family: var(--font-serif);
+  font-size: 22px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.6px;
+}
+
+.layout__brand-copy small {
+  display: block;
+  margin-top: 1px;
+  color: var(--muted-2);
+  font-size: 7px;
+  line-height: 10px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.layout__nav-label {
+  margin: 22px 8px 7px;
+  color: var(--muted-2);
+  font-size: 8px;
+  line-height: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.layout__menu {
+  border-right: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.layout__menu :deep(.el-menu-item) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  line-height: 34px;
+  margin: 1px 0;
+  padding: 0 8px !important;
+  border-left: 2px solid transparent;
+  border-radius: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.layout__menu :deep(.el-menu-item:hover) {
+  color: var(--ink);
+  background: rgb(129 109 112 / 5%);
+}
+
+.layout__menu :deep(.el-menu-item.is-active) {
+  color: var(--ink);
+  background: var(--accent-soft);
+  border-left-color: var(--ink);
+  font-weight: 500;
+}
+
+.layout__menu-mark {
+  width: 4px;
+  height: 4px;
+  flex: none;
+  background: currentColor;
+  opacity: 0.45;
+}
+
+.layout__menu :deep(.el-menu-item.is-active) .layout__menu-mark {
+  opacity: 1;
+}
+
+.layout__spacer {
+  flex: 1;
 }
 
 .layout__user {
   display: flex;
-  gap: 8px;
   align-items: center;
-  font-size: 13px;
+  gap: 8px;
+  padding: 12px 6px 0;
+  border-top: 1px solid var(--rule);
 }
 
-/* ---- 亮内容区：Sentra 的亮区块色 ---- */
+.layout__avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  font-family: var(--font-serif);
+  font-size: 10px;
+}
+
+.layout__user-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.layout__user-name {
+  overflow: hidden;
+  color: var(--ink-secondary);
+  font-size: 10.5px;
+  line-height: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layout__user :deep(.el-tag) {
+  height: 17px;
+  margin-top: 2px;
+  padding: 0 5px;
+  border-color: var(--rule);
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 15px;
+}
+
+.layout__logout {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
+  color: var(--muted-2);
+  font-size: 9px;
+  line-height: 15px;
+  cursor: pointer;
+}
+
+.layout__logout:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .layout__main {
-  padding: 16px;
-  overflow: auto;
-  background: #e8e5e9;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
 }
 
-/* 入场动画改由各页显式标注 `.page-block`（定义在 base.css）。
-   原来这里是 `.layout__main :deep(> *)` 一网打尽，两个问题：
-   ① 页面改成多根节点后它是否命中并不直观；② 与页面自己写的入场会**双重叠加**
-   （同一元素上两个 `animation` 属性只取后者，等于其中一处是白写的）。
-   显式标在页面上可读、也能让各页自己排延迟阶梯。 */
+.layout__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: var(--topbar);
+  flex: none;
+  padding: 0 30px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+}
 
-/* ---- 通知下拉（在亮底 popover 里，保持可读）---- */
+.layout__crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 15px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.layout__crumbs strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.layout__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.layout__mobile-nav {
+  display: none;
+}
+
+.layout__icon-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.layout__icon-btn:hover {
+  border-color: var(--rule);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.layout__icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.layout__content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 28px 32px 32px;
+  background: var(--paper);
+}
+
+.layout__page {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
 .notice {
-  padding: 6px 0;
-  border-bottom: 1px solid var(--el-border-color-lighter);
+  padding: 9px 0;
+  border-bottom: 1px solid var(--rule);
 }
 
 .notice__title {
-  font-weight: 600;
+  color: var(--ink);
+  font-size: 11.5px;
+  font-weight: 500;
 }
 
 .notice__content {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 17px;
 }
 
 .notice__footer {
-  padding-top: 8px;
+  padding-top: 10px;
   text-align: right;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .layout__aside {
+    display: none;
+  }
+
+  .layout__mobile-nav {
+    display: inline-flex;
+  }
+
+  .layout__topbar {
+    padding: 0 16px;
+  }
+
+  .layout__content {
+    padding: 18px 16px;
+  }
 }
 </style>

@@ -1,11 +1,36 @@
-/* 自托管字体（CSP 的 font-src 只有 'self' 与 data:，外链字体会被拦 —— 见 frontend/security-headers.conf）：
-   BubbledotICG-FinePos 是 CC BY 4.0，来源 onlinewebfonts.com，署名见 public/fonts/README.md。
-   ⚠️ 设计提示词里给的是 `<link href="https://...">` 外链写法，本项目必须改自托管，否则
-   style-src/font-src 会拦掉它，e2e 的「CSP 无违规」断言也会红。 */
+/* Self-hosted editorial fonts: CSP only allows `font-src 'self' data:`. */
 @font-face {
-  font-family: 'BubbledotICG-FinePos';
-  src: url('/fonts/BubbledotICG-FinePos.woff2') format('woff2');
-  font-weight: normal;
+  font-family: 'Playfair Display';
+  src: url('/fonts/playfair-display-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/playfair-display-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Albert Sans';
+  src: url('/fonts/albert-sans-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Albert Sans';
+  src: url('/fonts/albert-sans-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Albert Sans';
+  src: url('/fonts/albert-sans-600.woff2') format('woff2');
+  font-weight: 600;
   font-style: normal;
   font-display: swap;
 }
@@ -14,6 +39,33 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --paper: #f7f4ed;
+  --paper-deep: #f1ece1;
+  --surface: #fffdf9;
+  --ink: #1c1c1c;
+  --ink-secondary: #3f3b36;
+  --muted: #6b6a65;
+  --muted-2: #8a857c;
+  --rule: #ded8cc;
+  --rule-strong: #1c1c1c;
+  --accent: #816d70;
+  --accent-soft: #efe7e5;
+  --success: #3f6148;
+  --success-bg: #eaf0e9;
+  --warning: #8a6a2f;
+  --warning-bg: #f4eddd;
+  --danger: #a33a32;
+  --danger-bg: #f4e6e2;
+  --info: #4b5563;
+  --info-bg: #ecedef;
+  --font-serif: 'Playfair Display', 'Noto Serif SC', 'Songti SC', SimSun, serif;
+  --font-sans: 'Albert Sans', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'JetBrains Mono', Consolas, monospace;
+  --sidebar: 216px;
+  --topbar: 72px;
+}
+
 html,
 body,
 #app {
@@ -21,250 +73,938 @@ body,
   margin: 0;
 }
 
-/* Sentra 风格基线（2026-10-04）：字体与暗色基底照设计提示词；
-   ⚠️ 内容区仍是浅色卡片（见 DefaultLayout 的 .layout__main），
-   所以这里的黑底只作为"壳"，不影响表格与表单的可读性。 */
-html,
 body {
-  overflow-x: hidden;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink);
+  background: var(--paper);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-body {
-  font-family: 'JetBrains Mono', monospace;
-  background: #000;
-}
-
-/* ---- Element Plus 主题色 → Sentra 的强调橙 #F64302 ----------------------------
-   EP 默认主色是蓝的（#409eff），而设计提示词的唯一强调色是橙——不改这组变量，
-   按钮/链接/焦点环/激活态会整片偏蓝，风格就对不上了。
-   light-N / dark-2 是按 EP 的算法（与白/黑按比例混合）从主色推出来的，不是随手挑的。
-
-   ⚠️ 用 `html:root` 而不是 `:root`：EP 的样式由 unplugin **按需**注入，注入时机晚于
-   main.ts 里的本文件，同特异性的 `:root` 会被它盖回默认值（运行态探针会看到 #409eff）。 */
+/* Element Plus variables. `html:root` wins over the late unplugin style injection. */
 html:root {
-  --el-color-primary: #f64302;
-  --el-color-primary-light-3: #f97b4e;
-  --el-color-primary-light-5: #faa180;
-  --el-color-primary-light-7: #fcc6b3;
-  --el-color-primary-light-8: #fdd9cc;
-  --el-color-primary-light-9: #feece5;
-  --el-color-primary-dark-2: #c43602;
+  --el-color-primary: var(--ink);
+  --el-color-primary-light-3: #4a463f;
+  --el-color-primary-light-5: #77726b;
+  --el-color-primary-light-7: #aaa49a;
+  --el-color-primary-light-8: #d4cec3;
+  --el-color-primary-light-9: var(--accent-soft);
+  --el-color-primary-dark-2: #000000;
+  --el-color-success: var(--success);
+  --el-color-success-light-9: var(--success-bg);
+  --el-color-warning: var(--warning);
+  --el-color-warning-light-9: var(--warning-bg);
+  --el-color-danger: var(--danger);
+  --el-color-danger-light-9: var(--danger-bg);
+  --el-color-error: var(--danger);
+  --el-color-error-light-9: var(--danger-bg);
+  --el-color-info: var(--info);
+  --el-color-info-light-9: var(--info-bg);
+  --el-text-color-primary: var(--ink);
+  --el-text-color-regular: var(--ink-secondary);
+  --el-text-color-secondary: var(--muted);
+  --el-text-color-placeholder: var(--muted-2);
+  --el-border-color: var(--rule);
+  --el-border-color-light: var(--rule);
+  --el-border-color-lighter: #e9e4da;
+  --el-border-color-extra-light: #efebe3;
+  --el-fill-color: var(--paper-deep);
+  --el-fill-color-light: var(--paper);
+  --el-fill-color-lighter: #faf7f0;
+  --el-fill-color-blank: var(--surface);
+  --el-bg-color: var(--surface);
+  --el-bg-color-page: var(--paper);
+  --el-bg-color-overlay: var(--surface);
+  --el-font-family: var(--font-sans);
+  --el-font-size-base: 12px;
+  --el-font-size-small: 11px;
+  --el-border-radius-base: 2px;
+  --el-border-radius-small: 2px;
+  --el-border-radius-round: 999px;
+  --el-box-shadow-light: 0 8px 24px rgb(28 28 28 / 8%);
+  --el-box-shadow: 0 12px 40px rgb(28 28 28 / 10%);
+  --el-disabled-bg-color: var(--paper);
+  --el-disabled-text-color: var(--muted-2);
+  --el-disabled-border-color: var(--rule);
 }
 
-/* 大号显示字体（Sentra 的 Bubbledot 点阵字）：只用于品牌名与大数字，正文一律 JetBrains Mono */
-.font-display {
-  font-family: 'BubbledotICG-FinePos', 'JetBrains Mono', monospace;
+/* ---------- Element Plus skin ---------- */
+html .el-button {
+  height: 36px;
+  padding: 0 13px;
+  border-radius: 2px;
+  border-color: var(--rule);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+html .el-button:hover,
+html .el-button:focus-visible {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--paper);
+}
+html .el-button--primary {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+html .el-button--primary:hover,
+html .el-button--primary:focus-visible {
+  border-color: #000;
+  background: #000;
+  color: var(--paper);
+}
+html .el-button--danger {
+  border-color: rgb(163 58 50 / 35%);
+  background: transparent;
+  color: var(--danger);
+}
+html .el-button.is-link {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 11.5px;
+  font-weight: 400;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+html .el-button.is-link:hover {
+  color: var(--accent);
+  background: transparent;
+}
+html .el-button.is-link.is-disabled {
+  color: var(--muted-2);
+}
+html .el-button--small {
+  height: 30px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+html .el-button--mini {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 10px;
+}
+html .el-button-group .el-button {
+  border-radius: 0;
+}
+html .el-button-group .el-button:first-child {
+  border-radius: 2px 0 0 2px;
+}
+html .el-button-group .el-button:last-child {
+  border-radius: 0 2px 2px 0;
+}
+
+html .el-input__wrapper,
+html .el-select__wrapper,
+html .el-textarea__inner {
+  border-radius: 2px;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--rule) inset;
+  color: var(--ink);
+  font-size: 12px;
+}
+html .el-input__wrapper,
+html .el-select__wrapper {
+  min-height: 36px;
+}
+html .el-input__wrapper:hover,
+html .el-select__wrapper:hover,
+html .el-textarea__inner:hover {
+  box-shadow: 0 0 0 1px var(--muted-2) inset;
+}
+html .el-input__wrapper.is-focus,
+html .el-select__wrapper.is-focused,
+html .el-textarea__inner:focus {
+  box-shadow: 0 0 0 1px var(--ink) inset, 0 0 0 2px var(--accent-soft);
+}
+html .el-input__inner {
+  color: var(--ink);
+}
+html .el-input__inner::placeholder,
+html .el-textarea__inner::placeholder {
+  color: var(--muted-2);
+}
+html .el-select__placeholder {
+  color: var(--muted);
+}
+html .el-textarea__inner {
+  padding: 7px 9px;
+  line-height: 20px;
+}
+html .el-input-number {
+  width: 120px;
+}
+html .el-form-item__label {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
   letter-spacing: 0.02em;
 }
+html .el-form-item {
+  margin-bottom: 16px;
+}
+html .el-form-item__error {
+  font-size: 10px;
+  color: var(--danger);
+}
 
-/* ⚠️ 入场动画是「opacity: 0 + animation forwards」写的（照提示词），
-   所以必须给"不想看动画"的用户留一条生路：否则动画被禁用时整页内容会停在透明状态（等于白屏）。
-   这既是可访问性要求，也是 03 §16 那类"静默失效"的防线。 */
+html .el-card {
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  background: var(--surface);
+  box-shadow: none;
+  color: var(--ink);
+}
+html .el-card__header {
+  padding: 15px 18px 13px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink);
+}
+html .el-card__body {
+  padding: 18px;
+}
+
+html .el-table {
+  --el-table-border-color: var(--rule);
+  --el-table-header-bg-color: transparent;
+  --el-table-header-text-color: var(--muted);
+  --el-table-row-hover-bg-color: rgb(129 109 112 / 4%);
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-expanded-cell-bg-color: transparent;
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 12px;
+}
+html .el-table::before,
+html .el-table__inner-wrapper::before {
+  display: none;
+}
+html .el-table tr,
+html .el-table th.el-table__cell,
+html .el-table td.el-table__cell {
+  background: transparent;
+}
+html .el-table th.el-table__cell {
+  height: 40px;
+  padding: 0;
+  border-bottom: 1px solid var(--rule-strong);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+html .el-table td.el-table__cell {
+  height: 52px;
+  padding: 0;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-secondary);
+  font-size: 12px;
+}
+html .el-table .cell {
+  padding: 0 12px;
+  line-height: 20px;
+}
+html .el-table th.el-table__cell .cell {
+  line-height: 14px;
+}
+html .el-table__row:hover > td.el-table__cell {
+  background: rgb(129 109 112 / 4%);
+}
+html .el-table__empty-text {
+  color: var(--muted-2);
+  font-size: 11px;
+}
+html .el-table .el-table__cell.is-right {
+  text-align: right;
+}
+html .el-table__fixed-right::before,
+html .el-table__fixed::before {
+  display: none;
+}
+html .el-table--border .el-table__cell {
+  border-right-color: var(--rule);
+}
+html .el-table__body-wrapper .el-scrollbar__bar {
+  opacity: 0.35;
+}
+
+html .el-tag {
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 20px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+html .el-tag--success {
+  border-color: rgb(63 97 72 / 35%);
+  background: transparent;
+  color: var(--success);
+}
+html .el-tag--info {
+  border-color: var(--rule);
+  background: transparent;
+  color: var(--info);
+}
+html .el-tag--warning {
+  border-color: rgb(138 106 47 / 35%);
+  background: transparent;
+  color: var(--warning);
+}
+html .el-tag--danger {
+  border-color: rgb(163 58 50 / 35%);
+  background: transparent;
+  color: var(--danger);
+}
+
+html .el-pagination {
+  gap: 2px;
+  color: var(--muted);
+  font-size: 10px;
+}
+html .el-pagination .el-select {
+  width: 92px;
+}
+html .el-pagination .el-select__wrapper {
+  min-height: 26px;
+  font-size: 10px;
+  box-shadow: 0 0 0 1px var(--rule) inset;
+}
+html .el-pagination button,
+html .el-pagination .el-pager li {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 5px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+html .el-pagination button:hover,
+html .el-pagination .el-pager li:hover {
+  color: var(--ink);
+}
+html .el-pagination .el-pager li.is-active {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+  font-weight: 500;
+}
+html .el-pagination button:disabled {
+  color: var(--muted-2);
+  opacity: 0.5;
+}
+html .el-pagination__sizes {
+  margin-right: 4px;
+}
+html .el-pagination__total {
+  margin-right: 32px;
+  color: var(--muted-2);
+}
+
+html .el-dialog {
+  --el-dialog-bg-color: var(--surface);
+  --el-dialog-border-radius: 2px;
+  border: 1px solid var(--rule);
+  box-shadow: 0 24px 64px rgb(28 28 28 / 12%);
+}
+html .el-dialog__header {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--rule);
+}
+html .el-dialog__title {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.3px;
+  color: var(--ink);
+}
+html .el-dialog__body {
+  padding: 18px 20px;
+  color: var(--ink-secondary);
+}
+html .el-dialog__footer {
+  padding: 12px 20px 18px;
+  border-top: 1px solid var(--rule);
+}
+html .el-overlay {
+  background: rgb(28 28 28 / 35%);
+}
+html .el-message-box {
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--surface);
+  box-shadow: 0 24px 64px rgb(28 28 28 / 12%);
+}
+html .el-message-box__title {
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 500;
+}
+html .el-message {
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 8px 24px rgb(28 28 28 / 8%);
+  font-size: 12px;
+}
+
+html .el-alert {
+  border-radius: 0;
+  border-left: 2px solid currentColor;
+  padding: 9px 12px;
+}
+html .el-alert--error {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+html .el-alert--warning {
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+html .el-alert--success {
+  color: var(--success);
+  background: var(--success-bg);
+}
+html .el-alert--info {
+  color: var(--info);
+  background: var(--info-bg);
+}
+html .el-alert__title {
+  font-size: 11.5px;
+  line-height: 18px;
+}
+html .el-alert__description {
+  font-size: 10.5px;
+  line-height: 17px;
+}
+
+html .el-descriptions {
+  --el-descriptions-table-border: 1px solid var(--rule);
+  color: var(--ink-secondary);
+}
+html .el-descriptions__label.el-descriptions__cell.is-bordered-label {
+  color: var(--muted);
+  background: var(--paper);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+html .el-descriptions__content.el-descriptions__cell.is-bordered-content {
+  background: var(--surface);
+  font-size: 12px;
+}
+html .el-descriptions__body .el-descriptions__table.is-bordered {
+  border-color: var(--rule);
+}
+
+html .el-popover.el-popper,
+html .el-dropdown__popper,
+html .el-select__popper {
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(28 28 28 / 10%);
+  color: var(--ink);
+}
+html .el-popper.is-light .el-popper__arrow::before {
+  border-color: var(--rule);
+  background: var(--surface);
+}
+html .el-dropdown-menu {
+  background: transparent;
+  padding: 4px 0;
+}
+html .el-dropdown-menu__item {
+  color: var(--ink-secondary);
+  font-size: 11.5px;
+  padding: 7px 14px;
+}
+html .el-dropdown-menu__item:hover {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+html .el-select-dropdown__item {
+  color: var(--ink-secondary);
+  font-size: 11.5px;
+}
+html .el-select-dropdown__item.is-selected,
+html .el-select-dropdown__item.is-hovering {
+  color: var(--ink);
+  background: var(--accent-soft);
+}
+
+html .el-empty {
+  padding: 24px 0;
+}
+html .el-empty__description p {
+  color: var(--muted-2);
+  font-size: 11px;
+}
+html .el-loading-mask {
+  background: rgb(247 244 237 / 72%);
+}
+
+html .el-radio-button__inner {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--rule);
+  border-left: 0;
+  border-radius: 0 !important;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  box-shadow: none !important;
+}
+html .el-radio-button:first-child .el-radio-button__inner {
+  border-left: 1px solid var(--rule);
+}
+html .el-radio-button__inner:hover {
+  color: var(--ink);
+}
+html .el-radio-button__original-radio:checked + .el-radio-button__inner {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+html .el-switch__core {
+  border-radius: 2px;
+}
+html .el-switch.is-checked .el-switch__core {
+  border-color: var(--ink);
+  background: var(--ink);
+}
+html .el-progress-bar__outer {
+  border-radius: 0;
+  background: var(--paper-deep);
+}
+html .el-progress-bar__inner {
+  border-radius: 0;
+  background: var(--ink);
+}
+html .el-skeleton__item {
+  border-radius: 0;
+  background: linear-gradient(90deg, var(--paper-deep) 25%, var(--paper) 37%, var(--paper-deep) 63%);
+  background-size: 400% 100%;
+}
+
+html .el-collapse {
+  border-top: 1px solid var(--ink);
+  border-bottom: 0;
+}
+html .el-collapse-item__header {
+  height: 52px;
+  padding: 0;
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+}
+html .el-collapse-item__wrap {
+  border-bottom: 0;
+  background: transparent;
+}
+html .el-collapse-item__content {
+  padding-bottom: 18px;
+  color: var(--ink-secondary);
+  font-size: 12px;
+}
+html .el-collapse-item__arrow {
+  color: var(--muted);
+}
+
+html .el-timeline {
+  padding-left: 2px;
+}
+html .el-timeline-item__tail {
+  border-left-color: var(--rule);
+}
+html .el-timeline-item__node {
+  width: 7px;
+  height: 7px;
+  border-radius: 0;
+  background: var(--muted);
+}
+html .el-timeline-item__node--success {
+  background: var(--success);
+}
+html .el-timeline-item__node--danger {
+  background: var(--danger);
+}
+html .el-timeline-item__timestamp {
+  color: var(--muted-2);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+/* ---------- page utilities ---------- */
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 0 18px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--rule);
+}
+.page-head__copy {
+  min-width: 0;
+}
+.page-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.page-eyebrow::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  flex: none;
+  background: var(--accent);
+}
+.page-title {
+  margin: 8px 0 0;
+  font-family: var(--font-serif);
+  font-size: 38px;
+  line-height: 44px;
+  font-weight: 500;
+  letter-spacing: -1.2px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.page-lede {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 20px;
+}
+.page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 2px;
+}
+.page-actions .el-button + .el-button {
+  margin-left: 0;
+}
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.section-head > span {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  line-height: 27px;
+  font-weight: 500;
+  letter-spacing: -0.3px;
+  color: var(--ink);
+}
+.section-head__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-card {
+  margin-top: 24px;
+}
+.page-head + .section-card {
+  margin-top: 0;
+}
+html .section-card.el-card {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+html .section-card .el-card__header {
+  padding: 0 0 11px;
+  border-bottom: 0;
+}
+html .section-card .el-card__body {
+  padding: 0;
+}
+html .section-card + .section-card {
+  padding-top: 18px;
+  border-top: 1px solid var(--rule);
+}
+
+/* ---------- list & report utilities ---------- */
+.list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--rule);
+}
+html .list-toolbar__search {
+  width: 280px;
+}
+html .list-toolbar__select {
+  width: 160px;
+}
+.list-toolbar__icon {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--muted-2);
+}
+.list-toolbar__note {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 18px;
+}
+.table-list {
+  border-top: 1px solid var(--ink);
+}
+html .table-list .el-button.is-link + .el-button.is-link {
+  margin-left: 14px;
+}
+.list-pager {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 14px;
+}
+.page-alert {
+  margin: 14px 0;
+}
+.section-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 18px;
+}
+.note-block {
+  margin: 0 0 18px;
+  padding: 11px 14px;
+  border-left: 2px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink-secondary);
+  font-size: 10.5px;
+  line-height: 19px;
+}
+.mono {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+.status-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 18px;
+}
+.status-mark::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  flex: none;
+  background: currentColor;
+}
+.status-mark.is-success {
+  color: var(--success);
+}
+.status-mark.is-warning {
+  color: var(--warning);
+}
+.status-mark.is-off {
+  color: var(--muted-2);
+}
+.grade--a {
+  color: var(--success);
+}
+.grade--b {
+  color: var(--ink);
+}
+.grade--c {
+  color: var(--warning);
+}
+.grade--d {
+  color: var(--danger);
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
+  background: var(--rule);
+}
+.meta-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.meta-grid--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.meta-grid__item {
+  min-width: 0;
+  padding: 12px 16px;
+  background: var(--paper);
+}
+.meta-grid__item > span {
+  display: block;
+  color: var(--muted-2);
+  font-size: 8.5px;
+  line-height: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.meta-grid__item > strong {
+  display: block;
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meta-grid__item > strong small {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 400;
+}
+
+.figure-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
+  background: var(--rule);
+}
+.figure-strip--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.figure {
+  min-width: 0;
+  padding: 15px 18px 14px;
+  background: var(--paper);
+}
+.figure__label {
+  display: block;
+  color: var(--muted-2);
+  font-size: 8.5px;
+  line-height: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.figure__value {
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 30px;
+  line-height: 35px;
+  font-weight: 500;
+  letter-spacing: -0.8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.figure__value small {
+  margin-left: 5px;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.figure__note {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 16px;
+}
+.figure__note .el-tag {
+  height: 18px;
+  line-height: 16px;
+}
+
+.page-block {
+  animation: spe-fade-in 260ms ease-out both;
+}
+@keyframes spe-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 1000px) {
+  .meta-grid,
+  .meta-grid--4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .figure-strip,
+  .figure-strip--3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  html .list-toolbar__search,
+  html .list-toolbar__select {
+    width: 100%;
+  }
+  .list-toolbar__note {
+    margin-left: 0;
+  }
+  .meta-grid,
+  .meta-grid--2,
+  .meta-grid--4,
+  .figure-strip,
+  .figure-strip--3 {
+    grid-template-columns: 1fr;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    opacity: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .page-block {
+    opacity: 1 !important;
+    transform: none !important;
   }
 }
-
-/* ============================================================================
-   全局 Element Plus 组件皮肤（2026-10-04，逐页细化的底座）
-
-   为什么放全局而不是逐页 `:deep()`：圆角、表头、卡片边框、输入高度这些是**每一页都要
-   一致**的观感，散在十个页面的 scoped 样式里必然漂移（06 §3.2 的"同一事实只在一处定义"
-   对样式同样成立）。页面里只写它**特有**的东西。
-
-   ⚠️ 选择器一律带 `html` 前缀提高特异性：EP 的样式由 unplugin **按需注入**、时机晚于本
-   文件，同特异性的规则会被它盖回去——主色那组变量就是这么栽过一次（见上面 html:root）。
-   ========================================================================== */
-
-html:root {
-  /* 圆角：对齐 Sentra 的 rounded-xl(12px) / rounded-2xl(16px) 两档 */
-  --el-border-radius-base: 10px;
-  --el-border-radius-small: 8px;
-  --el-border-radius-round: 999px;
-
-  /* 填充与描边收敛到 Sentra 的次级卡片色一族，让分页/hover/斑马纹落在同一色系 */
-  --el-fill-color-light: #ebe8eb;
-  --el-fill-color-lighter: #f2f0f2;
-  --el-border-color-lighter: rgb(0 0 0 / 6%);
-  --el-text-color-primary: #101010;
-  --el-text-color-regular: rgb(0 0 0 / 72%);
-}
-
-/* ---- 卡片：去边框 + 16px 圆角 + 极浅投影（Sentra 的 rounded-2xl）---- */
-html .el-card {
-  border: none;
-  border-radius: 16px;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
-}
-
-/* 卡片标题栏做"eyebrow 化"：小号、宽字距、灰——与首页 .home__card-title 同一形态。
-   ⚠️ **刻意不加 `text-transform: uppercase`**：卡片标题里可能出现英文编码（如供应商
-   `E2E-W3-001`）或单位，强制大写会让"界面上看到的"与"库里的真实值"不一致
-   （视觉 ≠ 数据）。大写只留给本来就是全大写的 `.page-eyebrow`（03 §35 第 4 条）。 */
-html .el-card__header {
-  padding: 16px 20px;
-  font-size: 12px;
-  font-weight: 600;
-  color: rgb(0 0 0 / 55%);
-  letter-spacing: 0.08em;
-  border-bottom: 1px solid rgb(0 0 0 / 6%);
-}
-
-html .el-card__body {
-  padding: 20px;
-}
-
-/* ---- 表格：表头吃次级卡片色，行 hover 用更浅一档 ---- */
-html .el-table {
-  --el-table-border-color: rgb(0 0 0 / 5%);
-  --el-table-header-bg-color: #ebe8eb;
-  --el-table-header-text-color: rgb(0 0 0 / 70%);
-  --el-table-row-hover-bg-color: #f2f0f2;
-
-  border-radius: 12px;
-}
-
-html .el-table th.el-table__cell {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-/* ---- 输入类控件：圆角统一（含下拉框——EP 2.14 的 select 是独立的 wrapper，
-      漏了它会与输入框出现两种圆角，03 §35 第 2 条）---- */
-html .el-input__wrapper,
-html .el-textarea__inner,
-html .el-select__wrapper {
-  border-radius: 10px;
-}
-
-/* ---- 按钮：圆角 + 中等字重（主色已在上面的 html:root 改成橙）---- */
-html .el-button {
-  font-weight: 500;
-  border-radius: 10px;
-}
-
-/* ---- 弹窗 / 消息框：大圆角 ---- */
-html .el-dialog,
-html .el-message-box {
-  border-radius: 16px;
-}
-
-/* ---- 标签 / 分页当前页：小圆角 ---- */
-html .el-tag {
-  border-radius: 8px;
-}
-
-html .el-pagination.is-background .el-pager li,
-html .el-pagination.is-background .btn-prev,
-html .el-pagination.is-background .btn-next {
-  border-radius: 8px;
-}
-
-/* ---- 暗壳里的导航菜单（2026-10-04 从 DefaultLayout 提出；03 §35 第 6 条）----
-   EP 的 el-menu 默认是白底黑字，放在 #000 的侧栏上不可读。这里改的是 **EP 自己的
-   CSS 变量**（公开契约，比逐个覆盖内部类稳），集中一处后任何暗底导航都能复用。
-   ⚠️ `.layout__aside` 由 `app/layouts/DefaultLayout.vue` 提供——全局样式依赖组件类名是
-   有意为之（它是"暗壳"的唯一标识）；改名时两处要一起改。 */
-html .layout__aside .el-menu {
-  --el-menu-bg-color: transparent;
-  --el-menu-text-color: rgb(255 255 255 / 55%);
-  --el-menu-hover-bg-color: rgb(255 255 255 / 8%);
-  --el-menu-active-color: #fff;
-  --el-menu-border-color: transparent;
-
-  padding: 8px;
-  border-right: none;
-}
-
-html .layout__aside .el-menu-item {
-  height: 42px;
-  margin-bottom: 4px;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
-  border-radius: 0.75rem;
-}
-
-/* 激活项 = Sentra 的"白 pill"语言（设计稿里是 bg-black text-white，这里反相） */
-html .layout__aside .el-menu-item.is-active {
-  font-weight: 600;
-  color: #fff;
-  background: rgb(255 255 255 / 14%);
-}
-
-/* ============================================================================
-   页面级工具类：各页共用同一套页头与卡片（页面里只写自己特有的东西）
-   ========================================================================== */
-
-/* 页头：eyebrow（小号大写宽字距）+ 标题，形态与首页一致 */
-.page-head {
-  padding: 2px 2px 0;
-  margin-bottom: 16px;
-}
-
-.page-eyebrow {
-  margin: 0 0 8px;
-  font-size: 11px;
-  color: rgb(0 0 0 / 45%);
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: #000;
-  letter-spacing: -0.01em;
-}
-
-/* 页面里的区块入场（与首页同一缓动；延迟由各页用 style 指定，形成阶梯） */
-@keyframes spe-fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.page-block {
-  opacity: 0;
-  animation: spe-fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* ---- 卡片标题栏的「标题 + 右侧操作」形态（SectionCard 组件用）----
-   原先这套结构在 6 个页面各写一遍、还配了两套类名（`.page__header` / `.card-header`）。
-   现在结构在组件里、样式在这里：改这一处，全项目的卡片标题栏一起变。 */
-.section-head {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.section-head__actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-/* 区块之间的竖直间距：原先 6 个页面各写一份 `.block { margin-bottom }`，
-   现在由组件自带类承担——改这一处，全项目的区块间距一起变。 */
-.section-card {
-  margin-bottom: 12px;
-}
-
-
-
