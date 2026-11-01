@@ -82,7 +82,7 @@ Nginx ──────────────► 静态 SPA（Vue 3 构建产
 ├─ scripts/                  供应链、约定、演示数据检查器
 ├─ 01~28-*.md                规格、设计、计划、审查与运行记录
 ├─ docker-compose.yml
-├─ LICENSE                   GPL-3.0-only 全文
+├─ LICENSE                   GPL-3.0-or-later 全文
 └─ README.md
 ```
 
@@ -239,10 +239,10 @@ Windows 上 `vite build` 若报 `Access is denied`，是 `%TEMP%` 中的 esbuild
 
 ## 许可证
 
-本项目采用 **GNU General Public License v3.0 only**（`GPL-3.0-only`）发布。完整许可证文本见 [LICENSE](./LICENSE)。
+本项目采用 **GNU General Public License v3.0 or later**（`GPL-3.0-or-later`）发布。完整许可证文本见 [LICENSE](./LICENSE)。
 
 ```text
 SPE — Supplier Performance Evaluation
 Copyright (C) 2026 SPE contributors
-SPDX-License-Identifier: GPL-3.0-only
+SPDX-License-Identifier: GPL-3.0-or-later
 ```
