@@ -61,6 +61,10 @@ $itPat = '(?m)^\s*(it|test)(\.each|\.skip|\.only|\.todo|\.fails|\.concurrent|\.s
 $e2eItPat = '(?m)^\s*test(\.each|\.skip|\.only|\.todo|\.fails|\.concurrent|\.sequential)?\('
 
 $fail = @()
+
+function Add-ScanEmpty([string]$Message) {
+  $script:fail += "scan-empty：$Message"
+}
 $warn = @()
 $ok = @()
 
@@ -78,7 +82,7 @@ $testFiles = @(Get-ChildItem -Recurse $testDir -Filter *.java -ErrorAction Silen
 #    没有这一段时，扫不到任何测试文件会让本脚本**打印「结论：通过（0 个 WARN）」并 exit 0**：
 #    门禁静默退化成空操作，比误报更难发现（误报至少会被人看见）。
 if ($testFiles.Count -eq 0) {
-  $fail += "scan-empty：在 $testDir 下一个 .java 都没扫到 —— 判定不可信（目录被移动/改名？），不代表没有问题"
+  Add-ScanEmpty "在 $testDir 下一个 .java 都没扫到 —— 判定不可信（目录被移动/改名？），不代表没有问题"
 }
 
 $classStats = @()
@@ -158,7 +162,7 @@ foreach ($file in $testFiles) {
 }
 
 if ($classStats.Count -eq 0 -and $testFiles.Count -gt 0) {
-  $fail += "scan-empty：扫到了 $($testFiles.Count) 个 .java，但一个含 @Test/@ArchTest 的测试类都没有 —— 判定不可信"
+  Add-ScanEmpty "扫到了 $($testFiles.Count) 个 .java，但一个含 @Test/@ArchTest 的测试类都没有 —— 判定不可信"
 }
 if ($classStats.Count -gt 0) {
   $totalTests = ($classStats | Measure-Object 测试 -Sum).Sum
@@ -179,7 +183,7 @@ $archEffectPath = Join-Path $repoRoot 'backend\src\test\java\com\spe\architectur
 #    而脚本照报「结论：通过」。检查项自己把自己关掉了，比它报错更难发现（04-071）。
 $archMissing = @($archTestPath, $archEffectPath) | Where-Object { -not (Test-Path $_) }
 if ($archMissing.Count -gt 0) {
-  $fail += "scan-empty：ArchUnit 规则或等效性用例文件不存在（$($archMissing.Count) 个）—— 这条检查没法判定，不代表规则都有夹具"
+  Add-ScanEmpty "ArchUnit 规则或等效性用例文件不存在（$($archMissing.Count) 个）—— 这条检查没法判定，不代表规则都有夹具"
 } else {
   $ruleSource = [System.IO.File]::ReadAllText($archTestPath)
   $effectSource = [System.IO.File]::ReadAllText($archEffectPath)
@@ -192,7 +196,7 @@ if ($archMissing.Count -gt 0) {
   $rules = @([regex]::Matches($ruleSource, '(?m)^\s*static final ArchRule\s+(\w+)') |
     ForEach-Object { $_.Groups[1].Value })
   if ($rules.Count -eq 0) {
-    $fail += "scan-empty：在 ArchitectureTest 里一个 `static final ArchRule` 都没扫到 —— 判定不可信（写法变了？）"
+    Add-ScanEmpty "在 ArchitectureTest 里一个 `static final ArchRule` 都没扫到 —— 判定不可信（写法变了？）"
   }
 
   $uncovered = @()
@@ -227,7 +231,7 @@ if (Test-Path $feDir) {
   $feFiles = @(Get-ChildItem -Recurse $feDir -Include *.spec.ts -File -ErrorAction SilentlyContinue)
 }
 if ($feFiles.Count -eq 0) {
-  $fail += "scan-empty：在 $feDir 下一个 *.spec.ts 都没扫到 —— 判定不可信，不代表前端没有测试问题"
+  Add-ScanEmpty "在 $feDir 下一个 *.spec.ts 都没扫到 —— 判定不可信，不代表前端没有测试问题"
 }
 $feIt = 0; $feExpect = 0
 foreach ($file in $feFiles) {
@@ -245,7 +249,7 @@ foreach ($file in $feFiles) {
   }
 }
 if ($feFiles.Count -gt 0 -and $feIt -eq 0) {
-  $fail += "scan-empty：扫到了 $($feFiles.Count) 个 *.spec.ts 但一个用例声明都没有 —— 判定不可信（写法变了？）"
+  Add-ScanEmpty "扫到了 $($feFiles.Count) 个 *.spec.ts 但一个用例声明都没有 —— 判定不可信（写法变了？）"
 }
 if ($feIt -gt 0) {
   $ok += ("frontend-suite：{0} 个 Vitest 用例 / {1} 处 expect（密度 {2:N2}）" -f $feIt, $feExpect, ($feExpect / $feIt))
@@ -258,7 +262,7 @@ if (Test-Path $e2eDir) {
   $e2eFiles = @(Get-ChildItem $e2eDir -Filter *.spec.ts -File -ErrorAction SilentlyContinue)
 }
 if ($e2eFiles.Count -eq 0) {
-  $fail += "scan-empty：在 $e2eDir 下一个 *.spec.ts 都没扫到 —— 判定不可信"
+  Add-ScanEmpty "在 $e2eDir 下一个 *.spec.ts 都没扫到 —— 判定不可信"
 }
 $e2eTests = 0; $e2eExpect = 0
 foreach ($file in $e2eFiles) {
@@ -267,7 +271,7 @@ foreach ($file in $e2eFiles) {
   $e2eExpect += ([regex]::Matches($text, 'expect\(')).Count
 }
 if ($e2eFiles.Count -gt 0 -and $e2eTests -eq 0) {
-  $fail += "scan-empty：扫到了 $($e2eFiles.Count) 个 e2e spec 但一个 test( 声明都没有 —— 判定不可信"
+  Add-ScanEmpty "扫到了 $($e2eFiles.Count) 个 e2e spec 但一个 test( 声明都没有 —— 判定不可信"
 }
 if ($e2eTests -gt 0) {
   $ok += ("e2e-suite：{0} 个 Playwright 用例 / {1} 处 expect（密度 {2:N2}）" -f $e2eTests, $e2eExpect, ($e2eExpect / $e2eTests))
