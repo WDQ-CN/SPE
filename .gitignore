@@ -43,3 +43,8 @@ desktop.ini
 # Qoder / ZCode 本地工具元数据（repowiki、插件配置等，不入库）
 .qoder/
 .zcode/
+
+# 远程仓库只发布根 README；规格、计划、审查等 Markdown 仅本地保留
+/*.md
+!/README.md
+/**/*.md

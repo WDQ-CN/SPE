@@ -14,7 +14,7 @@ SPE（Supplier Performance Evaluation）是一个面向采购与质量团队的�
 - 后端 **421** 个测试、前端 **150** 个 Vitest 用例、真实全栈 **28** 个 Playwright e2e、像素级视觉回归 **10 个用例 / 12 张基线**。
 - `pnpm lint` 0 warning、`pnpm build` 通过；应用依赖 OSV **0/0**，MySQL 8.4.13 的 NVD 与 Oracle Linux errata 已核对。
 - 视觉基线：**Editorial Ledger**（纸面、墨色、衬线标题/数字、1px 规则线），覆盖全部页面与移动端菜单。
-- 代码在 `main`，当前基线见 [`11-开发进程总览.md`](./11-开发进程总览.md)。
+- 代码在 `main`；后端/前端/端到端/视觉回归的原始验证日志保存在根目录 `29-*.log`、`30-*.log`。
 
 ## 功能
 
@@ -80,11 +80,12 @@ Nginx ──────────────► 静态 SPA（Vue 3 构建产
 ├─ docker/                   MySQL 派生镜像与初始化脚本
 ├─ design/editorial-ledger/  Editorial Ledger 设计包、原型、截图
 ├─ scripts/                  供应链、约定、演示数据检查器
-├─ 01~28-*.md                规格、设计、计划、审查与运行记录
 ├─ docker-compose.yml
 ├─ LICENSE                   GPL-3.0-or-later 全文
 └─ README.md
 ```
+
+> 规格、计划、审查与运行记录保留在本地工作区，不随远程仓库发布；远程只提供本 README 作为文档入口。
 
 ## 快速启动（Docker Compose）
 
@@ -165,7 +166,7 @@ pnpm install
 pnpm dev
 ```
 
-开发服务器把 `/api/` 反代到 `http://localhost:18080`（可用 `VITE_API_TARGET` 覆盖）。**本机 pnpm 建议经 corepack 调用**：`& 'D:\Node\corepack.cmd' pnpm dev`（PATH 上的旧垫片可能失效，见 `04-开发小记`）。
+开发服务器把 `/api/` 反代到 `http://localhost:18080`（可用 `VITE_API_TARGET` 覆盖）。**本机 pnpm 建议经 corepack 调用**：`& 'D:\Node\corepack.cmd' pnpm dev`（PATH 上的旧垫片可能失效）。
 
 ## 测试与质量门
 
@@ -186,11 +187,11 @@ cd frontend && pnpm test:visual:update   # 有意改视觉后更新基线，人�
 
 当前基线：后端 **421/421**、前端 **150**、e2e **28/28**、视觉 **10/10（12 张基线）**；`pnpm lint` 0 warning、`pnpm build` 通过。视觉基线文件名带 `win32` 平台后缀，换平台或 Chrome 大版本需要重新生成。
 
-Windows 上 `vite build` 若报 `Access is denied`，是 `%TEMP%` 中的 esbuild 临时文件被占用；按 `04-106`/`04-126` 换独立 `TEMP` 后重试，不要据此判断代码有错。
+Windows 上 `vite build` 若报 `Access is denied`，是 `%TEMP%` 中的 esbuild 临时文件被占用；换一个可写的独立 `TEMP` 后重试，不要据此判断代码有错。
 
 ## API 概览
 
-完整接口与字段以 [`02-概要设计说明书.md`](./02-概要设计说明书.md) 和 `backend` 的 Controller 为准。
+完整接口与字段以 `backend` 的 Controller 与 DTO 为准。
 
 | 前缀 | 说明 |
 |---|---|
@@ -214,21 +215,9 @@ Windows 上 `vite build` 若报 `Access is denied`，是 `%TEMP%` 中的 esbuild
 - 生产模式不设置 `SPRING_PROFILES_ACTIVE=demo`，因此不会加载演示数据。
 - 审计日志记录登录、权限拒绝与业务写操作；不要在日志或审计 detail 中写入口令、Token 明文。
 
-## 文档索引
+## 文档
 
-| 文档 | 内容 |
-|---|---|
-| [`01-需求规格说明书.md`](./01-需求规格说明书.md) | 需求、权限矩阵、评分口径、验收与里程碑 |
-| [`02-概要设计说明书.md`](./02-概要设计说明书.md) | 数据模型、REST 接口、状态机 |
-| [`05-架构设计说明书.md`](./05-架构设计说明书.md) | 限界上下文、契约隔离、事务边界、ADR |
-| [`06-开发规范.md`](./06-开发规范.md) | 编码、测试、前端结构、Git 与安全检查清单 |
-| [`11-开发进程总览.md`](./11-开发进程总览.md) | **接手入口**：阶段进度、基线、环境与核对命令 |
-| [`13-P3评估流程详细计划.md`](./13-P3评估流程详细计划.md) | 评分、任务、导入与试算的执行决策 |
-| [`15-P4审批定级详细计划.md`](./15-P4审批定级详细计划.md) | 审批链、定稿、报告快照 |
-| [`22-M5详细计划.md`](./22-M5详细计划.md) | 分析、预警、解锁与导出 |
-| [`23-M6详细计划.md`](./23-M6详细计划.md) | 开放 API 与 Token |
-| [`28-Spring7-Boot4迁移详细计划.md`](./28-Spring7-Boot4迁移详细计划.md) | Boot 4/Jackson 3/JDK 21 迁移 |
-| [`design/editorial-ledger/README.md`](./design/editorial-ledger/README.md) | 视觉方向、原型、token 与 Vue 落地记录 |
+远程仓库只发布本 README。需求规格、概要设计、开发计划、审查记录、运行手册与设计说明保留在本地工作区，不随远程仓库公开；界面原型与截图仍在 `design/editorial-ledger/` 中。
 
 ## 已知边界
 
@@ -240,6 +229,10 @@ Windows 上 `vite build` 若报 `Access is denied`，是 `%TEMP%` 中的 esbuild
 ## 许可证
 
 本项目采用 **GNU General Public License v3.0 or later**（`GPL-3.0-or-later`）发布。完整许可证文本见 [LICENSE](./LICENSE)。
+
+### 第三方字体
+
+Playfair Display、Albert Sans、Noto Serif SC 与 JetBrains Mono 均按 **SIL Open Font License 1.1** 自托管；来源为 Google Fonts 与 npm 包 `@fontsource/jetbrains-mono`。字体子集、来源与许可明细保留在本地 `frontend/public/fonts/README.md`（不随远程发布）。
 
 ```text
 SPE — Supplier Performance Evaluation
