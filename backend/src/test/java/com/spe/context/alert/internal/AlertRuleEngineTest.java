@@ -46,6 +46,9 @@ class AlertRuleEngineTest {
         AlertRuleEngine.evaluate(evaluation("69.99", List.of(), List.of(), RULES));
     assertThat(below).extracting(AlertRuleEngine.Draft::type).containsExactly(AlertTypes.TOTAL_LOW);
     assertThat(below.get(0).content()).contains("69.99", "低于阈值 70", "2026 Q2");
+    assertThat(below.get(0).dimensionId()).as("总分预警不绑定维度").isNull();
+    assertThat(below.get(0).baselineScore()).isEqualByComparingTo("69.99");
+    assertThat(below.get(0).targetScore()).as("D4：总分类目标=总分阈值").isEqualByComparingTo("70");
 
     assertThat(AlertRuleEngine.evaluate(evaluation("70", List.of(), List.of(), RULES))).isEmpty();
   }
@@ -67,6 +70,9 @@ class AlertRuleEngineTest {
     assertThat(drafts).extracting(AlertRuleEngine.Draft::type)
         .containsExactly(AlertTypes.KEY_DIMENSION_LOW);
     assertThat(drafts.get(0).content()).contains("质量", "69.5", "低于阈值 70");
+    assertThat(drafts.get(0).dimensionId()).as("D4/D8：关键维度预警必须带维度 id").isEqualTo(11L);
+    assertThat(drafts.get(0).baselineScore()).isEqualByComparingTo("69.5");
+    assertThat(drafts.get(0).targetScore()).as("D4：关键维度目标=维度阈值").isEqualByComparingTo("70");
   }
 
   @Test
@@ -82,6 +88,9 @@ class AlertRuleEngineTest {
     assertThat(drafts).extracting(AlertRuleEngine.Draft::type)
         .containsExactly(AlertTypes.TREND_DECLINE);
     assertThat(drafts.get(0).content()).contains("累计下降 11", "2025 Q4", "2026 Q2");
+    assertThat(drafts.get(0).dimensionId()).isNull();
+    assertThat(drafts.get(0).baselineScore()).as("D4：趋势类基线=本期总分").isEqualByComparingTo("79");
+    assertThat(drafts.get(0).targetScore()).as("D4：趋势类目标=不得继续下降").isEqualByComparingTo("79");
   }
 
   @Test

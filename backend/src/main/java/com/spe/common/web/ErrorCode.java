@@ -100,6 +100,14 @@ public enum ErrorCode {
   API_TOKEN_STATUS_INVALID(2036, "API Token 当前状态不允许该操作", HttpStatus.BAD_REQUEST),
   /** 开放 API 上报的供应商不在指定任务中（M6；与 2028「评估单不存在」区分）。 */
   SUPPLIER_NOT_IN_TASK(2037, "供应商不在该任务中", HttpStatus.BAD_REQUEST),
+  /** 整改任务不存在（W1/V1004）。 */
+  CORRECTIVE_ACTION_NOT_FOUND(2038, "整改任务不存在", HttpStatus.BAD_REQUEST),
+  /** 整改任务当前状态不允许该动作（状态机拒绝；W1/V1004）。 */
+  CORRECTIVE_ACTION_STATUS_INVALID(2039, "整改任务当前状态不允许该操作", HttpStatus.BAD_REQUEST),
+  /** 预警缺少结构化口径或已有整改，不能创建整改（D3/D8）。 */
+  ALERT_NOT_ACTIONABLE(2040, "该预警不能创建整改", HttpStatus.BAD_REQUEST),
+  /** 整改负责人不在允许集合（只允许在职 EVALUATOR/MANAGER）。 */
+  CORRECTIVE_ACTION_OWNER_INVALID(2041, "整改负责人不合法", HttpStatus.BAD_REQUEST),
   CONCURRENT_CONFLICT(3001, "数据已被他人改动，请刷新后重试", HttpStatus.CONFLICT),
   /** 不能停用当前登录账号（P2-8 / `26` §3.2：自停用一律禁止，误操作会让操作者自己失去唯一入口）。 */
   SELF_DISABLE_FORBIDDEN(3002, "不能停用当前登录账号", HttpStatus.CONFLICT),

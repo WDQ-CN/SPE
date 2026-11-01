@@ -45,8 +45,23 @@ public final class AlertRuleEngine {
       boolean firstEffective,
       AlertRules rules) {}
 
-  /** 待落库的草稿。 */
-  public record Draft(String type, String title, String content) {}
+  /**
+   * 待落库的草稿。
+   *
+   * <p>V1004 起把“整改所需的结构化口径”随草稿一起产出，而不是让后续服务解析 content 文本：
+   * <ul>
+   *   <li>TOTAL_LOW：dimensionId=null，baselineScore=总分，targetScore=总分阈值；
+   *   <li>KEY_DIMENSION_LOW：baselineScore=维度分，targetScore=关键维度阈值；
+   *   <li>TREND_DECLINE：dimensionId=null，baselineScore=targetScore=本期总分（下期不得继续下降，D4）。
+   * </ul>
+   */
+  public record Draft(
+      String type,
+      String title,
+      String content,
+      Long dimensionId,
+      BigDecimal baselineScore,
+      BigDecimal targetScore) {}
 
   public static List<Draft> evaluate(Evaluation evaluation) {
     List<Draft> drafts = new ArrayList<>();
@@ -69,7 +84,10 @@ public final class AlertRuleEngine {
                   + " 总分 "
                   + plain(total)
                   + " 低于阈值 "
-                  + rules.totalThreshold()));
+                  + rules.totalThreshold(),
+              null,
+              total,
+              BigDecimal.valueOf(rules.totalThreshold())));
     }
 
     for (DimensionInput dimension : evaluation.dimensions()) {
@@ -90,7 +108,10 @@ public final class AlertRuleEngine {
                     + "」得分 "
                     + plain(dimension.score())
                     + " 低于阈值 "
-                    + rules.keyDimensionThreshold()));
+                    + rules.keyDimensionThreshold(),
+                dimension.dimensionId(),
+                dimension.score(),
+                BigDecimal.valueOf(rules.keyDimensionThreshold())));
       }
     }
 
@@ -160,7 +181,14 @@ public final class AlertRuleEngine {
             + "），累计下降 "
             + plain(drop)
             + " 分";
-    return new Draft(AlertTypes.TREND_DECLINE, "总分连续下降", content);
+    BigDecimal baseline = chain.get(0);
+    return new Draft(
+        AlertTypes.TREND_DECLINE,
+        "总分连续下降",
+        content,
+        null,
+        baseline,
+        baseline);
   }
 
   private static int key(int year, int quarter) {

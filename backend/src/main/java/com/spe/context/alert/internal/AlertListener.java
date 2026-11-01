@@ -4,6 +4,9 @@ import com.spe.common.event.EventPublisher;
 import com.spe.context.alert.api.events.AlertCreatedEvent;
 import com.spe.context.evaluation.api.events.TaskSupplierFinalizedEvent;
 import com.spe.context.system.api.AlertRules;
+import com.spe.context.system.api.AuditAction;
+import com.spe.context.system.api.AuditFacade;
+import com.spe.context.system.api.AuditTargetType;
 import com.spe.context.system.api.SettingsFacade;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -35,7 +38,9 @@ public class AlertListener {
 
   private final AlertMapper alertMapper;
   private final AlertQueryMapper alertQueryMapper;
+  private final CorrectiveActionMapper correctiveActionMapper;
   private final SettingsFacade settingsFacade;
+  private final AuditFacade auditFacade;
   private final EventPublisher eventPublisher;
 
   @EventListener
@@ -49,6 +54,33 @@ public class AlertListener {
     List<Alert> activeBefore = alertMapper.findActive(event.supplierId(), event.year(), event.quarter());
     if (!activeBefore.isEmpty()) {
       alertMapper.supersedeActive(event.supplierId(), event.year(), event.quarter());
+      // D7：旧预警被重算取代，未完成整改不能继续针对旧分数推进；已完成的保留历史。
+      List<Long> activeIds = activeBefore.stream().map(Alert::getId).toList();
+      List<CorrectiveAction> canceledActions =
+          correctiveActionMapper.findUnfinishedByAlertIds(activeIds);
+      int canceled =
+          correctiveActionMapper.cancelUnfinishedByAlertIds(activeIds, "预警被重算取代");
+      for (CorrectiveAction action : canceledActions) {
+        // 系统动作没有真人操作人；显式留 "SYSTEM" 与原因，审计页才能解释这次取消。
+        auditFacade.recordForOperator(
+            null,
+            "SYSTEM",
+            AuditAction.CORRECTIVE_ACTION_CANCEL,
+            AuditTargetType.CORRECTIVE_ACTION,
+            action.getId(),
+            Map.of(
+                "alertId", action.getAlertId(),
+                "reason", "预警被重算取代",
+                "statusBefore", action.getStatus()));
+      }
+      if (canceled > 0) {
+        log.info(
+            "供应商 {} {}-Q{} 的预警被取代，取消未完成整改 {} 条",
+            event.supplierId(),
+            event.year(),
+            event.quarter(),
+            canceled);
+      }
     }
     if (!rules.enabled()) {
       log.info(
@@ -105,6 +137,9 @@ public class AlertListener {
       alert.setType(draft.type());
       alert.setTitle(draft.title());
       alert.setContent(draft.content());
+      alert.setDimensionId(draft.dimensionId());
+      alert.setBaselineScore(draft.baselineScore());
+      alert.setTargetScore(draft.targetScore());
       alert.setStatus("UNREAD");
       alertMapper.insert(alert);
       created.add(alert);

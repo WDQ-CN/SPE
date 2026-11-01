@@ -1,5 +1,6 @@
 package com.spe.context.alert.internal;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import lombok.Data;
 
@@ -26,6 +27,12 @@ public class AlertRow {
   private String title;
 
   private String content;
+
+  private Long dimensionId;
+
+  private BigDecimal baselineScore;
+
+  private BigDecimal targetScore;
 
   private String status;
 

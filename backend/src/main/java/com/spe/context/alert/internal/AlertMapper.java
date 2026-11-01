@@ -19,7 +19,8 @@ public interface AlertMapper extends BaseMapper<Alert> {
 
   String JOIN_COLUMNS =
       "a.id, a.task_supplier_id, a.supplier_id, s.code AS supplier_code, s.name AS supplier_name,"
-          + " a.year, a.quarter, a.type, a.title, a.content, a.status, a.handled_by,"
+          + " a.year, a.quarter, a.type, a.title, a.content, a.dimension_id,"
+          + " a.baseline_score, a.target_score, a.status, a.handled_by,"
           + " u.name AS handled_by_name, a.handled_comment, a.handled_at, a.created_at";
 
   String JOIN_FROM =

@@ -23,5 +23,7 @@ public enum AuditTargetType {
    */
   TASK_SUPPLIER,
   /** M6 起：开放 API Token（生成/停用；目标 id = api_token.id）。 */
-  TOKEN
+  TOKEN,
+  /** 整改任务（V1004；目标 id = corrective_action.id）。 */
+  CORRECTIVE_ACTION
 }
