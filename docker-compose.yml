@@ -3,7 +3,9 @@
 # 启动前需在本目录准备 .env（复制 .env.example 填写），密钥不入库（06 §6）。
 services:
   mysql:
-    image: mysql:8.4
+    # 派生镜像只补 Oracle Linux 安全 errata；数据卷与初始化脚本不变（03 §53 / 28 §11.3）
+    build: ./docker/mysql
+    image: spe-mysql:8.4
     container_name: spe-mysql
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}
