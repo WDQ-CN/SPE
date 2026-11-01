@@ -1,20 +1,25 @@
-# 构建阶段：Maven + JDK 17（依赖单独成层，改代码不必重下依赖）
+# 构建阶段：Maven + JDK 21（依赖单独成层，改代码不必重下依赖）
 # 基础镜像的版本策略（03 §16 的 SEC-6）：pin 到次版本线，不 pin 到具体补丁——
 #   既持续获得补丁级安全更新，又不会浮动到新次版本而悄悄换行为。
-#   `maven:3.9-...` = Maven 3.9.x；`eclipse-temurin:17-jre-alpine` = JDK 17.x。
+#   `maven:3.9-...` = Maven 3.9.x（项目 mvnw 再钉 3.9.16 分发版）；`eclipse-temurin:21-jre-alpine` = JDK 21.x。
 #   升级基础镜像时：重建镜像 → 复跑 11 §5.3 的核对表 → 把新版本记进该节。
-FROM maven:3.9-eclipse-temurin-17 AS build
+FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /build
+# P3-11：用项目 mvnw（wrapper 固定 Maven 3.9.16）而不是基础镜像自带的浮动 mvn；
+# 基础镜像仍按 SEC-6 只钉次版本线（`maven:3.9-...`），可重复性由 wrapper 保证。
+COPY .mvn .mvn
+COPY mvnw .
+RUN chmod +x mvnw
 COPY pom.xml .
 # ⚠️ 用 dependency:resolve 而不是 dependency:go-offline（04-108）：后者会解析**整套插件依赖**
 # （site/javadoc 的 flexmark 等几百个小 pom），在慢链路上可卡十几分钟；这里只需要项目依赖。
-RUN mvn -B -q -DskipTests dependency:resolve
+RUN ./mvnw -B -q -DskipTests dependency:resolve
 COPY src ./src
 # 质量门由本地 `mvn test` 承担（06 §5）；镜像构建跳过测试以缩短构建时间
-RUN mvn -B -q -DskipTests package
+RUN ./mvnw -B -q -DskipTests package
 
 # 运行阶段：仅 JRE（体积小、无编译工具链）
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:21-jre-alpine
 RUN addgroup -S spe && adduser -S spe -G spe
 WORKDIR /app
 COPY --from=build /build/target/spe-backend-*.jar app.jar
