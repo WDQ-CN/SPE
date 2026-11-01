@@ -40,5 +40,6 @@ Thumbs.db
 desktop.ini
 .DS_Store
 
-# Qoder 本地工具元数据（repowiki 等，不入库）
+# Qoder / ZCode 本地工具元数据（repowiki、插件配置等，不入库）
 .qoder/
+.zcode/
