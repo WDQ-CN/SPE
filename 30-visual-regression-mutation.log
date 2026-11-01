@@ -1,0 +1,67 @@
+
+> spe-frontend@0.0.0 test:visual D:\ZhuoMian\SPECS\frontend
+> playwright test -c playwright.visual.config.ts "--grep" "工作台"
+
+
+Running 1 test using 1 worker
+
+  x  1 e2e\visual.spec.ts:56:1 › 工作台 (2.2s)
+
+
+  1) e2e\visual.spec.ts:56:1 › 工作台 ─────────────────────────────────────────────────────────────────
+
+    Error: expect(page).toHaveScreenshot(expected) failed
+
+      393 pixels (ratio 0.01 of all image pixels) are different.
+
+      Snapshot: home.png
+
+    Call log:
+      - Expect "toHaveScreenshot(home.png)" with timeout 10000ms
+        - verifying given screenshot expectation
+      - taking page screenshot
+        - disabled all CSS animations
+      - waiting for fonts to load...
+      - fonts loaded
+      - 393 pixels (ratio 0.01 of all image pixels) are different.
+      - waiting 100ms before taking screenshot
+      - taking page screenshot
+        - disabled all CSS animations
+      - waiting for fonts to load...
+      - fonts loaded
+      - captured a stable screenshot
+      - 393 pixels (ratio 0.01 of all image pixels) are different.
+
+
+      58 |   await openPage(page, '/')
+      59 |   await expect(page.getByRole('heading', { name: '工作台', exact: true })).toBeVisible()
+    > 60 |   await expect(page).toHaveScreenshot('home.png')
+         |                      ^
+      61 |   expect(problems.all).toEqual([])
+      62 | })
+      63 |
+        at D:\ZhuoMian\SPECS\frontend\e2e\visual.spec.ts:60:22
+
+    attachment #1: home (image/png) ────────────────────────────────────────────────────────────────
+    Expected: e2e\visual.spec.ts-snapshots\home-win32.png
+    Received: test-results\visual-工作台\home-actual.png
+    Diff:     test-results\visual-工作台\home-diff.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\visual-工作台\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\visual-工作台\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\visual-工作台\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace test-results\visual-工作台\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    e2e\visual.spec.ts:56:1 › 工作台 ──────────────────────────────────────────────────────────────────
+ ELIFECYCLE  Command failed with exit code 1.

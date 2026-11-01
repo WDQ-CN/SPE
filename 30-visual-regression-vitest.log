@@ -1,0 +1,53 @@
+
+> spe-frontend@0.0.0 test D:\ZhuoMian\SPECS\frontend
+> vitest run
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.2 [39m[90mD:/ZhuoMian/SPECS/frontend[39m
+
+ [32m✓[39m src/shared/approval-timeline.spec.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/result-sort.spec.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m src/shared/composables/usePagedList.spec.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/shared/composables/useSubmit.spec.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m src/app/notification-store.spec.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m src/shared/components/PageHeader.spec.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 37[2mms[22m[39m
+ [32m✓[39m src/features/template/weight.spec.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 20[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/raw-value.spec.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/radar.spec.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/app/menu.spec.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m src/features/template/effective-version.spec.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m src/features/auth/store.spec.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m src/shared/validation.spec.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m src/features/analytics/charts.spec.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/sheet-status.spec.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/shared/redirect.spec.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m src/features/setting/alert-rules.spec.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m src/shared/components/SectionCard.spec.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 38[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/components/ScoreRadar.spec.ts [2m([22m[2m1 test[22m[2m)[22m[32m 28[2mms[22m[39m
+ [32m✓[39m src/shared/components/ApprovalTimeline.spec.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 55[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/components/ScoreBreakdown.spec.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 121[2mms[22m[39m
+[90mstderr[2m | src/features/auth/views/LoginView.spec.ts[2m > [22m[2m登录页[2m > [22m[2m账号或密码为空时不发请求（前端先挡住明显缺项）
+[22m[39masync-validator: [ [32m'username is required'[39m ]
+
+[90mstderr[2m | src/features/auth/views/LoginView.spec.ts[2m > [22m[2m登录页[2m > [22m[2m账号或密码为空时不发请求（前端先挡住明显缺项）
+[22m[39masync-validator: [ [32m'password is required'[39m ]
+
+ [32m✓[39m src/features/auth/views/LoginView.spec.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 207[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/views/SheetScoringView.spec.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 421[2mms[22m[39m
+ [32m✓[39m src/features/template/views/TemplateEditorView.spec.ts [2m([22m[2m11 tests[22m[2m)[22m[33m 794[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/views/TaskSupplierReportView.spec.ts [2m([22m[2m1 test[22m[2m)[22m[32m 39[2mms[22m[39m
+ [32m✓[39m src/features/evaluation/views/TaskListView.spec.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 2933[2mms[22m[39m
+   [32m✓[39m TaskListView（建任务弹窗） [2m(4)[22m
+     [33m[2m✓[22m[39m 模板切换的迟到响应不会覆盖新选择（P1-17）[33m 895[2mms[22m[39m
+     [33m[2m✓[22m[39m 模板版本加载失败：点名失败项并清空版本列表（P1-17）[33m 764[2mms[22m[39m
+     [33m[2m✓[22m[39m 编辑草稿：按详情回填并带 version 调 updateTask（P2-2）[33m 1087[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m26 passed[39m[22m[90m (26)[39m
+[2m      Tests [22m [1m[32m150 passed[39m[22m[90m (150)[39m
+[2m   Start at [22m 20:55:11
+[2m   Duration [22m 18.01s[2m (transform 39%, environment 32%, import 26%, tests 3%)[22m
+
+[2mEnvironment [22m [33mhappy-dom was created 26 times[39m[2m · 54.87s total, 32% of tracked time[22m
+[2m            [22m [2mcreate it once per worker with [22m[33mpool: 'vmThreads'[39m[2m (keeps per-file isolation) or [22m[33misolate: false[39m[2m (shares it across files)[22m
+[2m            [22m [2mlearn more: https://vitest.dev/guide/improving-performance#test-environments[22m
+

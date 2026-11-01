@@ -1,5 +1,5 @@
 {
   "//": "e2e 目录的类型检查（03 §38 的 P1-12）。必须 extends 主配置：paths / types / strict / noUnusedLocals 少抄一样，e2e 就会以『找不到模块』『参数未使用』这类与契约无关的原因刷屏。",
   "extends": "./tsconfig.json",
-  "include": ["e2e/**/*.ts", "playwright.config.ts"]
+  "include": ["e2e/**/*.ts", "playwright.config.ts", "playwright.visual.config.ts"]
 }
