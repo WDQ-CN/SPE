@@ -149,6 +149,16 @@ export const VERIFY_OUTCOME_LABEL: Record<VerifyOutcome, string> = {
   PENDING: '待人工判断',
 }
 
+/** 整改动作审计码（详情页「操作审计」；动作码保持后端原值） */
+export const CORRECTIVE_ACTION_AUDIT_LABEL: Record<string, string> = {
+  CORRECTIVE_ACTION_CREATE: '创建整改',
+  CORRECTIVE_ACTION_UPDATE: '编辑整改',
+  CORRECTIVE_ACTION_START: '开始整改',
+  CORRECTIVE_ACTION_SUBMIT: '提交完成',
+  CORRECTIVE_ACTION_VERIFY: '验证确认',
+  CORRECTIVE_ACTION_CANCEL: '取消整改',
+}
+
 /** M5 操作日志（SM5）：目标类型（动作码保持后端原值，不在这里造中文别名） */
 export const AUDIT_TARGET_TYPE_LABEL: Record<string, string> = {
   USER: '用户',

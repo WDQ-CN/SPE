@@ -565,6 +565,7 @@ test.describe('M5 预警与解锁闭环', () => {
     await page.goto(`/actions/${actionId}`)
     await expect(page.locator('.status-mark', { hasText: '待验证' }).first()).toBeVisible()
     await expect(page.getByText('已改善').first()).toBeVisible()
+    await expect(page.getByText('操作审计')).toBeVisible()
     await page.getByRole('button', { name: '验证', exact: true }).click()
     await page.locator('.el-radio', { hasText: '验证通过' }).click()
     await page.getByPlaceholder('写明确认依据或继续整改的要求').fill('E2E 下期已改善，验证通过')

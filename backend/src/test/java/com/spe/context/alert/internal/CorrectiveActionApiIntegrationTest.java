@@ -78,6 +78,9 @@ class CorrectiveActionApiIntegrationTest extends AbstractIntegrationTest {
             .andExpect(jsonPath("$.data.baselineScore").value(68.00))
             .andExpect(jsonPath("$.data.targetScore").value(70.00))
             .andExpect(jsonPath("$.data.overdue").value(false))
+            .andExpect(jsonPath("$.data.auditTrail.length()").value(1))
+            .andExpect(jsonPath("$.data.auditTrail[0].action").value("CORRECTIVE_ACTION_CREATE"))
+            .andExpect(jsonPath("$.data.auditTrail[0].operatorName").value("w3-api-mgr-1"))
             .andReturn()
             .getResponse()
             .getContentAsString();
@@ -151,7 +154,9 @@ class CorrectiveActionApiIntegrationTest extends AbstractIntegrationTest {
         .andExpect(jsonPath("$.data.status").value("VERIFIED"))
         .andExpect(jsonPath("$.data.verifiedByName").value("W3 经理一"))
         .andExpect(jsonPath("$.data.verifyComment").value("下期报告已核对"))
-        .andExpect(jsonPath("$.data.version").value(4));
+        .andExpect(jsonPath("$.data.version").value(4))
+        .andExpect(jsonPath("$.data.auditTrail.length()").value(5))
+        .andExpect(jsonPath("$.data.auditTrail[4].action").value("CORRECTIVE_ACTION_VERIFY"));
 
     assertThat(auditOperator("CORRECTIVE_ACTION_UPDATE", actionId)).isEqualTo(ownerId);
     assertThat(auditOperator("CORRECTIVE_ACTION_START", actionId)).isEqualTo(ownerId);

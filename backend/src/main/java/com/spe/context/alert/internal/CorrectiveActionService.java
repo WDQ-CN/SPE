@@ -8,7 +8,9 @@ import com.spe.common.web.ErrorCode;
 import com.spe.context.alert.api.events.CorrectiveActionCreatedEvent;
 import com.spe.context.system.api.AuditAction;
 import com.spe.context.system.api.AuditFacade;
+import com.spe.context.system.api.AuditQueryFacade;
 import com.spe.context.system.api.AuditTargetType;
+import com.spe.context.system.api.AuditTrailEntry;
 import com.spe.context.system.api.Role;
 import com.spe.context.system.api.UserBrief;
 import com.spe.context.system.api.UserQueryFacade;
@@ -40,6 +42,7 @@ public class CorrectiveActionService {
   private final CorrectiveActionQueryMapper correctiveActionQueryMapper;
   private final UserQueryFacade userQueryFacade;
   private final AuditFacade auditFacade;
+  private final AuditQueryFacade auditQueryFacade;
   private final CorrectiveActionVerifier verifier;
   private final EventPublisher eventPublisher;
 
@@ -238,7 +241,8 @@ public class CorrectiveActionService {
         Map.of(
             "targetStatus", target.name(),
             "beforeStatus", current.getStatus(),
-            "outcome", Optional.ofNullable(current.getVerifyOutcome()).orElse("PENDING")));
+            "outcome", Optional.ofNullable(current.getVerifyOutcome()).orElse("PENDING"),
+            "comment", Optional.ofNullable(normalized).orElse("")));
     return load(id);
   }
 
@@ -265,13 +269,6 @@ public class CorrectiveActionService {
             "beforeStatus", current.getStatus(),
             "reason", normalized));
     return load(id);
-  }
-
-  @Transactional(readOnly = true)
-  public CorrectiveAction get(long id, long operatorId, boolean manager) {
-    CorrectiveAction action = load(id);
-    ensureOwnerOrManager(action, operatorId, manager);
-    return action;
   }
 
   /**
@@ -322,9 +319,11 @@ public class CorrectiveActionService {
     CorrectiveAction action = load(id);
     ensureOwnerOrManager(action, operatorId, manager);
     LocalDate today = LocalDate.now();
+    List<AuditTrailEntry> auditTrail =
+        auditQueryFacade.listForTarget(AuditTargetType.CORRECTIVE_ACTION, id, 50);
     return correctiveActionQueryMapper
         .findDetailById(id)
-        .map(row -> CorrectiveActionDetailView.of(row, today))
+        .map(row -> CorrectiveActionDetailView.of(row, today, auditTrail))
         .orElseThrow(() -> new BizException(ErrorCode.CORRECTIVE_ACTION_NOT_FOUND));
   }
 

@@ -1,8 +1,10 @@
 package com.spe.context.alert.internal;
 
+import com.spe.context.system.api.AuditTrailEntry;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 整改详情的对外投影（W3；W4 的详情页与所有写操作响应共用）。
@@ -48,9 +50,11 @@ public record CorrectiveActionDetailView(
     String createdByName,
     int version,
     LocalDateTime createdAt,
-    LocalDateTime updatedAt) {
+    LocalDateTime updatedAt,
+    List<AuditTrailEntry> auditTrail) {
 
-  static CorrectiveActionDetailView of(CorrectiveActionRow row, LocalDate today) {
+  static CorrectiveActionDetailView of(
+      CorrectiveActionRow row, LocalDate today, List<AuditTrailEntry> auditTrail) {
     return new CorrectiveActionDetailView(
         row.getId(),
         row.getAlertId(),
@@ -89,6 +93,7 @@ public record CorrectiveActionDetailView(
         row.getCreatedByName(),
         row.getVersion(),
         row.getCreatedAt(),
-        row.getUpdatedAt());
+        row.getUpdatedAt(),
+        auditTrail);
   }
 }

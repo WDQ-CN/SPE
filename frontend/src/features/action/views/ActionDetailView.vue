@@ -16,10 +16,12 @@ import { buildActionTimeline } from '@/features/action/action-timeline'
 import ActionFormDialog from '@/features/action/components/ActionFormDialog.vue'
 import { useAuthStore } from '@/features/auth/store'
 import { formatUtcLocal } from '@/shared/approval-timeline'
+import { prettyAuditDetail } from '@/shared/audit'
 import { useAsyncData } from '@/shared/composables/useAsyncData'
 import { useSubmit } from '@/shared/composables/useSubmit'
 import { formatScore } from '@/shared/format'
 import {
+  CORRECTIVE_ACTION_AUDIT_LABEL,
   CORRECTIVE_ACTION_STATUS_LABEL,
   VERIFY_OUTCOME_LABEL,
 } from '@/shared/labels'
@@ -496,6 +498,51 @@ async function confirmCancel(): Promise<void> {
       />
     </SectionCard>
 
+    <SectionCard title="操作审计">
+      <el-empty
+        v-if="detail.auditTrail.length === 0"
+        description="暂无审计记录"
+      />
+      <el-table
+        v-else
+        :data="detail.auditTrail"
+        class="table-list action-audit"
+      >
+        <el-table-column
+          label="时间"
+          width="170"
+        >
+          <template #default="{ row }">
+            <span class="mono">{{ formatUtcLocal(row.createdAt) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column
+          label="动作"
+          width="110"
+        >
+          <template #default="{ row }">
+            {{ CORRECTIVE_ACTION_AUDIT_LABEL[row.action] ?? row.action }}
+          </template>
+        </el-table-column>
+        <el-table-column
+          label="操作人"
+          width="120"
+        >
+          <template #default="{ row }">
+            {{ row.operatorName ?? '系统' }}
+          </template>
+        </el-table-column>
+        <el-table-column
+          label="详情"
+          min-width="280"
+        >
+          <template #default="{ row }">
+            <pre class="action-audit__detail">{{ prettyAuditDetail(row.detail) }}</pre>
+          </template>
+        </el-table-column>
+      </el-table>
+    </SectionCard>
+
     <ActionFormDialog
       v-model="editVisible"
       :action="detail"
@@ -742,6 +789,19 @@ async function confirmCancel(): Promise<void> {
 }
 .action-timeline :deep(.el-timeline-item__content) {
   color: var(--ink-secondary);
+}
+.action-audit {
+  margin-top: 2px;
+}
+.action-audit__detail {
+  max-height: 120px;
+  margin: 0;
+  overflow: auto;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.55;
+  white-space: pre-wrap;
 }
 .action-decisions {
   display: flex;

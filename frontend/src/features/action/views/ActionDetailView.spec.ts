@@ -91,6 +91,24 @@ function detail(overrides: Partial<CorrectiveActionDetail> = {}): CorrectiveActi
     version: 2,
     createdAt: '2026-01-10T09:00:00',
     updatedAt: '2026-02-01T10:00:00',
+    auditTrail: [
+      {
+        id: 1,
+        action: 'CORRECTIVE_ACTION_CREATE',
+        operatorId: 2,
+        operatorName: 'w3-manager',
+        detail: '{"alertId":11}',
+        createdAt: '2026-01-10T09:00:00',
+      },
+      {
+        id: 2,
+        action: 'CORRECTIVE_ACTION_SUBMIT',
+        operatorId: 41,
+        operatorName: '李衡',
+        detail: '{"targetStatus":"WAITING_VERIFICATION"}',
+        createdAt: '2026-02-01T10:00:00',
+      },
+    ],
     ...overrides,
   }
 }
@@ -121,6 +139,8 @@ describe('ActionDetailView 操作矩阵', () => {
     expect(buttonByText(wrapper, '提交完成')).toBeUndefined()
     expect(buttonByText(wrapper, '验证')).toBeTruthy()
     expect(buttonByText(wrapper, '取消整改')).toBeTruthy()
+    expect(wrapper.text()).toContain('操作审计')
+    expect(wrapper.text()).toContain('w3-manager')
 
     await buttonByText(wrapper, '验证')!.trigger('click')
     await flushPromises()

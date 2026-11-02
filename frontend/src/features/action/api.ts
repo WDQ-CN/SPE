@@ -18,6 +18,9 @@ export interface CorrectiveActionQuery extends PageParams {
   status?: CorrectiveActionStatus | ''
   /** true = 仅看超期；false 当前 UI 不发送，后端仍支持 */
   overdue?: boolean
+  /** 仅 ADMIN/MANAGER 使用；EVALUATOR 由后端强制本人 */
+  supplierId?: number
+  ownerId?: number
 }
 
 /** 从预警创建整改（`POST /api/alerts/{id}/corrective-actions`） */
@@ -42,6 +45,8 @@ export function listCorrectiveActions(
     size: query.size,
     status: query.status || undefined,
     overdue: query.overdue,
+    supplierId: query.supplierId,
+    ownerId: query.ownerId,
   })
 }
 

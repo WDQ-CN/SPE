@@ -88,6 +88,7 @@ function detail(overrides: Partial<CorrectiveActionDetail> = {}): CorrectiveActi
     version: 2,
     createdAt: '2026-01-10T09:00:00',
     updatedAt: '2026-01-10T09:00:00',
+    auditTrail: [],
     ...overrides,
   }
 }

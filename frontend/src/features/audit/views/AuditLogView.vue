@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 
 import { listAuditActions, listAuditLogs } from '@/features/audit/api'
 import { formatUtcLocal } from '@/shared/approval-timeline'
+import { prettyAuditDetail } from '@/shared/audit'
 import { usePagedList } from '@/shared/composables/usePagedList'
 import { AUDIT_TARGET_TYPE_LABEL } from '@/shared/labels'
 import type { AuditLogView } from '@/shared/types/dto'
@@ -38,17 +39,6 @@ const list = usePagedList<AuditLogView>((page, size) =>
     to: filters.range?.[1] ? instantOf(filters.range[1], true) : undefined,
   }),
 )
-
-function prettyDetail(detail: string | null): string {
-  if (!detail) {
-    return '—'
-  }
-  try {
-    return JSON.stringify(JSON.parse(detail), null, 2)
-  } catch {
-    return detail
-  }
-}
 
 function search(): void {
   void list.load(1)
@@ -149,7 +139,7 @@ onMounted(async () => {
         width="40"
       >
         <template #default="{ row }">
-          <pre class="audit__detail">{{ prettyDetail(row.detail) }}</pre>
+          <pre class="audit__detail">{{ prettyAuditDetail(row.detail) }}</pre>
         </template>
       </el-table-column>
       <el-table-column

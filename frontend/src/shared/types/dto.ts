@@ -616,6 +616,18 @@ export interface CorrectiveActionDetail extends CorrectiveActionSummary {
   canceledReason: string | null
   createdBy: number
   createdByName: string | null
+  /** 该整改的动作审计轨迹（时间正序，最多 50 条） */
+  auditTrail: AuditTrailEntry[]
+}
+
+/** 审计摘要条目（后端 `AuditTrailEntry`）；detail 保持原始 JSON 字符串 */
+export interface AuditTrailEntry {
+  id: number
+  action: string
+  operatorId: number | null
+  operatorName: string | null
+  detail: string | null
+  createdAt: string
 }
 
 /** ---- M6：开放 API Token（I3） ---- */

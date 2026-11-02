@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 
 import { listCorrectiveActions } from '@/features/action/api'
 import { actionStatusClass, verifySummary } from '@/features/action/action-status'
 import { useAuthStore } from '@/features/auth/store'
+import { listSuppliers } from '@/features/supplier/api'
+import { listUserOptions } from '@/features/user/api'
 import { usePagedList } from '@/shared/composables/usePagedList'
 import { formatScore } from '@/shared/format'
 import {
@@ -11,20 +13,23 @@ import {
   CORRECTIVE_ACTION_STATUS_OPTIONS,
   VERIFY_OUTCOME_LABEL,
 } from '@/shared/labels'
-import type { CorrectiveActionSummary } from '@/shared/types/dto'
+import type { CorrectiveActionSummary, SupplierSummary, UserOption } from '@/shared/types/dto'
 import type { CorrectiveActionStatus } from '@/shared/types/enums'
 
 /**
  * 整改任务列表（W4；29 §3.6）。
  *
- * <p>筛选只做状态与超期：供应商/负责人的数据源（供应商目录、用户目录）对 EVALUATOR 不开放，
- * 而 EVALUATOR 本来就只看本人；避免为了两个筛选器把权限边界搅乱。
+ * <p>状态/超期对所有角色开放；供应商与负责人筛选只给 ADMIN/MANAGER——这两个目录面对
+ * EVALUATOR 不开放，且 EVALUATOR 的列表本来就由后端强制为本人。供应商用远程搜索，
+ * 避免一次只拉 100 家后第 101 家“静默无法筛选”。
  */
 const auth = useAuthStore()
 const filters = reactive<{
   status: CorrectiveActionStatus | ''
   overdue: '' | 'overdue'
-}>({ status: '', overdue: '' })
+  supplierId: number | undefined
+  ownerId: number | undefined
+}>({ status: '', overdue: '', supplierId: undefined, ownerId: undefined })
 
 const list = usePagedList<CorrectiveActionSummary>((page, size) =>
   listCorrectiveActions({
@@ -32,16 +37,67 @@ const list = usePagedList<CorrectiveActionSummary>((page, size) =>
     size,
     status: filters.status,
     overdue: filters.overdue === 'overdue' ? true : undefined,
+    supplierId: positiveId(filters.supplierId),
+    ownerId: positiveId(filters.ownerId),
   }),
 )
 
 const isEvaluator = computed(() => auth.roles.includes('EVALUATOR'))
+const canFilterByDirectory = computed(() =>
+  auth.roles.some((role) => role === 'ADMIN' || role === 'MANAGER'),
+)
+const supplierOptions = ref<SupplierSummary[]>([])
+const ownerOptions = ref<UserOption[]>([])
+const supplierLoading = ref(false)
+const supplierError = ref('')
+const ownerError = ref('')
+const optionError = computed(() => supplierError.value || ownerError.value)
 const description = computed(
   () => `共 ${list.total.value} 条整改任务 · 超期由服务端按截止日期判定`,
 )
 
+function positiveId(value: number | undefined): number | undefined {
+  return typeof value === 'number' && value > 0 ? value : undefined
+}
+
 function onFilterChange(): void {
   void list.load(1)
+}
+
+async function searchSuppliers(keyword: string): Promise<void> {
+  supplierLoading.value = true
+  try {
+    const page = await listSuppliers({
+      page: 1,
+      size: 50,
+      keyword: keyword.trim() || undefined,
+    })
+    const merged = new Map<number, SupplierSummary>()
+    const selected = supplierOptions.value.find(
+      (supplier) => supplier.id === filters.supplierId,
+    )
+    if (selected) {
+      // 远程搜索后仍保留当前选中项，否则清空/重开下拉时只显示裸 id
+      merged.set(selected.id, selected)
+    }
+    page.list.forEach((supplier) => merged.set(supplier.id, supplier))
+    supplierOptions.value = [...merged.values()]
+    supplierError.value = ''
+  } catch {
+    supplierError.value = '供应商筛选选项加载失败'
+  } finally {
+    supplierLoading.value = false
+  }
+}
+
+async function loadFilterOptions(): Promise<void> {
+  try {
+    ownerOptions.value = await listUserOptions(['EVALUATOR', 'MANAGER'])
+    ownerError.value = ''
+  } catch {
+    ownerError.value = '负责人筛选选项加载失败'
+  }
+  await searchSuppliers('')
 }
 
 function statusLabel(status: CorrectiveActionStatus): string {
@@ -60,7 +116,12 @@ function showOutcome(row: CorrectiveActionSummary): boolean {
   return row.verifyOutcome != null && row.verifyOutcome !== 'PENDING'
 }
 
-onMounted(() => void list.load(1))
+onMounted(() => {
+  void list.load(1)
+  if (canFilterByDirectory.value) {
+    void loadFilterOptions()
+  }
+})
 </script>
 
 <template>
@@ -72,6 +133,41 @@ onMounted(() => void list.load(1))
 
   <SectionCard title="整改列表">
     <div class="list-toolbar">
+      <el-select
+        v-if="canFilterByDirectory"
+        v-model="filters.supplierId"
+        filterable
+        remote
+        clearable
+        :remote-method="searchSuppliers"
+        :loading="supplierLoading"
+        placeholder="全部供应商"
+        style="width: 200px"
+        @change="onFilterChange"
+      >
+        <el-option
+          v-for="supplier in supplierOptions"
+          :key="supplier.id"
+          :label="`${supplier.name} (${supplier.code})`"
+          :value="supplier.id"
+        />
+      </el-select>
+      <el-select
+        v-if="canFilterByDirectory"
+        v-model="filters.ownerId"
+        filterable
+        clearable
+        placeholder="全部负责人"
+        style="width: 150px"
+        @change="onFilterChange"
+      >
+        <el-option
+          v-for="owner in ownerOptions"
+          :key="owner.id"
+          :label="owner.name"
+          :value="owner.id"
+        />
+      </el-select>
       <el-select
         v-model="filters.status"
         clearable
@@ -101,6 +197,10 @@ onMounted(() => void list.load(1))
         v-if="isEvaluator"
         class="list-toolbar__note"
       >评估人仅显示本人负责的整改。</span>
+      <span
+        v-if="optionError"
+        class="list-toolbar__note list-toolbar__note--error"
+      >{{ optionError }}</span>
     </div>
 
     <el-alert
@@ -265,5 +365,8 @@ onMounted(() => void list.load(1))
   font-size: 12px;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+.list-toolbar__note--error {
+  color: var(--danger);
 }
 </style>

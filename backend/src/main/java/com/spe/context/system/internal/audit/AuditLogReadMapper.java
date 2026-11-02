@@ -67,4 +67,18 @@ public interface AuditLogReadMapper {
   /** 筛选项来源：动作码不写死在前端（避免词表漂移）。 */
   @Select("SELECT DISTINCT action FROM audit_log ORDER BY action")
   List<String> findActions();
+
+  /**
+   * 某个目标的动作轨迹（W4 审计摘要）：按时间正序，供详情页直接展示。
+   *
+   * <p>走 V1005 的 `idx_audit_target (target_type, target_id, created_at, id)`。
+   */
+  @Select(
+      "SELECT id, operator_id, operator_name, action, target_type, target_id, detail, ip, created_at"
+          + " FROM audit_log WHERE target_type = #{targetType} AND target_id = #{targetId}"
+          + " ORDER BY created_at ASC, id ASC LIMIT #{limit}")
+  List<AuditLogRow> findForTarget(
+      @Param("targetType") String targetType,
+      @Param("targetId") long targetId,
+      @Param("limit") int limit);
 }

@@ -308,6 +308,11 @@ export async function installVisualMocks(page: Page): Promise<void> {
         verifyComment: null, verifiedBy: null, verifiedByName: null, verifiedAt: null,
         canceledReason: null, createdBy: 2, createdByName: '张岚',
         version: 3, createdAt: '2026-10-09T03:00:00', updatedAt: '2026-10-20T09:30:00',
+        auditTrail: [
+          { id: 1, action: 'CORRECTIVE_ACTION_CREATE', operatorId: 2, operatorName: '张岚', detail: '{"alertId":2,"ownerId":5}', createdAt: '2026-10-09T03:00:00' },
+          { id: 2, action: 'CORRECTIVE_ACTION_START', operatorId: 5, operatorName: '李衡', detail: '{"targetStatus":"IN_PROGRESS","beforeStatus":"OPEN"}', createdAt: '2026-10-12T08:00:00' },
+          { id: 3, action: 'CORRECTIVE_ACTION_SUBMIT', operatorId: 5, operatorName: '李衡', detail: '{"targetStatus":"WAITING_VERIFICATION","beforeStatus":"IN_PROGRESS"}', createdAt: '2026-10-20T09:30:00' },
+        ],
       })
     }
 
