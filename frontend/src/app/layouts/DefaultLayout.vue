@@ -164,6 +164,8 @@ function navigateFromMobile(command: string): void {
                   v-for="menu in menus"
                   :key="menu.path"
                   :command="menu.path"
+                  :class="{ 'is-active': menu.path === activeMenu }"
+                  :aria-current="menu.path === activeMenu ? 'page' : undefined"
                 >
                   {{ menu.title }}
                 </el-dropdown-item>

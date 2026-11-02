@@ -60,7 +60,7 @@ async function submit(): Promise<void> {
         </p>
         <p class="login__brand-note">
           SPE · Editorial Ledger<br>
-          2026 Q3 / Internal access
+          Internal access only
         </p>
       </section>
 

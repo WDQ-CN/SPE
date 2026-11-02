@@ -49,6 +49,7 @@ test('登录页', async ({ page }) => {
   const problems = watchConsole(page)
   await page.goto('/login', { waitUntil: 'networkidle' })
   await settle(page)
+  await expect(page.locator('.login__brand-note')).toContainText('Internal access only')
   await expect(page).toHaveScreenshot('login.png')
   expect(problems.all).toEqual([])
 })
@@ -127,6 +128,7 @@ test('移动端菜单', async ({ page }) => {
   await openPage(page, '/')
   await page.getByRole('button', { name: '菜单' }).click()
   await page.locator('.el-dropdown-menu').waitFor({ state: 'visible' })
+  await expect(page.locator('.el-dropdown-menu__item.is-active')).toContainText('首页')
   await page.mouse.move(20, 500)
   await page.evaluate(() => {
     const active = document.activeElement as HTMLElement | null
