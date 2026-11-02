@@ -10,11 +10,11 @@ SPE（Supplier Performance Evaluation）是一个面向采购与质量团队的�
 
 ## 当前状态
 
-- **M1～M6 全部达成**：身份与档案、模板版本、评估流程、审批定级、分析/预警、开放 API。
-- 后端 **421** 个测试、前端 **150** 个 Vitest 用例、真实全栈 **28** 个 Playwright e2e、像素级视觉回归 **10 个用例 / 12 张基线**。
+- **M1～M6 全部达成，并补齐「预警 → 整改任务 → 下期验证」闭环**：身份与档案、模板版本、评估流程、审批定级、分析/预警、整改闭环、开放 API。
+- 后端 **443** 个测试、前端 **180** 个 Vitest 用例、真实全栈 **31** 个 Playwright e2e、像素级视觉回归 **13 个用例 / 15 张基线**。
 - `pnpm lint` 0 warning、`pnpm build` 通过；应用依赖 OSV **0/0**，MySQL 8.4.13 的 NVD 与 Oracle Linux errata 已核对。
 - 视觉基线：**Editorial Ledger**（纸面、墨色、衬线标题/数字、1px 规则线），覆盖全部页面与移动端菜单。
-- 代码在 `main`；后端/前端/端到端/视觉回归的原始验证日志保存在根目录 `29-*.log`、`30-*.log`。
+- 代码在 `main`；后端/前端/端到端/视觉回归的原始验证日志保存在根目录 `33-final-*.log`。
 
 ## 功能
 
@@ -28,8 +28,26 @@ SPE（Supplier Performance Evaluation）是一个面向采购与质量团队的�
 | 结果与报告 | 任务级结果列表、维度明细、雷达图、审批时间线、Excel 导出；试算口径与定稿快照明确区分 |
 | 分析看板 | 周期排行与环比、等级分布、历史趋势、多供应商对比 |
 | 预警 | 总分阈值、关键维度阈值、连续下降三类规则；未读/已处理/已取代状态 |
+| 整改闭环 | 预警一键创建整改、负责人/截止日期/措施、状态机与版本守卫；下期定稿自动取分；经理验证/继续整改；列表筛选、操作审计轨迹与站内通知 |
 | 开放 API | ADMIN 生成/停用 Token；`/open/v1` 查询任务与指标、幂等写入分数；只有生成时返回一次明文 |
 | 平台能力 | 分页、阈值配置、站内通知、审计日志、CSP、最小权限数据库账号、健康检查 |
+
+### 整改闭环 API
+
+```text
+POST /api/alerts/{id}/corrective-actions        从预警创建整改（同事务置预警 HANDLED）
+GET  /api/corrective-actions                    列表；status/supplierId/ownerId/overdue 筛选
+GET  /api/corrective-actions/{id}               详情（基线/目标、下期对比、审计轨迹）
+PUT  /api/corrective-actions/{id}               编辑措施/负责人/截止日期（带 version）
+POST /api/corrective-actions/{id}/start         开始整改
+POST /api/corrective-actions/{id}/submit        提交完成
+POST /api/corrective-actions/{id}/verify        经理验证通过/继续整改
+POST /api/corrective-actions/{id}/cancel        取消整改
+```
+
+- ADMIN/MANAGER 可查看全部、指派负责人、验证与取消；EVALUATOR 仅本人负责的整改；VIEWER 不可见。
+- 整改状态：`OPEN → IN_PROGRESS → WAITING_VERIFICATION → VERIFIED / REOPENED`，未完成状态可 `CANCELED`。
+- 下期验证取同供应商、严格晚于基线、最早的 `EFFECTIVE` 评估；创建整改与验证就绪会写站内通知。
 
 ## 架构
 
