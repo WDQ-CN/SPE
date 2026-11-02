@@ -31,8 +31,10 @@ public class CorrectiveActionVerifier {
   private final EventPublisher eventPublisher;
 
   /**
-   * 定稿事件到达后回填等待中的整改。`@Order(20)` 保证在 AlertListener 的 supersede 处理之后执行；
-   * 两者都在定稿事务内，任何写库失败都会让定稿回滚。
+   * 定稿事件到达后回填等待中的整改。`@Order(20)` 与 `AlertListener` 的 `@Order(10)` 配合：
+   * 先 supersede/取消未完成整改，再给仍然 WAITING 的行取数，避免给刚被取消的整改回填。
+   *
+   * <p>两者都在定稿事务内，任何写库失败都会让定稿回滚。
    */
   @EventListener
   @Order(20)
@@ -44,25 +46,40 @@ public class CorrectiveActionVerifier {
   public void fillIfAvailable(long actionId) {
     CorrectiveAction action = correctiveActionMapper.selectById(actionId);
     if (action == null
-        || !CorrectiveActionStatus.WAITING_VERIFICATION.name().equals(action.getStatus())
-        || action.getVerifyYear() != null) {
+        || !CorrectiveActionStatus.WAITING_VERIFICATION.name().equals(action.getStatus())) {
       return;
     }
-    fillOne(action);
+    boolean reverify = isReverify(action);
+    if (action.getVerifyYear() != null && !reverify) {
+      return;
+    }
+    fillOne(action, reverify);
   }
 
   public void fillForSupplier(long supplierId) {
     List<CorrectiveAction> waiting =
         correctiveActionMapper.findWaitingVerificationBySupplier(supplierId);
     for (CorrectiveAction action : waiting) {
-      fillOne(action);
+      fillOne(action, isReverify(action));
     }
   }
 
-  private void fillOne(CorrectiveAction action) {
+  /**
+   * 「继续整改」后重新提交：上次已经由经理确认过（`verified_at` 非空），但状态又回到 WAITING。
+   *
+   * <p>此时以**上次验证周期**为基线继续往后取，否则会一直重复第一次的周期；
+   * 首次等待经理确认（`verified_at` 为空）不算，避免后续定稿覆盖尚未确认的结果。
+   */
+  private static boolean isReverify(CorrectiveAction action) {
+    return action.getVerifyYear() != null && action.getVerifiedAt() != null;
+  }
+
+  private void fillOne(CorrectiveAction action, boolean reverify) {
+    int baselineYear = reverify ? action.getVerifyYear() : action.getBaselineYear();
+    int baselineQuarter = reverify ? action.getVerifyQuarter() : action.getBaselineQuarter();
     List<NextEffectivePeriodRow> candidates =
         correctiveActionMapper.findEffectivePeriodsAfter(
-            action.getSupplierId(), action.getBaselineYear(), action.getBaselineQuarter());
+            action.getSupplierId(), baselineYear, baselineQuarter);
     if (candidates.isEmpty()) {
       return;
     }
@@ -81,7 +98,8 @@ public class CorrectiveActionVerifier {
           null,
           null,
           "PENDING",
-          "同周期存在多份生效评估，需人工选择后再验证");
+          "同周期存在多份生效评估，需人工选择后再验证",
+          reverify);
       return;
     }
 
@@ -91,12 +109,12 @@ public class CorrectiveActionVerifier {
             : correctiveActionMapper.findDimensionScore(
                 earliest.getTaskSupplierId(), action.getDimensionId());
     if (actual == null) {
-      fill(action, earliest, null, null, "PENDING", "下期缺少对应维度分，需人工判断");
+      fill(action, earliest, null, null, "PENDING", "下期缺少对应维度分，需人工判断", reverify);
       return;
     }
     String outcome =
         actual.compareTo(action.getTargetScore()) >= 0 ? "IMPROVED" : "NOT_IMPROVED";
-    fill(action, earliest, earliest.getTaskSupplierId(), actual, outcome, null);
+    fill(action, earliest, earliest.getTaskSupplierId(), actual, outcome, null, reverify);
   }
 
   private void fill(
@@ -105,7 +123,8 @@ public class CorrectiveActionVerifier {
       Long taskSupplierId,
       BigDecimal score,
       String outcome,
-      String comment) {
+      String comment,
+      boolean reverify) {
     int updated =
         correctiveActionMapper.fillVerification(
             action.getId(),
@@ -115,18 +134,20 @@ public class CorrectiveActionVerifier {
             taskSupplierId,
             score,
             outcome,
-            comment);
+            comment,
+            reverify);
     if (updated == 0) {
       log.info("整改 {} 的验证数据已被其他请求写入或状态已变化，跳过", action.getId());
       return;
     }
     log.info(
-        "整改 {} 回填下期 {}-Q{}：score={}, outcome={}",
+        "整改 {} 回填下期 {}-Q{}：score={}, outcome={}, reverify={}",
         action.getId(),
         period.getYear(),
         period.getQuarter(),
         score,
-        outcome);
+        outcome,
+        reverify);
     String supplierName =
         alertQueryMapper
             .findSupplierName(action.getSupplierId())

@@ -48,11 +48,16 @@ public interface CorrectiveActionMapper extends BaseMapper<CorrectiveAction> {
   BigDecimal findDimensionScore(
       @Param("taskSupplierId") long taskSupplierId, @Param("dimensionId") long dimensionId);
 
-  /** 等待下期验证的整改（只取尚未回填 verify_* 的 WAITING 行）。 */
+  /**
+   * 等待下期验证的整改。
+   *
+   * <p>首次等待（`verify_year IS NULL`）与「继续整改后重新提交」都算：后者由 `verified_at IS NOT NULL`
+   * 识别，验证器会以**上次验证周期**为基线继续往后取，而不是永远停在第一次的周期。
+   */
   @Select(
       "SELECT * FROM corrective_action"
           + " WHERE supplier_id = #{supplierId} AND status = 'WAITING_VERIFICATION'"
-          + " AND verify_year IS NULL ORDER BY id")
+          + " AND (verify_year IS NULL OR verified_at IS NOT NULL) ORDER BY id")
   List<CorrectiveAction> findWaitingVerificationBySupplier(@Param("supplierId") long supplierId);
 
   /**
@@ -65,10 +70,11 @@ public interface CorrectiveActionMapper extends BaseMapper<CorrectiveAction> {
       "UPDATE corrective_action SET verify_year = #{verifyYear},"
           + " verify_quarter = #{verifyQuarter}, verify_task_supplier_id = #{verifyTaskSupplierId},"
           + " verify_score = #{verifyScore}, verify_outcome = #{verifyOutcome},"
-          + " verify_comment = #{verifyComment}, version = version + 1,"
-          + " updated_at = CURRENT_TIMESTAMP(3)"
+          + " verify_comment = #{verifyComment}, verified_by = NULL, verified_at = NULL,"
+          + " version = version + 1, updated_at = CURRENT_TIMESTAMP(3)"
           + " WHERE id = #{id} AND version = #{version}"
-          + " AND status = 'WAITING_VERIFICATION' AND verify_year IS NULL")
+          + " AND status = 'WAITING_VERIFICATION'"
+          + " AND (verify_year IS NULL OR #{reverify} = TRUE)")
   int fillVerification(
       @Param("id") long id,
       @Param("version") int version,
@@ -77,7 +83,8 @@ public interface CorrectiveActionMapper extends BaseMapper<CorrectiveAction> {
       @Param("verifyTaskSupplierId") Long verifyTaskSupplierId,
       @Param("verifyScore") BigDecimal verifyScore,
       @Param("verifyOutcome") String verifyOutcome,
-      @Param("verifyComment") String verifyComment);
+      @Param("verifyComment") String verifyComment,
+      @Param("reverify") boolean reverify);
 
   /** 编辑措施/负责人/截止日期（OPEN/IN_PROGRESS/REOPENED 才可编辑；version 守卫）。 */
   @Update(

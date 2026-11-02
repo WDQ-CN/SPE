@@ -160,7 +160,7 @@ class CorrectiveActionServiceIntegrationTest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("D7：预警被重算 supersede 时，未完成整改取消并写 SYSTEM 审计")
+  @DisplayName("D7/P2：定稿先 supersede 再验证；被取消的整改不留下期回填")
   void supersedeCancelsAndAudits() {
     long supplierId = TestFixtures.insertSupplier(jdbcTemplate, "W2-D7-SUP");
     long managerId = TestFixtures.insertUser(jdbcTemplate, "w2-d7-manager", "MANAGER");
@@ -180,7 +180,7 @@ class CorrectiveActionServiceIntegrationTest extends AbstractIntegrationTest {
         "INSERT INTO corrective_action"
             + " (alert_id, task_supplier_id, supplier_id, baseline_year, baseline_quarter,"
             + "  baseline_score, target_score, owner_id, due_date, measure, status, created_by)"
-            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?)",
+            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'WAITING_VERIFICATION', ?)",
         alertId,
         97001L,
         supplierId,
@@ -192,6 +192,14 @@ class CorrectiveActionServiceIntegrationTest extends AbstractIntegrationTest {
         "2026-06-30",
         "旧整改措施",
         managerId);
+    // 如果事件顺序错误，验证器会先看到这条 WAITING 整改并回填 Q2；正确顺序应先被 D7 取消。
+    jdbcTemplate.update(
+        "INSERT INTO eval_task (id, name, year, quarter, template_version_id, deadline, status, version)"
+            + " VALUES (97002, 'W2 D7 下期任务', 2026, 2, 1, '2026-12-31', 'COMPLETED', 0)");
+    jdbcTemplate.update(
+        "INSERT INTO task_supplier (id, task_id, supplier_id, status, current_node, total_score,"
+            + " total_grade, version) VALUES (97012, 97002, ?, 'EFFECTIVE', 0, 88.00, 'B', 0)",
+        supplierId);
 
     eventPublisher.publishEvent(
         new TaskSupplierFinalizedEvent(
@@ -207,10 +215,11 @@ class CorrectiveActionServiceIntegrationTest extends AbstractIntegrationTest {
     assertThat(statusOfAlert(alertId)).isEqualTo("SUPERSEDED");
     Map<String, Object> action =
         jdbcTemplate.queryForMap(
-            "SELECT status, canceled_reason, version FROM corrective_action WHERE alert_id = ?",
+            "SELECT status, canceled_reason, verify_year, version FROM corrective_action WHERE alert_id = ?",
             alertId);
     assertThat(action.get("status")).isEqualTo("CANCELED");
     assertThat(action.get("canceled_reason")).isEqualTo("预警被重算取代");
+    assertThat(action.get("verify_year")).as("已取消的整改不应被验证器回填").isNull();
     assertThat(((Number) action.get("version")).intValue()).isEqualTo(1);
 
     Map<String, Object> audit =

@@ -15,6 +15,7 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
@@ -44,6 +45,7 @@ public class AlertListener {
   private final EventPublisher eventPublisher;
 
   @EventListener
+  @Order(10)
   public void onTaskSupplierFinalized(TaskSupplierFinalizedEvent event) {
     AlertRules rules = settingsFacade.alertRules();
     String supplierName =

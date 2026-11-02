@@ -17,7 +17,7 @@ class CorrectiveActionVerifierIntegrationTest extends AbstractIntegrationTest {
   @Autowired private CorrectiveActionVerifier verifier;
 
   @Test
-  @DisplayName("D5：唯一候选回填实际分，并按目标生成 IMPROVED")
+  @DisplayName("D5：唯一候选回填实际分；重开提交后以下一次验证周期重新取数")
   void fillsUniqueNextPeriod() {
     long supplierId = TestFixtures.insertSupplier(jdbcTemplate, "W2-VERIFY-SUP");
     insertTask(95001L, 2026, 4);
@@ -38,6 +38,35 @@ class CorrectiveActionVerifierIntegrationTest extends AbstractIntegrationTest {
     assertThat(row.get("verify_outcome")).isEqualTo("IMPROVED");
     assertThat(row.get("verify_comment")).isNull();
     assertThat(((Number) row.get("version")).intValue()).isEqualTo(1);
+
+    // P1：经理判「继续整改」后重开、负责人重提；验证器应以 Q4 为基线取 2027 Q1，
+    // 而不是因为 verify_year 已存在就永远跳过。
+    jdbcTemplate.update(
+        "UPDATE corrective_action SET status = 'WAITING_VERIFICATION',"
+            + " verified_by = 701, verified_at = CURRENT_TIMESTAMP(3),"
+            + " verify_outcome = 'NOT_IMPROVED', verify_comment = '继续整改' WHERE id = ?",
+        actionId);
+    insertTask(95004L, 2027, 1);
+    insertTaskSupplier(95014L, 95004L, supplierId, 91.00);
+
+    verifier.fillForSupplier(supplierId);
+
+    Map<String, Object> reverified =
+        jdbcTemplate.queryForMap(
+            "SELECT verify_year, verify_quarter, verify_task_supplier_id, verify_score,"
+                + " verify_outcome, verify_comment, verified_by, verified_at, version"
+                + " FROM corrective_action WHERE id = ?",
+            actionId);
+    assertThat(reverified.get("verify_year")).isEqualTo(2027);
+    assertThat(reverified.get("verify_quarter")).isEqualTo(1);
+    assertThat(((Number) reverified.get("verify_task_supplier_id")).longValue())
+        .isEqualTo(95014L);
+    assertThat(reverified.get("verify_score").toString()).isEqualTo("91.00");
+    assertThat(reverified.get("verify_outcome")).isEqualTo("IMPROVED");
+    assertThat(reverified.get("verify_comment")).isNull();
+    assertThat(reverified.get("verified_by")).isNull();
+    assertThat(reverified.get("verified_at")).isNull();
+    assertThat(((Number) reverified.get("version")).intValue()).isEqualTo(2);
   }
 
   @Test
