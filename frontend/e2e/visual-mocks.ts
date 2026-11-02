@@ -213,6 +213,112 @@ export async function installVisualMocks(page: Page): Promise<void> {
       })
     }
 
+    if (pathname === '/api/alerts') {
+      return reply(pageResult([
+        {
+          id: 1, taskSupplierId: 21, supplierId: 1, supplierCode: 'DEMO-001', supplierName: '华东精密制造',
+          year: 2026, quarter: 3, type: 'TOTAL_LOW', title: '总分低于阈值', content: '总分 65.20 低于阈值 70',
+          dimensionId: null, baselineScore: 65.2, targetScore: 70, status: 'UNREAD',
+          correctiveActionId: null, correctiveActionStatus: null, actionable: true,
+          handledBy: null, handledByName: null, handledComment: null, handledAt: null,
+          createdAt: '2026-10-08T02:10:00',
+        },
+        {
+          id: 2, taskSupplierId: 22, supplierId: 2, supplierCode: 'DEMO-002', supplierName: '南方电子科技',
+          year: 2026, quarter: 3, type: 'TOTAL_LOW', title: '总分低于阈值', content: '总分 66.50 低于阈值 70',
+          dimensionId: null, baselineScore: 66.5, targetScore: 70, status: 'HANDLED',
+          correctiveActionId: 1, correctiveActionStatus: 'WAITING_VERIFICATION', actionable: false,
+          handledBy: 2, handledByName: '张岚', handledComment: '已创建整改任务 #1', handledAt: '2026-10-09T03:00:00',
+          createdAt: '2026-10-08T02:20:00',
+        },
+        {
+          id: 3, taskSupplierId: 23, supplierId: 3, supplierCode: 'DEMO-003', supplierName: '西部新材料',
+          year: 2026, quarter: 3, type: 'KEY_DIMENSION_LOW', title: '关键维度低于阈值', content: '交付维度 61.00 低于阈值 65',
+          dimensionId: 12, baselineScore: null, targetScore: null, status: 'UNREAD',
+          correctiveActionId: null, correctiveActionStatus: null, actionable: false,
+          handledBy: null, handledByName: null, handledComment: null, handledAt: null,
+          createdAt: '2026-10-08T02:30:00',
+        },
+      ]))
+    }
+
+    if (pathname === '/api/corrective-actions') {
+      return reply(pageResult([
+        {
+          id: 1, alertId: 2, alertType: 'TOTAL_LOW', alertTitle: '总分低于阈值',
+          taskSupplierId: 22, supplierId: 2, supplierCode: 'DEMO-002', supplierName: '南方电子科技',
+          dimensionId: null, dimensionName: null, baselineYear: 2026, baselineQuarter: 2,
+          baselineScore: 66.5, targetScore: 70, ownerId: 5, ownerName: '李衡', dueDate: '2026-11-30',
+          status: 'WAITING_VERIFICATION', overdue: false, verifyYear: 2026, verifyQuarter: 3,
+          verifyScore: 72.4, verifyOutcome: 'IMPROVED', version: 3,
+          createdAt: '2026-10-09T03:00:00', updatedAt: '2026-10-20T09:30:00',
+        },
+        {
+          id: 2, alertId: 4, alertType: 'KEY_DIMENSION_LOW', alertTitle: '关键维度低于阈值',
+          taskSupplierId: 24, supplierId: 3, supplierCode: 'DEMO-003', supplierName: '西部新材料',
+          dimensionId: 12, dimensionName: '交付', baselineYear: 2026, baselineQuarter: 2,
+          baselineScore: 61, targetScore: 65, ownerId: 6, ownerName: '王速', dueDate: '2026-10-15',
+          status: 'IN_PROGRESS', overdue: true, verifyYear: null, verifyQuarter: null,
+          verifyScore: null, verifyOutcome: null, version: 1,
+          createdAt: '2026-10-10T08:00:00', updatedAt: '2026-10-18T16:20:00',
+        },
+        {
+          id: 3, alertId: 5, alertType: 'TOTAL_LOW', alertTitle: '总分低于阈值',
+          taskSupplierId: 25, supplierId: 4, supplierCode: 'DEMO-004', supplierName: '北方物流服务',
+          dimensionId: null, dimensionName: null, baselineYear: 2026, baselineQuarter: 2,
+          baselineScore: 64, targetScore: 70, ownerId: 5, ownerName: '李衡', dueDate: '2026-12-15',
+          status: 'OPEN', overdue: false, verifyYear: null, verifyQuarter: null,
+          verifyScore: null, verifyOutcome: null, version: 0,
+          createdAt: '2026-10-12T10:00:00', updatedAt: '2026-10-12T10:00:00',
+        },
+        {
+          id: 4, alertId: 6, alertType: 'TOTAL_LOW', alertTitle: '总分低于阈值',
+          taskSupplierId: 26, supplierId: 5, supplierCode: 'DEMO-005', supplierName: '东岸包装材料',
+          dimensionId: null, dimensionName: null, baselineYear: 2026, baselineQuarter: 1,
+          baselineScore: 68, targetScore: 72, ownerId: 6, ownerName: '王速', dueDate: '2026-09-30',
+          status: 'VERIFIED', overdue: false, verifyYear: 2026, verifyQuarter: 2,
+          verifyScore: 76.5, verifyOutcome: 'IMPROVED', version: 4,
+          createdAt: '2026-07-08T02:00:00', updatedAt: '2026-08-20T11:00:00',
+        },
+        {
+          id: 5, alertId: 7, alertType: 'TREND_DECLINE', alertTitle: '总分连续下降',
+          taskSupplierId: 27, supplierId: 6, supplierCode: 'DEMO-006', supplierName: '中原机电设备',
+          dimensionId: null, dimensionName: null, baselineYear: 2026, baselineQuarter: 2,
+          baselineScore: 73, targetScore: 73, ownerId: 5, ownerName: '李衡', dueDate: '2026-11-10',
+          status: 'CANCELED', overdue: false, verifyYear: null, verifyQuarter: null,
+          verifyScore: null, verifyOutcome: null, version: 2,
+          createdAt: '2026-10-05T09:00:00', updatedAt: '2026-10-11T15:00:00',
+        },
+      ]))
+    }
+
+    if (pathname === '/api/corrective-actions/1') {
+      return reply({
+        id: 1, alertId: 2, alertType: 'TOTAL_LOW', alertTitle: '总分低于阈值',
+        taskSupplierId: 22, supplierId: 2, supplierCode: 'DEMO-002', supplierName: '南方电子科技',
+        dimensionId: null, dimensionName: null, baselineYear: 2026, baselineQuarter: 2,
+        baselineScore: 66.5, targetScore: 70, ownerId: 5, ownerName: '李衡', dueDate: '2026-11-30',
+        measure: '完善来料检验流程：新增首件确认与供应商自检记录抽查。\n每周复盘一次不合格项，连续两周无复发后提交验证。',
+        expectedResult: '下期总分不低于 70，来料批次不合格率低于 2%',
+        status: 'WAITING_VERIFICATION', overdue: false,
+        submitComment: '已完成 8D 报告与来料检验流程调整',
+        submittedAt: '2026-10-20T09:30:00',
+        verifyYear: 2026, verifyQuarter: 3, verifyTaskSupplierId: 28,
+        verifyScore: 72.4, verifyOutcome: 'IMPROVED',
+        verifyComment: null, verifiedBy: null, verifiedByName: null, verifiedAt: null,
+        canceledReason: null, createdBy: 2, createdByName: '张岚',
+        version: 3, createdAt: '2026-10-09T03:00:00', updatedAt: '2026-10-20T09:30:00',
+      })
+    }
+
+    if (pathname === '/api/user-options') {
+      return reply([
+        { id: 5, name: '李衡', role: 'EVALUATOR', department: 'QUALITY' },
+        { id: 6, name: '王速', role: 'EVALUATOR', department: 'DELIVERY' },
+        { id: 2, name: '张岚', role: 'MANAGER', department: 'PURCHASE' },
+      ])
+    }
+
     if (pathname === '/api/settings/grade-thresholds') return reply({ a: 90, b: 80, c: 70, d: 60 })
     if (pathname === '/api/settings/alert-rules') {
       return reply({ enabled: true, totalThreshold: 70, keyDimensionThreshold: 65, trendPeriods: 3, trendDrop: 10 })

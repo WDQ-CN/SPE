@@ -42,6 +42,8 @@ const MENUS: MenuItem[] = [
   // 01 §7：分析看板/预警列表 = ADMIN / MANAGER / VIEWER（M5）
   { path: '/analytics', title: '分析看板', roles: ['ADMIN', 'MANAGER', 'VIEWER'] },
   { path: '/alerts', title: '预警', roles: ['ADMIN', 'MANAGER', 'VIEWER'] },
+  // 整改闭环：ADMIN/MANAGER 管理全部，EVALUATOR 只处理本人（后端第二层过滤）
+  { path: '/actions', title: '整改任务', roles: ['ADMIN', 'MANAGER', 'EVALUATOR'] },
   // 报告详情：评估人只能看本人参与过的（后端第二层判），入口对任意已登录角色登记为隐藏页
   { path: '/reports', title: '评估报告', roles: [], hidden: true },
   // 打分页：从待办/详情点进去，不进菜单，但必须登记才能让守卫按前缀拦住越权角色

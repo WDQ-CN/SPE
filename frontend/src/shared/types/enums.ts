@@ -50,3 +50,19 @@ export type TaskSupplierStatus = 'SCORING' | 'PENDING_APPROVAL' | 'APPROVING' | 
 
 /** 评分单状态（06 §2.1）：P3 三态全部可达。 */
 export type SheetStatus = 'UNASSIGNED' | 'SCORING' | 'SUBMITTED'
+
+/**
+ * 整改任务状态（V1004 `corrective_action.status`；29 §3.2 状态机）。
+ *
+ * <p>VERIFIED / CANCELED 是终态；REOPENED 仍可继续整改（start 回 IN_PROGRESS）。
+ */
+export type CorrectiveActionStatus =
+  | 'OPEN'
+  | 'IN_PROGRESS'
+  | 'WAITING_VERIFICATION'
+  | 'VERIFIED'
+  | 'REOPENED'
+  | 'CANCELED'
+
+/** 下期验证结论（V1004 `verify_outcome`）：PENDING = 同周期多份或维度缺失，需人工判断。 */
+export type VerifyOutcome = 'IMPROVED' | 'NOT_IMPROVED' | 'PENDING'

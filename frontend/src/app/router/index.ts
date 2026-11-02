@@ -116,6 +116,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '预警' },
       },
       {
+        path: 'actions',
+        name: 'actions',
+        component: () => import('@/features/action/views/ActionListView.vue'),
+        meta: { title: '整改任务' },
+      },
+      {
+        path: 'actions/:id',
+        name: 'action-detail',
+        component: () => import('@/features/action/views/ActionDetailView.vue'),
+        meta: { title: '整改任务详情' },
+      },
+      {
         path: 'audit',
         name: 'audit',
         component: () => import('@/features/audit/views/AuditLogView.vue'),

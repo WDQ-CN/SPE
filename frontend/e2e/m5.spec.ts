@@ -67,6 +67,7 @@ async function submitAllSheets(
   manager: Ctx,
   evaluator: Ctx,
   taskId: number,
+  mode: 'low' | 'high' = 'low',
 ): Promise<void> {
   const sheets = (
     await (
@@ -91,13 +92,19 @@ async function submitAllSheets(
       }[]
     ).map((indicator) => ({
       indicatorId: indicator.indicatorId,
-      // 故意压低分数，确保触发「总分低于阈值」预警（默认阈值 70）
+      // low：故意压低分数触发「总分低于阈值」；high：给下期验证一个明显高于目标的分数
       rawValue:
         indicator.type === 'QUAL'
-          ? 1
+          ? mode === 'low'
+            ? 1
+            : 5
           : indicator.scoreMode === 'TARGET'
-            ? Number(((indicator.targetValue as number) * 0.5).toFixed(2))
-            : 50,
+            ? Number(
+                ((indicator.targetValue as number) * (mode === 'low' ? 0.5 : 1)).toFixed(2),
+              )
+            : mode === 'low'
+              ? 50
+              : 90,
     }))
     const saved = await (
       await evaluator.api.put(`/api/sheets/${sheet.sheetId}/scores`, {
@@ -145,6 +152,91 @@ async function approveTwice(
     })
   ).json()
   expect(approved.code, '末级通过（定稿）').toBe(0)
+}
+
+async function createPublishedTask(
+  manager: Ctx,
+  input: {
+    name: string
+    year: number
+    quarter: number
+    templateId: number
+    templateVersionId: number
+    supplierId: number
+    approverIds: number[]
+  },
+): Promise<number> {
+  const created = await (
+    await manager.api.post('/api/tasks', {
+      headers: manager.headers,
+      data: {
+        name: input.name,
+        year: input.year,
+        quarter: input.quarter,
+        templateId: input.templateId,
+        templateVersionId: input.templateVersionId,
+        deadline: '2099-12-31',
+        supplierIds: [input.supplierId],
+        approverIds: input.approverIds,
+      },
+    })
+  ).json()
+  expect(created.code, '创建任务').toBe(0)
+  const taskId: number = created.data
+  const published = await (
+    await manager.api.post(`/api/tasks/${taskId}/publish`, {
+      headers: manager.headers,
+      data: { version: 0 },
+    })
+  ).json()
+  expect(published.code, '发布任务').toBe(0)
+  return taskId
+}
+
+async function assignAllSheets(
+  manager: Ctx,
+  taskId: number,
+  assigneeId: number,
+): Promise<{ sheetId: number; taskSupplierId: number; version: number }[]> {
+  const sheets = (
+    await (
+      await manager.api.get(`/api/tasks/${taskId}/sheets`, { headers: manager.headers })
+    ).json()
+  ).data as { sheetId: number; taskSupplierId: number; version: number }[]
+  for (const sheet of sheets) {
+    const assigned = await (
+      await manager.api.put(`/api/sheets/${sheet.sheetId}/assign`, {
+        headers: manager.headers,
+        data: { assigneeId, version: sheet.version },
+      })
+    ).json()
+    expect(assigned.code, '改派').toBe(0)
+  }
+  return sheets
+}
+
+interface AlertRow {
+  id: number
+  supplierId: number
+  type: string
+  baselineScore: number | null
+  targetScore: number | null
+  actionable: boolean
+}
+
+async function findUnreadTotalLowAlert(manager: Ctx, supplierId: number): Promise<AlertRow> {
+  const alerts = await (
+    await manager.api.get('/api/alerts', {
+      headers: manager.headers,
+      params: { page: 1, size: 100, status: 'UNREAD' },
+    })
+  ).json()
+  const alert = (alerts.data.list as AlertRow[]).find(
+    (row) => row.supplierId === supplierId && row.type === 'TOTAL_LOW',
+  )
+  expect(alert, '定稿后必须生成该供应商的 TOTAL_LOW 预警').toBeTruthy()
+  expect(alert!.actionable, '新预警必须有结构化基线/目标，可创建整改').toBe(true)
+  return alert!
 }
 
 async function loginUi(page: Page, username: string, password: string): Promise<void> {
@@ -334,6 +426,151 @@ test.describe('M5 预警与解锁闭环', () => {
     await page.getByRole('button', { name: '确认处理' }).click()
     await expect(page.locator('.el-message').filter({ hasText: '已处理' })).toBeVisible()
     await expect(alertRow).toHaveCount(0)
+  })
+
+  test('W4 整改闭环：低分定稿 → 创建整改 → 提交 → 下期定稿 → 经理验证', async ({ page }) => {
+    const suffix = String(Date.now()).slice(-6)
+    const admin = await adminCtx()
+    const manager1 = await loginApi('demo-manager1')
+    const manager2 = await loginApi('demo-manager2')
+    const evaluator = await loginApi('demo-eval-quality')
+    const manager1Id = await userId(admin, 'demo-manager1')
+    const manager2Id = await userId(admin, 'demo-manager2')
+    const evaluatorId = await userId(admin, 'demo-eval-quality')
+    const { templateId, versionId } = await defaultTemplate(manager1)
+
+    const supplier = await (
+      await manager1.api.post('/api/suppliers', {
+        headers: manager1.headers,
+        data: {
+          code: `W4-E2E-${suffix}`,
+          name: `W4 整改供应商 ${suffix}`,
+          category: 'E2E',
+        },
+      })
+    ).json()
+    expect(supplier.code, '创建供应商').toBe(0)
+    const supplierId: number = supplier.data.id
+
+    const baselineTaskId = await createPublishedTask(manager1, {
+      name: `W4 整改基线 ${suffix}`,
+      year: 2099,
+      quarter: 1,
+      templateId,
+      templateVersionId: versionId,
+      supplierId,
+      approverIds: [manager1Id, manager2Id],
+    })
+    const baselineSheets = await assignAllSheets(manager1, baselineTaskId, evaluatorId)
+    const baselineTsId = baselineSheets[0].taskSupplierId
+    await submitAllSheets(manager1, evaluator, baselineTaskId, 'low')
+    await approveTwice(manager1, manager2, baselineTsId)
+
+    const alert = await findUnreadTotalLowAlert(manager1, supplierId)
+    const created = await (
+      await manager1.api.post(`/api/alerts/${alert.id}/corrective-actions`, {
+        headers: manager1.headers,
+        data: {
+          ownerId: evaluatorId,
+          dueDate: '2099-12-31',
+          measure: 'E2E 整改：完善来料检验与供应商自检记录',
+          expectedResult: '下期总分不低于 70',
+        },
+      })
+    ).json()
+    expect(created.code, '从预警创建整改').toBe(0)
+    const actionId: number = created.data.id
+
+    const ownerNotices = await (
+      await evaluator.api.get('/api/notifications', {
+        headers: evaluator.headers,
+        params: { page: 1, size: 50 },
+      })
+    ).json()
+    expect(
+      (ownerNotices.data.list as { type: string; content: string }[]).some(
+        (notice) =>
+          notice.type === 'CORRECTIVE_ACTION_CREATED' &&
+          notice.content.includes(`#${actionId}`),
+      ),
+      '创建整改应通知负责人',
+    ).toBe(true)
+
+    // 负责人从列表进入详情，开始并提交
+    await loginUi(page, 'demo-eval-quality', DEMO_PASSWORD)
+    await page.goto('/actions')
+    const actionRow = page
+      .locator('.el-table__row')
+      .filter({ hasText: `W4-E2E-${suffix}` })
+      .first()
+    await expect(actionRow).toBeVisible()
+    await actionRow.getByRole('link', { name: '详情' }).click()
+    await expect(
+      page.getByRole('heading', { name: `整改任务 #${actionId}`, exact: true }),
+    ).toBeVisible()
+    await page.getByRole('button', { name: '开始整改' }).click()
+    await page.locator('.el-message-box__btns .el-button--primary').click()
+    await expect(page.locator('.el-message').filter({ hasText: '已开始整改' })).toBeVisible()
+    await page.getByRole('button', { name: '提交完成' }).click()
+    await page.getByPlaceholder('可选：说明完成情况').fill('E2E 已完成整改')
+    await page.getByRole('button', { name: '确认提交' }).click()
+    await expect(page.locator('.status-mark', { hasText: '待验证' }).first()).toBeVisible()
+
+    // 下期高分定稿：验证器应把下期分数/结论回填到等待中的整改
+    const nextTaskId = await createPublishedTask(manager1, {
+      name: `W4 整改下期 ${suffix}`,
+      year: 2099,
+      quarter: 2,
+      templateId,
+      templateVersionId: versionId,
+      supplierId,
+      approverIds: [manager1Id, manager2Id],
+    })
+    const nextSheets = await assignAllSheets(manager1, nextTaskId, evaluatorId)
+    const nextTsId = nextSheets[0].taskSupplierId
+    await submitAllSheets(manager1, evaluator, nextTaskId, 'high')
+    await approveTwice(manager1, manager2, nextTsId)
+
+    const filled = await (
+      await manager1.api.get(`/api/corrective-actions/${actionId}`, {
+        headers: manager1.headers,
+      })
+    ).json()
+    expect(filled.code, '读取整改详情').toBe(0)
+    expect(filled.data.status, '下期定稿只回填分数，不自动通过').toBe(
+      'WAITING_VERIFICATION',
+    )
+    expect(filled.data.verifyYear).toBe(2099)
+    expect(filled.data.verifyQuarter).toBe(2)
+    expect(filled.data.verifyOutcome).toBe('IMPROVED')
+
+    const managerNotices = await (
+      await manager1.api.get('/api/notifications', {
+        headers: manager1.headers,
+        params: { page: 1, size: 50 },
+      })
+    ).json()
+    expect(
+      (managerNotices.data.list as { type: string; content: string }[]).some(
+        (notice) =>
+          notice.type === 'CORRECTIVE_VERIFY_READY' &&
+          notice.content.includes(`#${actionId}`),
+      ),
+      '下期回填应通知创建人',
+    ).toBe(true)
+
+    // 经理验证通过
+    await page.getByRole('button', { name: '退出' }).click()
+    await loginUi(page, 'demo-manager1', DEMO_PASSWORD)
+    await page.goto(`/actions/${actionId}`)
+    await expect(page.locator('.status-mark', { hasText: '待验证' }).first()).toBeVisible()
+    await expect(page.getByText('已改善').first()).toBeVisible()
+    await page.getByRole('button', { name: '验证', exact: true }).click()
+    await page.locator('.el-radio', { hasText: '验证通过' }).click()
+    await page.getByPlaceholder('写明确认依据或继续整改的要求').fill('E2E 下期已改善，验证通过')
+    await page.getByRole('button', { name: '确认验证' }).click()
+    await expect(page.locator('.el-message').filter({ hasText: '验证通过' })).toBeVisible()
+    await expect(page.locator('.status-mark', { hasText: '已通过' }).first()).toBeVisible()
   })
 })
 

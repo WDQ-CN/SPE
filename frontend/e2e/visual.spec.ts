@@ -122,6 +122,37 @@ test('系统设置', async ({ page }) => {
   expect(problems.all).toEqual([])
 })
 
+test('整改任务列表', async ({ page }) => {
+  const problems = watchConsole(page)
+  await openPage(page, '/actions')
+  await expect(page.getByRole('heading', { name: '整改任务', exact: true })).toBeVisible()
+  await expect(page.getByText('南方电子科技').first()).toBeVisible()
+  await expect(page).toHaveScreenshot('action-list.png')
+  expect(problems.all).toEqual([])
+})
+
+test('整改任务详情', async ({ page }) => {
+  const problems = watchConsole(page)
+  await openPage(page, '/actions/1')
+  await expect(page.getByText('完善来料检验流程', { exact: false }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: '验证', exact: true })).toBeVisible()
+  await expect(page).toHaveScreenshot('action-detail.png')
+  expect(problems.all).toEqual([])
+})
+
+test('预警页创建整改对话框', async ({ page }) => {
+  const problems = watchConsole(page)
+  await openPage(page, '/alerts')
+  await page.getByRole('button', { name: '创建整改', exact: true }).first().click()
+  const dialog = page.locator('.el-dialog')
+  await dialog.waitFor({ state: 'visible' })
+  await dialog.locator('textarea').first().fill('完善来料检验流程')
+  await settle(page)
+  await expect(dialog).toBeVisible()
+  await expect(page).toHaveScreenshot('action-create-dialog.png')
+  expect(problems.all).toEqual([])
+})
+
 test('移动端菜单', async ({ page }) => {
   const problems = watchConsole(page)
   await page.setViewportSize({ width: 800, height: 1000 })

@@ -11,6 +11,8 @@ import { defineConfig } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './e2e',
+  // 视觉回归由 playwright.visual.config.ts 独立运行；主 e2e 不能按默认视口跑截图用例
+  testIgnore: '**/visual.spec.ts',
   timeout: 60_000,
   expect: { timeout: 8_000 },
   // 用例之间有登录态与建号的先后关系（且共用一个后端库），串行跑更稳也更好定位

@@ -1,4 +1,5 @@
 import type {
+  CorrectiveActionStatus,
   Department,
   EvalTaskStatus,
   IndicatorType,
@@ -9,6 +10,7 @@ import type {
   TaskSupplierStatus,
   TemplateVersionStatus,
   UserStatus,
+  VerifyOutcome,
 } from './enums'
 
 /**
@@ -553,12 +555,67 @@ export interface AlertView {
   type: string
   title: string
   content: string
+  dimensionId: number | null
+  baselineScore: number | null
+  targetScore: number | null
   status: string
+  correctiveActionId: number | null
+  correctiveActionStatus: CorrectiveActionStatus | null
+  /** 服务端判定：UNREAD + 有基线/目标 + 尚未创建整改；前端不要重算 */
+  actionable: boolean
   handledBy: number | null
   handledByName: string | null
   handledComment: string | null
   handledAt: string | null
   createdAt: string
+}
+
+/** ---- 整改闭环（W4） ---- */
+
+/** 整改列表行（后端 `CorrectiveActionSummaryView`）：`overdue` 由服务端计算 */
+export interface CorrectiveActionSummary {
+  id: number
+  alertId: number
+  alertType: string
+  alertTitle: string
+  taskSupplierId: number
+  supplierId: number
+  supplierCode: string
+  supplierName: string
+  dimensionId: number | null
+  dimensionName: string | null
+  baselineYear: number
+  baselineQuarter: number
+  baselineScore: number
+  targetScore: number
+  ownerId: number
+  ownerName: string | null
+  dueDate: string
+  status: CorrectiveActionStatus
+  overdue: boolean
+  verifyYear: number | null
+  verifyQuarter: number | null
+  verifyScore: number | null
+  verifyOutcome: VerifyOutcome | null
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+/** 整改详情（后端 `CorrectiveActionDetailView`）；所有写接口也返回这个形状 */
+export interface CorrectiveActionDetail extends CorrectiveActionSummary {
+  measure: string
+  expectedResult: string | null
+  submitComment: string | null
+  submittedAt: string | null
+  verifyTaskSupplierId: number | null
+  verifyComment: string | null
+  verifiedBy: number | null
+  verifiedByName: string | null
+  verifiedAt: string | null
+  canceledReason: string | null
+  createdBy: number
+  createdByName: string | null
 }
 
 /** ---- M6：开放 API Token（I3） ---- */

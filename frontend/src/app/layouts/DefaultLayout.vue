@@ -23,6 +23,7 @@ const activeMenu = computed(() => {
   if (path.startsWith('/approvals')) return '/approvals'
   if (path.startsWith('/results') || path.startsWith('/reports')) return '/results'
   if (path.startsWith('/sheets')) return '/my'
+  if (path.startsWith('/actions')) return '/actions'
   return path || '/'
 })
 const avatarText = computed(() => auth.name?.trim().slice(0, 1) || '管')

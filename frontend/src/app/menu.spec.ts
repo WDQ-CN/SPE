@@ -9,7 +9,7 @@ import { canAccess, visibleMenus } from './menu'
  * 「菜单里看不到、但直接输地址就进去了」——手工点界面试不出来，只有把矩阵写成用例才守得住。
  */
 describe('侧边菜单可见性（01 §7）', () => {
-  it('ADMIN 能看到十二个入口（M6 加入开放 API）', () => {
+  it('ADMIN 能看到十三个入口（M6 开放 API + W4 整改任务）', () => {
     expect(visibleMenus(['ADMIN']).map((menu) => menu.path)).toEqual([
       '/',
       '/suppliers',
@@ -19,6 +19,7 @@ describe('侧边菜单可见性（01 §7）', () => {
       '/results',
       '/analytics',
       '/alerts',
+      '/actions',
       '/users',
       '/settings',
       '/audit',
@@ -26,7 +27,7 @@ describe('侧边菜单可见性（01 §7）', () => {
     ])
   })
 
-  it('MANAGER 能看到首页、供应商、模板、评估任务、我的待办、我的审批、结果报表、分析看板与预警', () => {
+  it('MANAGER 能看到首页、供应商、模板、评估任务、我的待办、我的审批、结果报表、分析看板、预警与整改任务', () => {
     expect(visibleMenus(['MANAGER']).map((menu) => menu.path)).toEqual([
       '/',
       '/suppliers',
@@ -37,11 +38,16 @@ describe('侧边菜单可见性（01 §7）', () => {
       '/results',
       '/analytics',
       '/alerts',
+      '/actions',
     ])
   })
 
-  it('EVALUATOR 只有首页与我的待办；VIEWER 有首页、结果报表、分析看板与预警', () => {
-    expect(visibleMenus(['EVALUATOR']).map((menu) => menu.path)).toEqual(['/', '/my'])
+  it('EVALUATOR 有首页、我的待办与整改任务；VIEWER 有首页、结果报表、分析看板与预警', () => {
+    expect(visibleMenus(['EVALUATOR']).map((menu) => menu.path)).toEqual([
+      '/',
+      '/my',
+      '/actions',
+    ])
     expect(visibleMenus(['VIEWER']).map((menu) => menu.path)).toEqual([
       '/',
       '/results',
@@ -77,6 +83,16 @@ describe('入口级访问判定', () => {
     expect(canAccess('/audit', ['ADMIN'])).toBe(true)
     expect(canAccess('/api-tokens', ['MANAGER'])).toBe(false)
     expect(canAccess('/api-tokens', ['ADMIN'])).toBe(true)
+  })
+
+  it('W4 整改入口：ADMIN/MANAGER/EVALUATOR 可进，VIEWER 不可；详情页按前缀继承', () => {
+    expect(canAccess('/actions', ['ADMIN'])).toBe(true)
+    expect(canAccess('/actions', ['MANAGER'])).toBe(true)
+    expect(canAccess('/actions', ['EVALUATOR'])).toBe(true)
+    expect(canAccess('/actions', ['VIEWER'])).toBe(false)
+    expect(canAccess('/actions/12', ['MANAGER'])).toBe(true)
+    expect(canAccess('/actions/12', ['EVALUATOR'])).toBe(true)
+    expect(canAccess('/actions/12', ['VIEWER'])).toBe(false)
   })
 
   it('子路径按最长前缀归属到入口（将来加详情页不必再登记）', () => {

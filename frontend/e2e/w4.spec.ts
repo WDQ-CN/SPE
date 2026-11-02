@@ -28,7 +28,7 @@ import {
 
 // 探针账号约定、控制台监视、登录与菜单定位统一放在 ./support（w5/w6 也用），见那里的注释
 
-test('admin 登录后落首页：菜单十二项、身份正确、控制台无错误', async ({ page }) => {
+test('admin 登录后落首页：菜单十三项、身份正确、控制台无错误', async ({ page }) => {
   const console_ = watchConsole(page)
 
   await loginAsAdmin(page)
@@ -36,8 +36,8 @@ test('admin 登录后落首页：菜单十二项、身份正确、控制台无�
   await expect(page).toHaveURL(/localhost:18081\/$/)
   const items = page.locator('.el-menu-item')
   // P2-W4 起多一个「评估模板」；P3-W6 起又多「评估任务」；P4-W6 加「我的审批」「结果报表」；
-  // M5 再加「分析看板」「预警」「操作日志」；M6 加「开放 API」（01 §7：均仅 ADMIN 可管理）。
-  await expect(items).toHaveCount(12)
+  // M5 再加「分析看板」「预警」「操作日志」；M6 加「开放 API」；W4 加「整改任务」。
+  await expect(items).toHaveCount(13)
   await expect(items.nth(0)).toContainText('首页')
   await expect(items.nth(1)).toContainText('供应商')
   await expect(items.nth(2)).toContainText('评估模板')
@@ -46,10 +46,11 @@ test('admin 登录后落首页：菜单十二项、身份正确、控制台无�
   await expect(items.nth(5)).toContainText('结果报表')
   await expect(items.nth(6)).toContainText('分析看板')
   await expect(items.nth(7)).toContainText('预警')
-  await expect(items.nth(8)).toContainText('用户管理')
-  await expect(items.nth(9)).toContainText('系统设置')
-  await expect(items.nth(10)).toContainText('操作日志')
-  await expect(items.nth(11)).toContainText('开放 API')
+  await expect(items.nth(8)).toContainText('整改任务')
+  await expect(items.nth(9)).toContainText('用户管理')
+  await expect(items.nth(10)).toContainText('系统设置')
+  await expect(items.nth(11)).toContainText('操作日志')
+  await expect(items.nth(12)).toContainText('开放 API')
 
   // 「系统管理员」在页头标签和首页信息卡里都会出现，getByText 会因命中多个而报 strict mode violation
   await expect(page.locator('.layout__user .el-tag')).toHaveText('系统管理员')

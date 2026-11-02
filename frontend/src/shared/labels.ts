@@ -1,4 +1,5 @@
 import type {
+  CorrectiveActionStatus,
   Department,
   EvalTaskStatus,
   IndicatorType,
@@ -9,6 +10,7 @@ import type {
   TaskSupplierStatus,
   TemplateVersionStatus,
   UserStatus,
+  VerifyOutcome,
 } from './types/enums'
 
 /**
@@ -127,6 +129,26 @@ export const ALERT_STATUS_LABEL: Record<string, string> = {
   SUPERSEDED: '已取代',
 }
 
+/** 整改任务状态（V1004 / 29 §3.2）：状态机键与后端逐字一致 */
+export const CORRECTIVE_ACTION_STATUS_LABEL: Record<CorrectiveActionStatus, string> = {
+  OPEN: '待开始',
+  IN_PROGRESS: '整改中',
+  WAITING_VERIFICATION: '待验证',
+  VERIFIED: '已通过',
+  REOPENED: '继续整改',
+  CANCELED: '已取消',
+}
+
+export const CORRECTIVE_ACTION_STATUS_OPTIONS: SelectOption<CorrectiveActionStatus>[] =
+  toOptions(CORRECTIVE_ACTION_STATUS_LABEL)
+
+/** 下期验证结论（V1004 `verify_outcome`） */
+export const VERIFY_OUTCOME_LABEL: Record<VerifyOutcome, string> = {
+  IMPROVED: '已改善',
+  NOT_IMPROVED: '未改善',
+  PENDING: '待人工判断',
+}
+
 /** M5 操作日志（SM5）：目标类型（动作码保持后端原值，不在这里造中文别名） */
 export const AUDIT_TARGET_TYPE_LABEL: Record<string, string> = {
   USER: '用户',
@@ -136,6 +158,7 @@ export const AUDIT_TARGET_TYPE_LABEL: Record<string, string> = {
   TASK: '任务',
   TASK_SUPPLIER: '评估单',
   TOKEN: 'API Token',
+  CORRECTIVE_ACTION: '整改任务',
 }
 
 export const API_TOKEN_STATUS_LABEL: Record<string, string> = {

@@ -1,28 +1,62 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 
+import { alertActionEntry, actionStatusClass } from '@/features/action/action-status'
+import ActionFormDialog from '@/features/action/components/ActionFormDialog.vue'
 import { handleAlert, listAlerts } from '@/features/alert/api'
 import { useAuthStore } from '@/features/auth/store'
 import { formatUtcLocal } from '@/shared/approval-timeline'
 import { usePagedList } from '@/shared/composables/usePagedList'
 import { useSubmit } from '@/shared/composables/useSubmit'
-import { ALERT_STATUS_LABEL, ALERT_TYPE_LABEL } from '@/shared/labels'
+import {
+  ALERT_STATUS_LABEL,
+  ALERT_TYPE_LABEL,
+  CORRECTIVE_ACTION_STATUS_LABEL,
+} from '@/shared/labels'
 import type { AlertView } from '@/shared/types/dto'
 
 /**
- * 预警列表与处理（01 W3；M5 W6）。
+ * 预警列表与整改入口（01 W3；M5 W6；W4）。
  *
- * <p>列表 ADMIN/MANAGER/VIEWER 可读；处理按钮只给 ADMIN/MANAGER（后端第二层也会拦）。
+ * <p>列表 ADMIN/MANAGER/VIEWER 可读；处理与创建整改只给 ADMIN/MANAGER（后端第二层也会拦）。
  * 状态筛选只支持未读/已处理——已取代的预警不对外列出（22 §2 D2）。
+ * 旧预警没有结构化基线/目标，只保留原「处理」流程（D8）。
  */
 const auth = useAuthStore()
 const status = ref<'' | 'UNREAD' | 'HANDLED'>('')
 const list = usePagedList<AlertView>((page, size) =>
   listAlerts({ page, size, status: status.value }),
 )
-const canHandle = computed(() =>
+const canManage = computed(() =>
   auth.roles.some((role) => role === 'ADMIN' || role === 'MANAGER'),
 )
+
+const createDialogVisible = ref(false)
+const createTarget = ref<AlertView | null>(null)
+
+function entryOf(row: AlertView) {
+  return alertActionEntry(row, auth.roles)
+}
+
+function correctiveStatusLabel(row: AlertView): string {
+  return row.correctiveActionStatus
+    ? (CORRECTIVE_ACTION_STATUS_LABEL[row.correctiveActionStatus] ?? row.correctiveActionStatus)
+    : '—'
+}
+
+function openCreate(row: AlertView): void {
+  createTarget.value = row
+  createDialogVisible.value = true
+}
+
+async function onActionSaved(): Promise<void> {
+  createDialogVisible.value = false
+  if (list.rows.value.length === 1 && list.page.value > 1) {
+    await list.load(list.page.value - 1)
+  } else {
+    await list.load()
+  }
+}
 
 const dialogVisible = ref(false)
 const target = ref<AlertView | null>(null)
@@ -158,24 +192,67 @@ onMounted(() => void list.load())
         </template>
       </el-table-column>
       <el-table-column
-        label="处理"
-        min-width="180"
+        label="处理 / 整改"
+        min-width="220"
       >
         <template #default="{ row }">
+          <template v-if="entryOf(row as AlertView).state === 'action'">
+            <span class="alert-actions">
+              <span
+                class="status-mark"
+                :class="actionStatusClass((row as AlertView).correctiveActionStatus)"
+              >
+                {{ correctiveStatusLabel(row as AlertView) }}
+              </span>
+              <RouterLink
+                v-if="entryOf(row as AlertView).showActionLink"
+                :to="`/actions/${row.correctiveActionId}`"
+                class="alert-action-link"
+              >
+                查看整改
+              </RouterLink>
+            </span>
+          </template>
           <span
-            v-if="row.status === 'HANDLED'"
+            v-else-if="entryOf(row as AlertView).state === 'create'"
+            class="alert-actions"
+          >
+            <el-button
+              link
+              type="primary"
+              @click="openCreate(row as AlertView)"
+            >
+              创建整改
+            </el-button>
+            <el-button
+              link
+              @click="openHandle(row as AlertView)"
+            >
+              处理
+            </el-button>
+          </span>
+          <span
+            v-else-if="entryOf(row as AlertView).state === 'legacy'"
+            class="alert-actions"
+          >
+            <el-button
+              v-if="entryOf(row as AlertView).canHandle"
+              link
+              @click="openHandle(row as AlertView)"
+            >
+              处理
+            </el-button>
+            <el-tooltip content="该预警生成于结构化字段上线前，只能按原流程处理">
+              <span class="alert-legacy-hint">旧预警</span>
+            </el-tooltip>
+          </span>
+          <span
+            v-else-if="entryOf(row as AlertView).state === 'handled'"
             class="alert-handled"
           >
             {{ row.handledByName ?? '—' }}
             <span v-if="row.handledComment">· {{ row.handledComment }}</span>
           </span>
-          <el-button
-            v-else-if="canHandle"
-            link
-            @click="openHandle(row as AlertView)"
-          >
-            处理
-          </el-button>
           <span v-else>—</span>
         </template>
       </el-table-column>
@@ -233,6 +310,13 @@ onMounted(() => void list.load())
       </el-button>
     </template>
   </el-dialog>
+
+  <ActionFormDialog
+    v-model="createDialogVisible"
+    :alert="createTarget"
+    :manager="canManage"
+    @saved="onActionSaved"
+  />
 </template>
 
 <style scoped>
@@ -250,6 +334,23 @@ onMounted(() => void list.load())
   color: var(--muted);
   font-size: 11px;
   line-height: 18px;
+}
+.alert-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+}
+.alert-action-link {
+  color: var(--ink);
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.alert-legacy-hint {
+  color: var(--muted-2);
+  font-size: 10px;
+  letter-spacing: 0.04em;
 }
 .alerts__target {
   margin: 0 0 12px;
