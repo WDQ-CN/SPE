@@ -36,6 +36,10 @@ public class AlertRow {
 
   private String status;
 
+  private Long correctiveActionId;
+
+  private String correctiveActionStatus;
+
   private Long handledBy;
 
   private String handledByName;

@@ -35,6 +35,12 @@ public class NotificationService {
   /** M5：评估单被解锁重评（通知该单全部评分单指派人）。 */
   public static final String TYPE_TASK_SUPPLIER_UNLOCKED = "TASK_SUPPLIER_UNLOCKED";
 
+  /** W4：整改任务创建/指派（通知负责人）。 */
+  public static final String TYPE_CORRECTIVE_ACTION_CREATED = "CORRECTIVE_ACTION_CREATED";
+
+  /** W4：下期验证数据已回填（通知负责人与创建人；类型名受 V12 的 VARCHAR(30) 约束）。 */
+  public static final String TYPE_CORRECTIVE_VERIFY_READY = "CORRECTIVE_VERIFY_READY";
+
   private final NotificationMapper notificationMapper;
 
   /** 构造一条未读通知（唯一实现点，03 §51 P3-18）：字段口径不再散在 7 个监听器里。 */

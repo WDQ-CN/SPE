@@ -6,6 +6,10 @@ import com.spe.common.security.AuthenticatedOperator;
 import com.spe.common.web.Result;
 import com.spe.context.alert.internal.AlertService;
 import com.spe.context.alert.internal.AlertView;
+import com.spe.context.alert.internal.CorrectiveAction;
+import com.spe.context.alert.internal.CorrectiveActionDetailView;
+import com.spe.context.alert.internal.CorrectiveActionService;
+import com.spe.context.alert.internal.web.dto.CreateCorrectiveActionRequest;
 import com.spe.context.alert.internal.web.dto.HandleAlertRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,6 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AlertController {
 
   private final AlertService alertService;
+  private final CorrectiveActionService correctiveActionService;
 
   @GetMapping
   public Result<PageResult<AlertView>> list(
@@ -48,5 +54,28 @@ public class AlertController {
       @AuthenticationPrincipal AuthenticatedOperator operator) {
     String comment = request == null ? null : request.comment();
     return Result.ok(alertService.handle(id, operator.uid(), comment));
+  }
+
+  /**
+   * 从预警创建整改（W3；D2：同一事务把预警置 HANDLED）。
+   *
+   * <p>路径挂在 `/api/alerts` 下，是因为整改必须由预警产生；W4 的预警页直接用这条入口。
+   */
+  @PostMapping("/{id}/corrective-actions")
+  @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+  public Result<CorrectiveActionDetailView> createCorrectiveAction(
+      @PathVariable long id,
+      @Valid @RequestBody CreateCorrectiveActionRequest request,
+      @AuthenticationPrincipal AuthenticatedOperator operator) {
+    CorrectiveAction created =
+        correctiveActionService.create(
+            id,
+            operator.uid(),
+            true,
+            request.ownerId(),
+            request.dueDate(),
+            request.measure(),
+            request.expectedResult());
+    return Result.ok(correctiveActionService.detail(created.getId(), operator.uid(), true));
   }
 }

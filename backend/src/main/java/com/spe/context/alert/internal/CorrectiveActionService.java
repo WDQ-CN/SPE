@@ -1,7 +1,11 @@
 package com.spe.context.alert.internal;
 
+import com.spe.common.event.EventPublisher;
+import com.spe.common.page.PageQuery;
+import com.spe.common.page.PageResult;
 import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
+import com.spe.context.alert.api.events.CorrectiveActionCreatedEvent;
 import com.spe.context.system.api.AuditAction;
 import com.spe.context.system.api.AuditFacade;
 import com.spe.context.system.api.AuditTargetType;
@@ -10,9 +14,11 @@ import com.spe.context.system.api.UserBrief;
 import com.spe.context.system.api.UserQueryFacade;
 import java.time.LocalDate;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,9 +37,11 @@ public class CorrectiveActionService {
 
   private final AlertMapper alertMapper;
   private final CorrectiveActionMapper correctiveActionMapper;
+  private final CorrectiveActionQueryMapper correctiveActionQueryMapper;
   private final UserQueryFacade userQueryFacade;
   private final AuditFacade auditFacade;
   private final CorrectiveActionVerifier verifier;
+  private final EventPublisher eventPublisher;
 
   @Transactional
   public CorrectiveAction create(
@@ -80,7 +88,13 @@ public class CorrectiveActionService {
     action.setStatus(CorrectiveActionStatus.OPEN.name());
     action.setCreatedBy(operatorId);
     action.setVersion(0);
-    correctiveActionMapper.insert(action);
+    try {
+      correctiveActionMapper.insert(action);
+    } catch (DuplicateKeyException ex) {
+      // 并发下两个请求都通过了 findByAlertId 的前置检查：唯一键 uk_action_alert 是最后一道墙，
+      // 这里必须翻成 2040，不能让用户看到 5001。
+      throw new BizException(ErrorCode.ALERT_NOT_ACTIONABLE, "该预警已有整改任务");
+    }
 
     // D2：创建整改与预警 HANDLED 同一事务，避免出现“有整改但仍未处理”的双状态。
     int handled = alertMapper.handle(alertId, operatorId, "已创建整改任务 #" + action.getId());
@@ -99,6 +113,19 @@ public class CorrectiveActionService {
         AuditTargetType.CORRECTIVE_ACTION,
         action.getId(),
         detail);
+    String supplierName =
+        correctiveActionQueryMapper
+            .findDetailById(action.getId())
+            .map(CorrectiveActionRow::getSupplierName)
+            .orElse("供应商 #" + alert.getSupplierId());
+    eventPublisher.publish(
+        new CorrectiveActionCreatedEvent(
+            action.getId(),
+            alertId,
+            alert.getSupplierId(),
+            supplierName,
+            ownerId,
+            dueDate));
     return action;
   }
 
@@ -114,6 +141,7 @@ public class CorrectiveActionService {
       int version) {
     CorrectiveAction current = load(id);
     ensureOwnerOrManager(current, operatorId, manager);
+    ensureOwnerChangeAllowed(current, ownerId, manager);
     ensureVersion(current, version);
     ensureEditable(current);
     validateOwner(ownerId);
@@ -132,6 +160,8 @@ public class CorrectiveActionService {
     Map<String, Object> detail = new HashMap<>();
     detail.put("ownerId", ownerId);
     detail.put("dueDate", dueDate.toString());
+    detail.put("beforeOwnerId", current.getOwnerId());
+    detail.put("beforeDueDate", current.getDueDate().toString());
     detail.put("beforeStatus", current.getStatus());
     auditFacade.record(
         AuditAction.CORRECTIVE_ACTION_UPDATE,
@@ -154,7 +184,7 @@ public class CorrectiveActionService {
         AuditAction.CORRECTIVE_ACTION_START,
         AuditTargetType.CORRECTIVE_ACTION,
         id,
-        Map.of("targetStatus", target.name()));
+        Map.of("targetStatus", target.name(), "beforeStatus", current.getStatus()));
     return load(id);
   }
 
@@ -173,7 +203,7 @@ public class CorrectiveActionService {
         AuditAction.CORRECTIVE_ACTION_SUBMIT,
         AuditTargetType.CORRECTIVE_ACTION,
         id,
-        Map.of("targetStatus", target.name()));
+        Map.of("targetStatus", target.name(), "beforeStatus", current.getStatus()));
     verifier.fillIfAvailable(id);
     return load(id);
   }
@@ -205,7 +235,10 @@ public class CorrectiveActionService {
         AuditAction.CORRECTIVE_ACTION_VERIFY,
         AuditTargetType.CORRECTIVE_ACTION,
         id,
-        Map.of("targetStatus", target.name(), "outcome", Optional.ofNullable(current.getVerifyOutcome()).orElse("PENDING")));
+        Map.of(
+            "targetStatus", target.name(),
+            "beforeStatus", current.getStatus(),
+            "outcome", Optional.ofNullable(current.getVerifyOutcome()).orElse("PENDING")));
     return load(id);
   }
 
@@ -227,7 +260,10 @@ public class CorrectiveActionService {
         AuditAction.CORRECTIVE_ACTION_CANCEL,
         AuditTargetType.CORRECTIVE_ACTION,
         id,
-        Map.of("targetStatus", target.name(), "reason", normalized));
+        Map.of(
+            "targetStatus", target.name(),
+            "beforeStatus", current.getStatus(),
+            "reason", normalized));
     return load(id);
   }
 
@@ -238,6 +274,86 @@ public class CorrectiveActionService {
     return action;
   }
 
+  /**
+   * 整改列表（W3）：ADMIN/MANAGER 看全部；EVALUATOR 强制只看本人。
+   *
+   * <p>EVALUATOR 显式传别人的 `ownerId` 直接 403，而不是静默改成自己：参数合法但越权，
+   * 与详情接口的口径一致（4xxx 而不是返回空列表）。
+   */
+  @Transactional(readOnly = true)
+  public PageResult<CorrectiveActionSummaryView> page(
+      PageQuery query,
+      String status,
+      Long supplierId,
+      Long ownerId,
+      Boolean overdue,
+      long operatorId,
+      boolean manager) {
+    String normalizedStatus = normalizeStatus(status);
+    Long ownerFilter = resolveOwnerFilter(ownerId, operatorId, manager);
+    if (supplierId != null && supplierId <= 0) {
+      throw new BizException(ErrorCode.BAD_REQUEST, "供应商参数不合法");
+    }
+    LocalDate today = LocalDate.now();
+    long total =
+        correctiveActionQueryMapper.countPage(
+            normalizedStatus, supplierId, ownerFilter, overdue, today);
+    if (total == 0) {
+      return new PageResult<>(List.of(), 0, query.page(), query.size());
+    }
+    List<CorrectiveActionSummaryView> rows =
+        correctiveActionQueryMapper
+            .findPage(
+                normalizedStatus,
+                supplierId,
+                ownerFilter,
+                overdue,
+                today,
+                query.offset(),
+                query.size())
+            .stream()
+            .map(row -> CorrectiveActionSummaryView.of(row, today))
+            .toList();
+    return new PageResult<>(rows, total, query.page(), query.size());
+  }
+
+  @Transactional(readOnly = true)
+  public CorrectiveActionDetailView detail(long id, long operatorId, boolean manager) {
+    CorrectiveAction action = load(id);
+    ensureOwnerOrManager(action, operatorId, manager);
+    LocalDate today = LocalDate.now();
+    return correctiveActionQueryMapper
+        .findDetailById(id)
+        .map(row -> CorrectiveActionDetailView.of(row, today))
+        .orElseThrow(() -> new BizException(ErrorCode.CORRECTIVE_ACTION_NOT_FOUND));
+  }
+
+  private static String normalizeStatus(String status) {
+    if (status == null || status.isBlank()) {
+      return null;
+    }
+    String value = status.trim().toUpperCase();
+    try {
+      CorrectiveActionStatus.valueOf(value);
+    } catch (IllegalArgumentException ex) {
+      throw new BizException(ErrorCode.BAD_REQUEST, "整改状态不合法：" + status);
+    }
+    return value;
+  }
+
+  private static Long resolveOwnerFilter(Long ownerId, long operatorId, boolean manager) {
+    if (ownerId != null && ownerId <= 0) {
+      throw new BizException(ErrorCode.BAD_REQUEST, "负责人参数不合法");
+    }
+    if (manager) {
+      return ownerId;
+    }
+    if (ownerId != null && ownerId != operatorId) {
+      throw new BizException(ErrorCode.FORBIDDEN);
+    }
+    return operatorId;
+  }
+
   private CorrectiveAction load(long id) {
     return Optional.ofNullable(correctiveActionMapper.selectById(id))
         .orElseThrow(() -> new BizException(ErrorCode.CORRECTIVE_ACTION_NOT_FOUND));
@@ -245,6 +361,14 @@ public class CorrectiveActionService {
 
   private void ensureOwnerOrManager(CorrectiveAction action, long operatorId, boolean manager) {
     if (!manager && action.getOwnerId() != operatorId) {
+      throw new BizException(ErrorCode.FORBIDDEN);
+    }
+  }
+
+  /** 改派负责人是 ADMIN/MANAGER 的动作；EVALUATOR 只能改自己任务的其他字段。 */
+  private void ensureOwnerChangeAllowed(
+      CorrectiveAction action, long ownerId, boolean manager) {
+    if (!manager && action.getOwnerId() != ownerId) {
       throw new BizException(ErrorCode.FORBIDDEN);
     }
   }

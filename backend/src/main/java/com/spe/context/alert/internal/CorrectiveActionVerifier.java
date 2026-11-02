@@ -1,5 +1,7 @@
 package com.spe.context.alert.internal;
 
+import com.spe.common.event.EventPublisher;
+import com.spe.context.alert.api.events.CorrectiveActionVerificationReadyEvent;
 import com.spe.context.evaluation.api.events.TaskSupplierFinalizedEvent;
 import java.math.BigDecimal;
 import java.util.List;
@@ -25,6 +27,8 @@ import org.springframework.stereotype.Component;
 public class CorrectiveActionVerifier {
 
   private final CorrectiveActionMapper correctiveActionMapper;
+  private final AlertQueryMapper alertQueryMapper;
+  private final EventPublisher eventPublisher;
 
   /**
    * 定稿事件到达后回填等待中的整改。`@Order(20)` 保证在 AlertListener 的 supersede 处理之后执行；
@@ -123,5 +127,21 @@ public class CorrectiveActionVerifier {
         period.getQuarter(),
         score,
         outcome);
+    String supplierName =
+        alertQueryMapper
+            .findSupplierName(action.getSupplierId())
+            .orElse("供应商 #" + action.getSupplierId());
+    eventPublisher.publish(
+        new CorrectiveActionVerificationReadyEvent(
+            action.getId(),
+            action.getAlertId(),
+            action.getSupplierId(),
+            supplierName,
+            action.getOwnerId(),
+            action.getCreatedBy(),
+            period.getYear(),
+            period.getQuarter(),
+            score,
+            outcome));
   }
 }

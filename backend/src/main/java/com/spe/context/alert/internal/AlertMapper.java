@@ -21,11 +21,13 @@ public interface AlertMapper extends BaseMapper<Alert> {
       "a.id, a.task_supplier_id, a.supplier_id, s.code AS supplier_code, s.name AS supplier_name,"
           + " a.year, a.quarter, a.type, a.title, a.content, a.dimension_id,"
           + " a.baseline_score, a.target_score, a.status, a.handled_by,"
-          + " u.name AS handled_by_name, a.handled_comment, a.handled_at, a.created_at";
+          + " u.name AS handled_by_name, a.handled_comment, a.handled_at, a.created_at,"
+          + " ca.id AS corrective_action_id, ca.status AS corrective_action_status";
 
   String JOIN_FROM =
       " FROM alert a JOIN supplier s ON s.id = a.supplier_id"
-          + " LEFT JOIN sys_user u ON u.id = a.handled_by";
+          + " LEFT JOIN sys_user u ON u.id = a.handled_by"
+          + " LEFT JOIN corrective_action ca ON ca.alert_id = a.id";
 
   /**
    * 分页专用：先在派生表里用 `idx_alert_created` 倒序取出**一页的 id**，再回表 join。
@@ -40,7 +42,8 @@ public interface AlertMapper extends BaseMapper<Alert> {
           + " ORDER BY created_at DESC, id DESC LIMIT #{size} OFFSET #{offset}) p"
           + " JOIN alert a ON a.id = p.id"
           + " JOIN supplier s ON s.id = a.supplier_id"
-          + " LEFT JOIN sys_user u ON u.id = a.handled_by";
+          + " LEFT JOIN sys_user u ON u.id = a.handled_by"
+          + " LEFT JOIN corrective_action ca ON ca.alert_id = a.id";
 
   @Select("SELECT " + JOIN_COLUMNS + JOIN_FROM + " WHERE a.id = #{id}")
   Optional<AlertRow> findViewById(@Param("id") long id);

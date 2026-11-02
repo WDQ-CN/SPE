@@ -23,6 +23,9 @@ public record AlertView(
     BigDecimal baselineScore,
     BigDecimal targetScore,
     String status,
+    Long correctiveActionId,
+    String correctiveActionStatus,
+    boolean actionable,
     Long handledBy,
     String handledByName,
     String handledComment,
@@ -45,10 +48,25 @@ public record AlertView(
         row.getBaselineScore(),
         row.getTargetScore(),
         row.getStatus(),
+        row.getCorrectiveActionId(),
+        row.getCorrectiveActionStatus(),
+        isActionable(row),
         row.getHandledBy(),
         row.getHandledByName(),
         row.getHandledComment(),
         row.getHandledAt(),
         row.getCreatedAt());
+  }
+
+  /**
+   * D8：旧预警没有结构化基线/目标，只能按原流程标记处理；已有整改或非 UNREAD 也不可再创建。
+   *
+   * <p>判定放在服务端而不是让 W4 自己拼三个字段，避免"按钮能点但后端 2040"的口径漂移。
+   */
+  private static boolean isActionable(AlertRow row) {
+    return "UNREAD".equals(row.getStatus())
+        && row.getBaselineScore() != null
+        && row.getTargetScore() != null
+        && row.getCorrectiveActionId() == null;
   }
 }
