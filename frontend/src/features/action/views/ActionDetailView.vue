@@ -45,7 +45,12 @@ const action = useAsyncData<CorrectiveActionDetail | null>(
 const detail = computed(() => action.data.value)
 const loaded = computed(() => detail.value != null && !action.loading.value)
 const permissions = computed(() =>
-  actionPermissions(detail.value?.status ?? null, loaded.value, auth.roles),
+  actionPermissions(
+    detail.value?.status ?? null,
+    loaded.value,
+    auth.roles,
+    detail.value?.reverifyPending ?? false,
+  ),
 )
 const isManager = computed(() =>
   auth.roles.some((role) => role === 'ADMIN' || role === 'MANAGER'),
@@ -326,7 +331,7 @@ async function confirmCancel(): Promise<void> {
           {{ formatScore(detail.verifyScore) }}
         </div>
         <p class="figure__note">
-          {{ detail.verifyYear ? `${detail.verifyYear} Q${detail.verifyQuarter}` : '尚未回填' }}
+          {{ detail.reverifyPending ? '上一轮结果，等待新周期' : detail.verifyYear ? `${detail.verifyYear} Q${detail.verifyQuarter}` : '尚未回填' }}
         </p>
       </div>
       <div class="figure">
@@ -335,7 +340,7 @@ async function confirmCancel(): Promise<void> {
           {{ detail.verifyOutcome ? VERIFY_OUTCOME_LABEL[detail.verifyOutcome] : '—' }}
         </div>
         <p class="figure__note">
-          {{ detail.verifyOutcome === 'PENDING' ? '需经理人工判断' : '经理确认后定稿' }}
+          {{ detail.reverifyPending ? '上一轮结论' : detail.verifyOutcome === 'PENDING' ? '需经理人工判断' : '经理确认后定稿' }}
         </p>
       </div>
     </section>
@@ -419,6 +424,14 @@ async function confirmCancel(): Promise<void> {
     </SectionCard>
 
     <SectionCard title="下期验证">
+      <el-alert
+        v-if="detail.reverifyPending"
+        class="action-reverify-alert"
+        type="info"
+        :closable="false"
+        show-icon
+        title="已重新提交，等待下一次有效评估定稿后重新验证；下面显示的是上一轮结果。"
+      />
       <p
         v-if="detail.verifyYear == null && detail.status === 'WAITING_VERIFICATION'"
         class="action-empty"
@@ -717,6 +730,9 @@ async function confirmCancel(): Promise<void> {
 }
 .action-cancel-alert {
   margin-bottom: 20px;
+}
+.action-reverify-alert {
+  margin-bottom: 14px;
 }
 .action-kicker {
   display: block;

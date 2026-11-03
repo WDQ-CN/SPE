@@ -559,16 +559,79 @@ test.describe('M5 预警与解锁闭环', () => {
       '下期回填应通知创建人',
     ).toBe(true)
 
-    // 经理验证通过
+    // 经理先判「继续整改」，进入 REOPENED 分支
     await page.getByRole('button', { name: '退出' }).click()
     await loginUi(page, 'demo-manager1', DEMO_PASSWORD)
     await page.goto(`/actions/${actionId}`)
     await expect(page.locator('.status-mark', { hasText: '待验证' }).first()).toBeVisible()
-    await expect(page.getByText('已改善').first()).toBeVisible()
+    await expect(page.locator('.action-figures').getByText('已改善').first()).toBeVisible()
     await expect(page.getByText('操作审计')).toBeVisible()
     await page.getByRole('button', { name: '验证', exact: true }).click()
+    await page.locator('.el-radio', { hasText: '继续整改' }).click()
+    await page.getByPlaceholder('写明确认依据或继续整改的要求').fill('E2E 继续整改')
+    await page.getByRole('button', { name: '确认验证' }).click()
+    await expect(page.locator('.el-message').filter({ hasText: '已退回继续整改' })).toBeVisible()
+    await expect(page.locator('.status-mark', { hasText: '继续整改' }).first()).toBeVisible()
+
+    // 负责人重开并重新提交；下期尚未回填时经理不能提前确认
+    await page.getByRole('button', { name: '退出' }).click()
+    await loginUi(page, 'demo-eval-quality', DEMO_PASSWORD)
+    await page.goto(`/actions/${actionId}`)
+    await page.getByRole('button', { name: '开始整改' }).click()
+    await page.locator('.el-message-box__btns .el-button--primary').click()
+    await page.getByRole('button', { name: '提交完成' }).click()
+    await page.getByPlaceholder('可选：说明完成情况').fill('E2E 重开整改完成')
+    await page.getByRole('button', { name: '确认提交' }).click()
+    await expect(page.locator('.status-mark', { hasText: '待验证' }).first()).toBeVisible()
+    await expect(page.getByText('已重新提交，等待下期定稿后再次验证')).toBeVisible()
+
+    const pending = await (
+      await manager1.api.get(`/api/corrective-actions/${actionId}`, {
+        headers: manager1.headers,
+      })
+    ).json()
+    expect(pending.data.reverifyPending, '重开提交后应处于等待下期验证状态').toBe(true)
+    const premature = await (
+      await manager1.api.post(`/api/corrective-actions/${actionId}/verify`, {
+        headers: manager1.headers,
+        data: { version: pending.data.version, pass: true, comment: '提前确认' },
+      })
+    ).json()
+    expect(premature.code, '无下期数据时经理不能提前确认').toBe(2039)
+
+    // 第三期高分定稿：以第二次验证周期为基线重新取数
+    const reverifyTaskId = await createPublishedTask(manager1, {
+      name: `W4 整改下期二 ${suffix}`,
+      year: 2099,
+      quarter: 3,
+      templateId,
+      templateVersionId: versionId,
+      supplierId,
+      approverIds: [manager1Id, manager2Id],
+    })
+    const reverifySheets = await assignAllSheets(manager1, reverifyTaskId, evaluatorId)
+    await submitAllSheets(manager1, evaluator, reverifyTaskId, 'high')
+    await approveTwice(manager1, manager2, reverifySheets[0].taskSupplierId)
+
+    const reverified = await (
+      await manager1.api.get(`/api/corrective-actions/${actionId}`, {
+        headers: manager1.headers,
+      })
+    ).json()
+    expect(reverified.data.status).toBe('WAITING_VERIFICATION')
+    expect(reverified.data.verifyYear).toBe(2099)
+    expect(reverified.data.verifyQuarter).toBe(3)
+    expect(reverified.data.reverifyPending).toBe(false)
+    expect(reverified.data.verifyOutcome).toBe('IMPROVED')
+
+    // 经理在重新取数后验证通过
+    await page.getByRole('button', { name: '退出' }).click()
+    await loginUi(page, 'demo-manager1', DEMO_PASSWORD)
+    await page.goto(`/actions/${actionId}`)
+    await expect(page.locator('.action-figures').getByText('已改善').first()).toBeVisible()
+    await page.getByRole('button', { name: '验证', exact: true }).click()
     await page.locator('.el-radio', { hasText: '验证通过' }).click()
-    await page.getByPlaceholder('写明确认依据或继续整改的要求').fill('E2E 下期已改善，验证通过')
+    await page.getByPlaceholder('写明确认依据或继续整改的要求').fill('E2E 重开后再验证通过')
     await page.getByRole('button', { name: '确认验证' }).click()
     await expect(page.locator('.el-message').filter({ hasText: '验证通过' })).toBeVisible()
     await expect(page.locator('.status-mark', { hasText: '已通过' }).first()).toBeVisible()

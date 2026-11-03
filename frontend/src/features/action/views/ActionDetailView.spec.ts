@@ -74,6 +74,7 @@ function detail(overrides: Partial<CorrectiveActionDetail> = {}): CorrectiveActi
     expectedResult: '下期不低于 70',
     status: 'WAITING_VERIFICATION',
     overdue: false,
+    reverifyPending: false,
     submitComment: '已完成',
     submittedAt: '2026-02-01T10:00:00',
     verifyYear: null,
@@ -169,6 +170,21 @@ describe('ActionDetailView 操作矩阵', () => {
     expect(mocks.verifyCorrectiveAction).toHaveBeenCalledWith(1, 2, true, '人工判断通过')
     expect(wrapper.text()).toContain('已通过')
     expect(wrapper.text()).toContain('已改善')
+
+    // 重开待验证：隐藏验证按钮并展示等待新周期提示
+    mocks.getCorrectiveAction.mockResolvedValue(
+      detail({
+        reverifyPending: true,
+        verifyYear: 2026,
+        verifyQuarter: 2,
+        verifyOutcome: 'NOT_IMPROVED',
+      }),
+    )
+    const pendingWrapper = mountView()
+    await flushPromises()
+    expect(buttonByText(pendingWrapper, '验证')).toBeUndefined()
+    expect(pendingWrapper.text()).toContain('已重新提交，等待下期定稿后再次验证')
+    expect(pendingWrapper.text()).toContain('上一轮结果，等待新周期')
   })
 
   it('EVALUATOR 在 WAITING_VERIFICATION 没有验证/取消，只提示等待经理', async () => {

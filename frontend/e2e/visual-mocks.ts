@@ -301,6 +301,7 @@ export async function installVisualMocks(page: Page): Promise<void> {
         measure: '完善来料检验流程：新增首件确认与供应商自检记录抽查。\n每周复盘一次不合格项，连续两周无复发后提交验证。',
         expectedResult: '下期总分不低于 70，来料批次不合格率低于 2%',
         status: 'WAITING_VERIFICATION', overdue: false,
+        reverifyPending: false,
         submitComment: '已完成 8D 报告与来料检验流程调整',
         submittedAt: '2026-10-20T09:30:00',
         verifyYear: 2026, verifyQuarter: 3, verifyTaskSupplierId: 28,

@@ -58,6 +58,18 @@ async function onActionSaved(): Promise<void> {
   }
 }
 
+function onPageChange(page: number): void {
+  // 先写回 page 再发请求：不依赖 v-model 与 change 事件的先后顺序
+  list.page.value = page
+  void list.load(page)
+}
+
+function onSizeChange(size: number): void {
+  list.page.value = 1
+  list.size.value = size
+  void list.load(1)
+}
+
 const dialogVisible = ref(false)
 const target = ref<AlertView | null>(null)
 const comment = ref('')
@@ -264,8 +276,8 @@ onMounted(() => void list.load())
       :total="list.total.value"
       :page-sizes="[10, 20, 50]"
       class="list-pager"
-      @change="list.load"
-      @size-change="list.load(1)"
+      @change="onPageChange"
+      @size-change="onSizeChange"
     />
   </SectionCard>
 

@@ -3,6 +3,7 @@ import ElementPlus from 'element-plus'
 import { createPinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import ListPagination from '@/shared/components/ListPagination.vue'
 import type { AlertView } from '@/shared/types/dto'
 
 /**
@@ -96,7 +97,15 @@ function mountView(): ReturnType<typeof mount> {
 
 beforeEach(() => {
   mocks.roles = ['ADMIN']
-  mocks.listAlerts.mockResolvedValue({ list: rows, total: rows.length, page: 1, size: 10 })
+  mocks.listAlerts.mockImplementation(
+    (query: { page: number; size: number; status?: string }) =>
+      Promise.resolve({
+        list: rows,
+        total: rows.length,
+        page: query.page,
+        size: query.size,
+      }),
+  )
   mocks.handleAlert.mockReset()
 })
 
@@ -112,6 +121,17 @@ describe('AlertListView 整改入口', () => {
     expect(wrapper.text()).toContain('张岚')
     expect(wrapper.findAll('button').filter((button) => button.text() === '处理')).toHaveLength(2)
     expect(wrapper.findAllComponents(RouterLinkStub)).toHaveLength(1)
+
+    // P3：翻页/改页大小先写回状态再请求，不依赖 v-model 与事件顺序
+    const pager = wrapper.getComponent(ListPagination)
+    pager.vm.$emit('update:page', 2)
+    pager.vm.$emit('change', 2)
+    await flushPromises()
+    expect(mocks.listAlerts).toHaveBeenLastCalledWith({ page: 2, size: 10, status: '' })
+    pager.vm.$emit('update:size', 20)
+    pager.vm.$emit('size-change', 20)
+    await flushPromises()
+    expect(mocks.listAlerts).toHaveBeenLastCalledWith({ page: 1, size: 20, status: '' })
   })
 
   it('VIEWER 只看到状态与旧预警提示，没有任何写入口', async () => {

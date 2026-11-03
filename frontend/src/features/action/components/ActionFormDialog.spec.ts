@@ -71,6 +71,7 @@ function detail(overrides: Partial<CorrectiveActionDetail> = {}): CorrectiveActi
     expectedResult: '下期不低于 70',
     status: 'OPEN',
     overdue: false,
+    reverifyPending: false,
     submitComment: null,
     submittedAt: null,
     verifyYear: null,

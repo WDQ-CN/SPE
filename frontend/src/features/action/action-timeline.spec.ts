@@ -27,6 +27,7 @@ function detail(overrides: Partial<CorrectiveActionDetail>): CorrectiveActionDet
     expectedResult: null,
     status: 'OPEN',
     overdue: false,
+    reverifyPending: false,
     submitComment: null,
     submittedAt: null,
     verifyYear: null,

@@ -142,6 +142,7 @@ export function actionPermissions(
   status: CorrectiveActionStatus | null,
   loaded: boolean,
   roles: readonly Role[],
+  reverifyPending = false,
 ): ActionPermissions {
   if (!loaded || !status) {
     return EMPTY_PERMISSIONS
@@ -156,19 +157,21 @@ export function actionPermissions(
   const editable = status === 'OPEN' || status === 'IN_PROGRESS' || status === 'REOPENED'
   const terminal = status === 'VERIFIED' || status === 'CANCELED'
   const hint =
-    status === 'VERIFIED'
-      ? '整改已通过，记录仅供查看'
-      : status === 'CANCELED'
-        ? '整改已取消，记录仅供查看'
-        : status === 'WAITING_VERIFICATION' && !manager
-          ? '已提交，等待采购经理验证'
-          : ''
+    reverifyPending
+      ? '已重新提交，等待下期定稿后再次验证'
+      : status === 'VERIFIED'
+        ? '整改已通过，记录仅供查看'
+        : status === 'CANCELED'
+          ? '整改已取消，记录仅供查看'
+          : status === 'WAITING_VERIFICATION' && !manager
+            ? '已提交，等待采购经理验证'
+            : ''
 
   return {
     canEdit: editable,
     canStart: status === 'OPEN' || status === 'REOPENED',
     canSubmit: status === 'IN_PROGRESS',
-    canVerify: manager && status === 'WAITING_VERIFICATION',
+    canVerify: manager && status === 'WAITING_VERIFICATION' && !reverifyPending,
     canCancel: manager && !terminal,
     readOnlyHint: hint,
   }

@@ -147,6 +147,10 @@ describe('整改详情按钮矩阵', () => {
       canVerify: true,
       canCancel: true,
     })
+    expect(actionPermissions('WAITING_VERIFICATION', true, ['ADMIN'], true)).toMatchObject({
+      canVerify: false,
+      readOnlyHint: '已重新提交，等待下期定稿后再次验证',
+    })
   })
 
   it('终态与未加载：全部禁用', () => {

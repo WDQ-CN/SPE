@@ -49,6 +49,7 @@ const canFilterByDirectory = computed(() =>
 const supplierOptions = ref<SupplierSummary[]>([])
 const ownerOptions = ref<UserOption[]>([])
 const supplierLoading = ref(false)
+let supplierSearchSeq = 0
 const supplierError = ref('')
 const ownerError = ref('')
 const optionError = computed(() => supplierError.value || ownerError.value)
@@ -64,7 +65,19 @@ function onFilterChange(): void {
   void list.load(1)
 }
 
+function onPageChange(page: number): void {
+  list.page.value = page
+  void list.load(page)
+}
+
+function onSizeChange(size: number): void {
+  list.page.value = 1
+  list.size.value = size
+  void list.load(1)
+}
+
 async function searchSuppliers(keyword: string): Promise<void> {
+  const seq = ++supplierSearchSeq
   supplierLoading.value = true
   try {
     const page = await listSuppliers({
@@ -72,6 +85,9 @@ async function searchSuppliers(keyword: string): Promise<void> {
       size: 50,
       keyword: keyword.trim() || undefined,
     })
+    if (seq !== supplierSearchSeq) {
+      return
+    }
     const merged = new Map<number, SupplierSummary>()
     const selected = supplierOptions.value.find(
       (supplier) => supplier.id === filters.supplierId,
@@ -84,9 +100,13 @@ async function searchSuppliers(keyword: string): Promise<void> {
     supplierOptions.value = [...merged.values()]
     supplierError.value = ''
   } catch {
-    supplierError.value = '供应商筛选选项加载失败'
+    if (seq === supplierSearchSeq) {
+      supplierError.value = '供应商筛选选项加载失败'
+    }
   } finally {
-    supplierLoading.value = false
+    if (seq === supplierSearchSeq) {
+      supplierLoading.value = false
+    }
   }
 }
 
@@ -327,8 +347,8 @@ onMounted(() => {
       :total="list.total.value"
       :page-sizes="[10, 20, 50]"
       class="list-pager"
-      @change="list.load"
-      @size-change="list.load(1)"
+      @change="onPageChange"
+      @size-change="onSizeChange"
     />
   </SectionCard>
 </template>
