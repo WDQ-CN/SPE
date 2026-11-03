@@ -48,6 +48,7 @@ POST /api/corrective-actions/{id}/cancel        取消整改
 - ADMIN/MANAGER 可查看全部、指派负责人、验证与取消；EVALUATOR 仅本人负责的整改；VIEWER 不可见。
 - 整改状态：`OPEN → IN_PROGRESS → WAITING_VERIFICATION → VERIFIED / REOPENED`，未完成状态可 `CANCELED`。
 - 下期验证取同供应商、严格晚于基线、最早的 `EFFECTIVE` 评估；创建整改与验证就绪会写站内通知。
+- 重开整改在下一期回填前不可提前确认（`2039`）；详情返回 `reverifyPending`，避免用上一轮结果重复确认。
 
 ## 架构
 
