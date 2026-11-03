@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 class CorrectiveActionVerifierIntegrationTest extends AbstractIntegrationTest {
 
   @Autowired private CorrectiveActionVerifier verifier;
+  @Autowired private CorrectiveActionService service;
 
   @Test
   @DisplayName("D5：唯一候选回填实际分；重开提交后以下一次验证周期重新取数")
@@ -67,6 +68,12 @@ class CorrectiveActionVerifierIntegrationTest extends AbstractIntegrationTest {
     assertThat(reverified.get("verified_by")).isNull();
     assertThat(reverified.get("verified_at")).isNull();
     assertThat(((Number) reverified.get("version")).intValue()).isEqualTo(2);
+
+    // P2：新周期回填清空 verified_at 后，经理可以再次验证通过。
+    CorrectiveAction verified =
+        service.verify(actionId, 701L, true, true, "重开后再验证通过", 2);
+    assertThat(verified.getStatus()).isEqualTo("VERIFIED");
+    assertThat(verified.getVersion()).isEqualTo(3);
   }
 
   @Test

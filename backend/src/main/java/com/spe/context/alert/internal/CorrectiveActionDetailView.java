@@ -34,6 +34,8 @@ public record CorrectiveActionDetailView(
     String expectedResult,
     String status,
     boolean overdue,
+    /** 已重新提交、等待下期定稿后重新验证；此时经理不能提前确认。 */
+    boolean reverifyPending,
     String submitComment,
     LocalDateTime submittedAt,
     Integer verifyYear,
@@ -77,6 +79,9 @@ public record CorrectiveActionDetailView(
         row.getExpectedResult(),
         row.getStatus(),
         CorrectiveActionSummaryView.isOverdue(row.getStatus(), row.getDueDate(), today),
+        CorrectiveActionStatus.WAITING_VERIFICATION.name().equals(row.getStatus())
+            && row.getVerifiedAt() != null
+            && row.getVerifyYear() != null,
         row.getSubmitComment(),
         row.getSubmittedAt(),
         row.getVerifyYear(),

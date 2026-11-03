@@ -162,6 +162,13 @@ class CorrectiveActionApiIntegrationTest extends AbstractIntegrationTest {
     assertThat(auditOperator("CORRECTIVE_ACTION_START", actionId)).isEqualTo(ownerId);
     assertThat(auditOperator("CORRECTIVE_ACTION_SUBMIT", actionId)).isEqualTo(ownerId);
     assertThat(auditOperator("CORRECTIVE_ACTION_VERIFY", actionId)).isEqualTo(managerId);
+    Map<String, Object> verifyAudit =
+        jdbcTemplate.queryForMap(
+            "SELECT detail FROM audit_log WHERE action = 'CORRECTIVE_ACTION_VERIFY'"
+                + " AND target_id = ? ORDER BY id DESC LIMIT 1",
+            actionId);
+    assertThat(verifyAudit.get("detail").toString())
+        .contains("\"verifyYear\"", "\"verifyQuarter\"", "\"verifyScore\"", "\"comment\"");
   }
 
   @Test

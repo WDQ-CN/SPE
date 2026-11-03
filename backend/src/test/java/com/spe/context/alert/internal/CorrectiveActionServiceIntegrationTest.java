@@ -134,7 +134,8 @@ class CorrectiveActionServiceIntegrationTest extends AbstractIntegrationTest {
     long managerId = TestFixtures.insertUser(jdbcTemplate, "w2-action-manager3", "MANAGER");
     long ownerId = TestFixtures.insertUser(jdbcTemplate, "w2-action-owner3", "EVALUATOR");
     long otherId = TestFixtures.insertUser(jdbcTemplate, "w2-action-other", "EVALUATOR");
-    long alertId = insertAlert("UNREAD", "68.00", "70.00", 96021L, 96022L);
+    long supplierId = TestFixtures.insertSupplier(jdbcTemplate, "W2-REVERIFY-SUP");
+    long alertId = insertAlert("UNREAD", "68.00", "70.00", 96021L, supplierId);
     CorrectiveAction action =
         service.create(
             alertId,
@@ -157,6 +158,20 @@ class CorrectiveActionServiceIntegrationTest extends AbstractIntegrationTest {
         .extracting(error -> ((BizException) error).errorCode())
         .isEqualTo(ErrorCode.CONCURRENT_CONFLICT);
     assertThat(started.getVersion()).isEqualTo(1);
+
+    // P2：重开并重新提交后，若下期尚未回填，经理不能拿上一轮结果提前确认。
+    jdbcTemplate.update(
+        "UPDATE corrective_action SET status = 'WAITING_VERIFICATION', verified_by = ?,"
+            + " verified_at = CURRENT_TIMESTAMP(3), verify_year = 2026, verify_quarter = 3,"
+            + " verify_outcome = 'NOT_IMPROVED', verify_comment = '继续整改' WHERE id = ?",
+        managerId,
+        action.getId());
+    assertThatThrownBy(
+            () -> service.verify(action.getId(), managerId, true, true, "提前确认", 1))
+        .isInstanceOf(BizException.class)
+        .extracting(error -> ((BizException) error).errorCode())
+        .isEqualTo(ErrorCode.CORRECTIVE_ACTION_STATUS_INVALID);
+    assertThat(service.detail(action.getId(), managerId, true).reverifyPending()).isTrue();
   }
 
   @Test

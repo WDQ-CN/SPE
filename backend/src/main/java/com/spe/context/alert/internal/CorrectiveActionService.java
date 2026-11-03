@@ -224,6 +224,10 @@ public class CorrectiveActionService {
     }
     CorrectiveAction current = load(id);
     ensureVersion(current, version);
+    if (isReverifyPending(current)) {
+      throw new BizException(
+          ErrorCode.CORRECTIVE_ACTION_STATUS_INVALID, "整改正在等待下期验证，不能提前确认");
+    }
     CorrectiveActionStatus target =
         transition(current, pass ? CorrectiveActionCommand.VERIFY_PASS : CorrectiveActionCommand.VERIFY_FAIL);
     String normalized = optionalText(comment, SHORT_TEXT_MAX_LENGTH, "验证意见");
@@ -234,15 +238,19 @@ public class CorrectiveActionService {
     if (correctiveActionMapper.verify(id, target.name(), operatorId, normalized, version) == 0) {
       reconcile(current, id, CorrectiveActionStatus.WAITING_VERIFICATION);
     }
+    Map<String, Object> detail = new HashMap<>();
+    detail.put("targetStatus", target.name());
+    detail.put("beforeStatus", current.getStatus());
+    detail.put("outcome", Optional.ofNullable(current.getVerifyOutcome()).orElse("PENDING"));
+    detail.put("verifyYear", current.getVerifyYear());
+    detail.put("verifyQuarter", current.getVerifyQuarter());
+    detail.put("verifyScore", current.getVerifyScore());
+    detail.put("comment", Optional.ofNullable(normalized).orElse(""));
     auditFacade.record(
         AuditAction.CORRECTIVE_ACTION_VERIFY,
         AuditTargetType.CORRECTIVE_ACTION,
         id,
-        Map.of(
-            "targetStatus", target.name(),
-            "beforeStatus", current.getStatus(),
-            "outcome", Optional.ofNullable(current.getVerifyOutcome()).orElse("PENDING"),
-            "comment", Optional.ofNullable(normalized).orElse("")));
+        detail);
     return load(id);
   }
 
@@ -362,6 +370,13 @@ public class CorrectiveActionService {
     if (!manager && action.getOwnerId() != operatorId) {
       throw new BizException(ErrorCode.FORBIDDEN);
     }
+  }
+
+  /** 已重新提交等待新周期：上次经理决定留下 verified_at，验证器回填新周期时才会清空。 */
+  private static boolean isReverifyPending(CorrectiveAction action) {
+    return CorrectiveActionStatus.WAITING_VERIFICATION.name().equals(action.getStatus())
+        && action.getVerifiedAt() != null
+        && action.getVerifyYear() != null;
   }
 
   /** 改派负责人是 ADMIN/MANAGER 的动作；EVALUATOR 只能改自己任务的其他字段。 */
