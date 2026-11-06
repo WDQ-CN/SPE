@@ -184,6 +184,13 @@ export function verifyCommentRequired(outcome: VerifyOutcome | null): boolean {
 
 /** 下期对比列/卡片的短文案 */
 export function verifySummary(action: CorrectiveActionSummary): string {
+  if (action.reverifyPending) {
+    const period =
+      action.verifyYear == null
+        ? '上一轮'
+        : `上一轮 ${action.verifyYear} Q${action.verifyQuarter}`
+    return `${period} · ${action.verifyScore == null ? '—' : action.verifyScore.toFixed(2)}`
+  }
   if (action.verifyYear == null) {
     return '待下期定稿'
   }

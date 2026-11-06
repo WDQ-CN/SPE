@@ -214,4 +214,64 @@ describe('ActionDetailView 操作矩阵', () => {
     expect(buttonByText(wrapper, '取消整改')).toBeUndefined()
     expect(wrapper.text()).toContain('整改已通过，记录仅供查看')
   })
+
+  it('验证结论文案按状态区分，不把重开/终态说成经理确认后定稿', async () => {
+    const cases: Array<[Partial<CorrectiveActionDetail>, string]> = [
+      [
+        {
+          status: 'VERIFIED',
+          verifyYear: 2026,
+          verifiedAt: '2026-04-01T11:00:00',
+          verifyOutcome: 'IMPROVED',
+        },
+        '已定稿',
+      ],
+      [
+        {
+          status: 'CANCELED',
+          canceledReason: '供应商已退出',
+          verifyYear: 2026,
+          verifiedAt: '2026-04-01T11:00:00',
+          verifyOutcome: 'NOT_IMPROVED',
+        },
+        '已取消',
+      ],
+      [
+        {
+          status: 'REOPENED',
+          verifyYear: 2026,
+          verifiedAt: '2026-04-01T11:00:00',
+          verifyOutcome: 'NOT_IMPROVED',
+        },
+        '上一轮结果',
+      ],
+      [
+        {
+          status: 'IN_PROGRESS',
+          verifyYear: 2026,
+          verifiedAt: '2026-04-01T11:00:00',
+          verifyOutcome: 'NOT_IMPROVED',
+        },
+        '上一轮结果',
+      ],
+      [
+        {
+          status: 'WAITING_VERIFICATION',
+          reverifyPending: true,
+          verifyYear: 2026,
+          verifiedAt: '2026-04-01T11:00:00',
+          verifyOutcome: 'NOT_IMPROVED',
+        },
+        '上一轮结论，等待新周期',
+      ],
+    ]
+
+    for (const [overrides, expected] of cases) {
+      mocks.getCorrectiveAction.mockResolvedValue(detail(overrides))
+      const wrapper = mountView()
+      await flushPromises()
+      expect(wrapper.find('.action-figures').text()).toContain(expected)
+      wrapper.unmount()
+    }
+  })
 })

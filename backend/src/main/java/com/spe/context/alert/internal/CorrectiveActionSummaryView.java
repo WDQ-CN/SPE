@@ -30,6 +30,8 @@ public record CorrectiveActionSummaryView(
     LocalDate dueDate,
     String status,
     boolean overdue,
+    /** 已重新提交、等待下期定稿后重新验证；列表与详情共用同一判定。 */
+    boolean reverifyPending,
     Integer verifyYear,
     Integer verifyQuarter,
     BigDecimal verifyScore,
@@ -59,6 +61,7 @@ public record CorrectiveActionSummaryView(
         row.getDueDate(),
         row.getStatus(),
         isOverdue(row.getStatus(), row.getDueDate(), today),
+        isReverifyPending(row.getStatus(), row.getVerifiedAt(), row.getVerifyYear()),
         row.getVerifyYear(),
         row.getVerifyQuarter(),
         row.getVerifyScore(),
@@ -73,5 +76,13 @@ public record CorrectiveActionSummaryView(
         && dueDate.isBefore(today)
         && !CorrectiveActionStatus.VERIFIED.name().equals(status)
         && !CorrectiveActionStatus.CANCELED.name().equals(status);
+  }
+
+  /** 重开后再提交：上次经理决定留下 verified_at，验证器回填新周期时才会清空。 */
+  static boolean isReverifyPending(
+      String status, LocalDateTime verifiedAt, Integer verifyYear) {
+    return CorrectiveActionStatus.WAITING_VERIFICATION.name().equals(status)
+        && verifiedAt != null
+        && verifyYear != null;
   }
 }

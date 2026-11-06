@@ -211,8 +211,9 @@ describe('状态标记、验证意见与下期摘要', () => {
     expect(verifyCommentRequired('NOT_IMPROVED')).toBe(false)
   })
 
-  it('下期摘要区分未回填、待人工判断与已回填', () => {
+  it('下期摘要区分未回填、待人工判断、上一轮与已回填', () => {
     const base = {
+      reverifyPending: false,
       verifyYear: null,
       verifyQuarter: null,
       verifyScore: null,
@@ -227,6 +228,16 @@ describe('状态标记、验证意见与下期摘要', () => {
         verifyOutcome: 'PENDING',
       }),
     ).toBe('2026 Q2 · 待人工判断')
+    expect(
+      verifySummary({
+        ...base,
+        reverifyPending: true,
+        verifyYear: 2026,
+        verifyQuarter: 2,
+        verifyScore: 72.4,
+        verifyOutcome: 'IMPROVED',
+      }),
+    ).toBe('上一轮 2026 Q2 · 72.40')
     expect(
       verifySummary({
         ...base,

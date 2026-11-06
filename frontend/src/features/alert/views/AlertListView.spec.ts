@@ -1,5 +1,5 @@
 import { flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
+import ElementPlus, { ElRadioGroup } from 'element-plus'
 import { createPinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -162,5 +162,52 @@ describe('AlertListView 整改入口', () => {
     await flushPromises()
 
     expect(mocks.listAlerts).toHaveBeenCalledTimes(2)
+  })
+
+  it('创建整改后只有 UNREAD 筛选才回退上一页，默认筛选留在当前页', async () => {
+    const single = [rows[1]]
+    mocks.listAlerts.mockImplementation(
+      (query: { page: number; size: number; status?: string }) =>
+        Promise.resolve({
+          list: single,
+          total: 11,
+          page: query.page,
+          size: query.size,
+        }),
+    )
+    const wrapper = mountView()
+    await flushPromises()
+
+    const pager = wrapper.getComponent(ListPagination)
+    pager.vm.$emit('update:page', 2)
+    pager.vm.$emit('change', 2)
+    await flushPromises()
+    expect(mocks.listAlerts).toHaveBeenLastCalledWith({ page: 2, size: 10, status: '' })
+
+    await wrapper.findAll('button').find((button) => button.text() === '创建整改')!.trigger('click')
+    wrapper.findComponent({ name: 'ActionFormDialog' }).vm.$emit('saved')
+    await flushPromises()
+    expect(mocks.listAlerts).toHaveBeenLastCalledWith({ page: 2, size: 10, status: '' })
+
+    wrapper.findComponent(ElRadioGroup).vm.$emit('update:modelValue', 'UNREAD')
+    wrapper.findComponent(ElRadioGroup).vm.$emit('change', 'UNREAD')
+    await flushPromises()
+    pager.vm.$emit('update:page', 2)
+    pager.vm.$emit('change', 2)
+    await flushPromises()
+    expect(mocks.listAlerts).toHaveBeenLastCalledWith({
+      page: 2,
+      size: 10,
+      status: 'UNREAD',
+    })
+
+    await wrapper.findAll('button').find((button) => button.text() === '创建整改')!.trigger('click')
+    wrapper.findComponent({ name: 'ActionFormDialog' }).vm.$emit('saved')
+    await flushPromises()
+    expect(mocks.listAlerts).toHaveBeenLastCalledWith({
+      page: 1,
+      size: 10,
+      status: 'UNREAD',
+    })
   })
 })

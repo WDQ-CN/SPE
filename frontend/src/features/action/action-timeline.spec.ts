@@ -129,4 +129,23 @@ describe('整改状态记录', () => {
     expect(entries.map((entry) => entry.key)).toEqual(['created'])
     expect(JSON.stringify(entries)).not.toContain('供应商已退出')
   })
+
+  it('重开重新提交后按实际时间排序，旧验证标为上一轮', () => {
+    const entries = buildActionTimeline(
+      detail({
+        status: 'WAITING_VERIFICATION',
+        reverifyPending: true,
+        submittedAt: '2026-05-01T10:00:00',
+        verifiedAt: '2026-04-01T11:00:00',
+        verifyOutcome: 'NOT_IMPROVED',
+        verifyComment: '继续整改',
+        verifiedByName: '张岚',
+      }),
+    )
+
+    expect(entries.map((entry) => entry.key)).toEqual(['created', 'verified', 'submitted'])
+    expect(entries[1].label).toBe('上一轮验证：未改善')
+    expect(entries[1].detail).toBe('验证人：张岚 · 继续整改')
+    expect(entries[2].time).toBe('2026-05-01T10:00:00')
+  })
 })

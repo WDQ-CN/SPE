@@ -49,13 +49,18 @@ function openCreate(row: AlertView): void {
   createDialogVisible.value = true
 }
 
-async function onActionSaved(): Promise<void> {
-  createDialogVisible.value = false
-  if (list.rows.value.length === 1 && list.page.value > 1) {
+async function reloadAfterMutation(): Promise<void> {
+  // 只有 UNREAD 筛选下这一行才会从列表消失；默认/已处理筛选应留在当前页。
+  if (status.value === 'UNREAD' && list.rows.value.length === 1 && list.page.value > 1) {
     await list.load(list.page.value - 1)
   } else {
     await list.load()
   }
+}
+
+async function onActionSaved(): Promise<void> {
+  createDialogVisible.value = false
+  await reloadAfterMutation()
 }
 
 function onPageChange(page: number): void {
@@ -93,11 +98,7 @@ async function confirmHandle(): Promise<void> {
   if (ok) {
     ElMessage.success('已处理')
     dialogVisible.value = false
-    if (list.rows.value.length === 1 && list.page.value > 1) {
-      await list.load(list.page.value - 1)
-    } else {
-      await list.load()
-    }
+    await reloadAfterMutation()
   }
 }
 

@@ -572,6 +572,7 @@ test.describe('M5 预警与解锁闭环', () => {
     await page.getByRole('button', { name: '确认验证' }).click()
     await expect(page.locator('.el-message').filter({ hasText: '已退回继续整改' })).toBeVisible()
     await expect(page.locator('.status-mark', { hasText: '继续整改' }).first()).toBeVisible()
+    await expect(page.locator('.action-figures').getByText('上一轮结果').first()).toBeVisible()
 
     // 负责人重开并重新提交；下期尚未回填时经理不能提前确认
     await page.getByRole('button', { name: '退出' }).click()
@@ -584,6 +585,16 @@ test.describe('M5 预警与解锁闭环', () => {
     await page.getByRole('button', { name: '确认提交' }).click()
     await expect(page.locator('.status-mark', { hasText: '待验证' }).first()).toBeVisible()
     await expect(page.getByText('已重新提交，等待下期定稿后再次验证')).toBeVisible()
+    await expect(
+      page.locator('.action-figures').getByText('上一轮结论，等待新周期').first(),
+    ).toBeVisible()
+
+    await page.goto('/actions')
+    const pendingRow = page
+      .locator('.el-table__row')
+      .filter({ hasText: `W4-E2E-${suffix}` })
+      .first()
+    await expect(pendingRow).toContainText('上一轮 2099 Q2')
 
     const pending = await (
       await manager1.api.get(`/api/corrective-actions/${actionId}`, {

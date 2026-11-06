@@ -17,6 +17,12 @@ export interface ActionTimelineEntry {
   detail: string | null
 }
 
+const KEY_RANK: Record<ActionTimelineKey, number> = {
+  created: 0,
+  submitted: 1,
+  verified: 2,
+}
+
 function joinDetail(parts: Array<string | null | undefined>): string | null {
   const text = parts.filter((part): part is string => Boolean(part)).join(' · ')
   return text || null
@@ -45,9 +51,10 @@ export function buildActionTimeline(action: CorrectiveActionDetail): ActionTimel
     const outcomeLabel = action.verifyOutcome
       ? VERIFY_OUTCOME_LABEL[action.verifyOutcome]
       : null
+    const prefix = action.reverifyPending ? '上一轮验证' : '验证'
     entries.push({
       key: 'verified',
-      label: outcomeLabel ? `验证：${outcomeLabel}` : '验证',
+      label: outcomeLabel ? `${prefix}：${outcomeLabel}` : prefix,
       time: action.verifiedAt,
       detail: joinDetail([
         action.verifiedByName ? `验证人：${action.verifiedByName}` : null,
@@ -56,5 +63,9 @@ export function buildActionTimeline(action: CorrectiveActionDetail): ActionTimel
     })
   }
 
-  return entries
+  // 重开重新提交后新的 submittedAt 会晚于旧 verifiedAt；按实际时间排序，避免倒挂。
+  return entries.sort(
+    (left, right) =>
+      left.time.localeCompare(right.time) || KEY_RANK[left.key] - KEY_RANK[right.key],
+  )
 }

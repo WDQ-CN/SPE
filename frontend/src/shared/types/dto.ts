@@ -593,6 +593,8 @@ export interface CorrectiveActionSummary {
   dueDate: string
   status: CorrectiveActionStatus
   overdue: boolean
+  /** 已重新提交、等待下期定稿后重新验证；列表与详情共用 */
+  reverifyPending: boolean
   verifyYear: number | null
   verifyQuarter: number | null
   verifyScore: number | null
@@ -604,8 +606,6 @@ export interface CorrectiveActionSummary {
 
 /** 整改详情（后端 `CorrectiveActionDetailView`）；所有写接口也返回这个形状 */
 export interface CorrectiveActionDetail extends CorrectiveActionSummary {
-  /** 已重新提交、等待下期定稿后重新验证；此时经理不能提前确认 */
-  reverifyPending: boolean
   measure: string
   expectedResult: string | null
   submitComment: string | null

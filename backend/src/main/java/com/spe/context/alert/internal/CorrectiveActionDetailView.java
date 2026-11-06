@@ -79,9 +79,8 @@ public record CorrectiveActionDetailView(
         row.getExpectedResult(),
         row.getStatus(),
         CorrectiveActionSummaryView.isOverdue(row.getStatus(), row.getDueDate(), today),
-        CorrectiveActionStatus.WAITING_VERIFICATION.name().equals(row.getStatus())
-            && row.getVerifiedAt() != null
-            && row.getVerifyYear() != null,
+        CorrectiveActionSummaryView.isReverifyPending(
+            row.getStatus(), row.getVerifiedAt(), row.getVerifyYear()),
         row.getSubmitComment(),
         row.getSubmittedAt(),
         row.getVerifyYear(),

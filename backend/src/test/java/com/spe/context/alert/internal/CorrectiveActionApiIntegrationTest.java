@@ -565,7 +565,8 @@ class CorrectiveActionApiIntegrationTest extends AbstractIntegrationTest {
     jdbcTemplate.update(
         "UPDATE corrective_action SET baseline_score = 65.00, target_score = 70.00,"
             + " verify_year = 2026, verify_quarter = 2,"
-            + " verify_score = 75.00, verify_outcome = 'IMPROVED', verify_comment = '下期已改善'"
+            + " verify_score = 75.00, verify_outcome = 'IMPROVED', verify_comment = '下期已改善',"
+            + " verified_by = 1, verified_at = CURRENT_TIMESTAMP(3)"
             + " WHERE id = ?",
         action3);
     long alert4 = insertAlert(supplierB, "HANDLED", null, "66.00", "70.00", 88304L);
@@ -587,7 +588,8 @@ class CorrectiveActionApiIntegrationTest extends AbstractIntegrationTest {
         .perform(authed(get("/api/corrective-actions").param("status", "OPEN"), manager))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.total").value(1))
-        .andExpect(jsonPath("$.data.list[0].id").value(action1));
+        .andExpect(jsonPath("$.data.list[0].id").value(action1))
+        .andExpect(jsonPath("$.data.list[0].reverifyPending").value(false));
     mockMvc
         .perform(
             authed(
@@ -640,6 +642,7 @@ class CorrectiveActionApiIntegrationTest extends AbstractIntegrationTest {
             .andExpect(jsonPath("$.data.list[0].verifyScore").value(75.00))
             .andExpect(jsonPath("$.data.list[0].verifyOutcome").value("IMPROVED"))
             .andExpect(jsonPath("$.data.list[0].overdue").value(true))
+            .andExpect(jsonPath("$.data.list[0].reverifyPending").value(true))
             .andExpect(jsonPath("$.data.list[0].version").value(0))
             .andReturn()
             .getResponse()

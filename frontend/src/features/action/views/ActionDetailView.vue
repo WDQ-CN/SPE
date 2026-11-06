@@ -62,6 +62,51 @@ const headerDescription = computed(() =>
     ? `${detail.value.supplierCode} · ${detail.value.supplierName} · ${detail.value.baselineYear} Q${detail.value.baselineQuarter}`
     : '整改执行与下期验证',
 )
+const verifyConclusionNote = computed(() => {
+  const current = detail.value
+  if (!current) {
+    return ''
+  }
+  if (current.status === 'VERIFIED') {
+    return '已定稿'
+  }
+  if (current.status === 'CANCELED') {
+    return '已取消'
+  }
+  if (current.reverifyPending) {
+    return '上一轮结论，等待新周期'
+  }
+  if (
+    (current.status === 'REOPENED' || current.status === 'IN_PROGRESS') &&
+    current.verifyYear != null &&
+    current.verifiedAt != null
+  ) {
+    return '上一轮结果'
+  }
+  if (current.verifyOutcome === 'PENDING') {
+    return '需经理人工判断'
+  }
+  return '经理确认后定稿'
+})
+const actualNote = computed(() => {
+  const current = detail.value
+  if (!current) {
+    return ''
+  }
+  if (current.reverifyPending) {
+    return '上一轮结果，等待新周期'
+  }
+  if (
+    (current.status === 'REOPENED' || current.status === 'IN_PROGRESS') &&
+    current.verifyYear != null &&
+    current.verifiedAt != null
+  ) {
+    return '上一轮结果'
+  }
+  return current.verifyYear
+    ? `${current.verifyYear} Q${current.verifyQuarter}`
+    : '尚未回填'
+})
 
 watch(
   () => route.params.id,
@@ -331,7 +376,7 @@ async function confirmCancel(): Promise<void> {
           {{ formatScore(detail.verifyScore) }}
         </div>
         <p class="figure__note">
-          {{ detail.reverifyPending ? '上一轮结果，等待新周期' : detail.verifyYear ? `${detail.verifyYear} Q${detail.verifyQuarter}` : '尚未回填' }}
+          {{ actualNote }}
         </p>
       </div>
       <div class="figure">
@@ -340,7 +385,7 @@ async function confirmCancel(): Promise<void> {
           {{ detail.verifyOutcome ? VERIFY_OUTCOME_LABEL[detail.verifyOutcome] : '—' }}
         </div>
         <p class="figure__note">
-          {{ detail.reverifyPending ? '上一轮结论' : detail.verifyOutcome === 'PENDING' ? '需经理人工判断' : '经理确认后定稿' }}
+          {{ verifyConclusionNote }}
         </p>
       </div>
     </section>
