@@ -159,6 +159,19 @@ class CorrectiveActionApiIntegrationTest extends AbstractIntegrationTest {
         .andExpect(jsonPath("$.data.auditTrail[4].action").value("CORRECTIVE_ACTION_VERIFY"));
 
     assertThat(auditOperator("CORRECTIVE_ACTION_UPDATE", actionId)).isEqualTo(ownerId);
+    Map<String, Object> updateAudit =
+        jdbcTemplate.queryForMap(
+            "SELECT detail FROM audit_log WHERE action = 'CORRECTIVE_ACTION_UPDATE'"
+                + " AND target_id = ? ORDER BY id DESC LIMIT 1",
+            actionId);
+    assertThat(updateAudit.get("detail").toString())
+        .contains(
+            "\"measure\"",
+            "完善来料检验流程",
+            "更新后的整改措施",
+            "\"expectedResult\"",
+            "下期维度分不低于 70")
+        .doesNotContain("\"ownerId\"", "beforeStatus");
     assertThat(auditOperator("CORRECTIVE_ACTION_START", actionId)).isEqualTo(ownerId);
     assertThat(auditOperator("CORRECTIVE_ACTION_SUBMIT", actionId)).isEqualTo(ownerId);
     assertThat(auditOperator("CORRECTIVE_ACTION_VERIFY", actionId)).isEqualTo(managerId);

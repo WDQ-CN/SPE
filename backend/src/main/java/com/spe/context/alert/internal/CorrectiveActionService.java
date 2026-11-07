@@ -7,6 +7,7 @@ import com.spe.common.web.BizException;
 import com.spe.common.web.ErrorCode;
 import com.spe.context.alert.api.events.CorrectiveActionCreatedEvent;
 import com.spe.context.system.api.AuditAction;
+import com.spe.context.system.api.AuditDetails;
 import com.spe.context.system.api.AuditFacade;
 import com.spe.context.system.api.AuditQueryFacade;
 import com.spe.context.system.api.AuditTargetType;
@@ -161,11 +162,11 @@ public class CorrectiveActionService {
     }
     CorrectiveAction updated = load(id);
     Map<String, Object> detail = new HashMap<>();
-    detail.put("ownerId", ownerId);
-    detail.put("dueDate", dueDate.toString());
-    detail.put("beforeOwnerId", current.getOwnerId());
-    detail.put("beforeDueDate", current.getDueDate().toString());
-    detail.put("beforeStatus", current.getStatus());
+    AuditDetails.putIfChanged(detail, "ownerId", current.getOwnerId(), ownerId);
+    AuditDetails.putIfChanged(detail, "dueDate", current.getDueDate(), dueDate);
+    AuditDetails.putIfChanged(detail, "measure", current.getMeasure(), normalizedMeasure);
+    AuditDetails.putIfChanged(
+        detail, "expectedResult", current.getExpectedResult(), normalizedExpected);
     auditFacade.record(
         AuditAction.CORRECTIVE_ACTION_UPDATE,
         AuditTargetType.CORRECTIVE_ACTION,
