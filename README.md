@@ -11,10 +11,10 @@ SPE（Supplier Performance Evaluation）是一个面向采购与质量团队的�
 ## 当前状态
 
 - **M1～M6 全部达成，并补齐「预警 → 整改任务 → 下期验证」闭环**：身份与档案、模板版本、评估流程、审批定级、分析/预警、整改闭环、开放 API。
-- 后端 **443** 个测试、前端 **183** 个 Vitest 用例、真实全栈 **31** 个 Playwright e2e、像素级视觉回归 **13 个用例 / 15 张基线**。
+- 后端 **443** 个测试、前端 **185** 个 Vitest 用例、真实全栈 **31** 个 Playwright e2e、像素级视觉回归 **13 个用例 / 15 张基线**。
 - `pnpm lint` 0 warning、`pnpm build` 通过；应用依赖 OSV **0/0**，MySQL 8.4.13 的 NVD 与 Oracle Linux errata 已核对。
 - 视觉基线：**Editorial Ledger**（纸面、墨色、衬线标题/数字、1px 规则线），覆盖全部页面与移动端菜单。
-- 代码在 `main`；后端/前端/端到端/视觉回归的原始验证日志保存在根目录 `36-final-*.log`。
+- 代码在 `main`；后端/前端/端到端/视觉回归的原始验证日志保存在根目录 `36-final-*.log` 与 `37-p3-*.log`。
 
 ## 功能
 
@@ -204,7 +204,9 @@ cd frontend && pnpm test:visual
 cd frontend && pnpm test:visual:update   # 有意改视觉后更新基线，人工审 diff 再提交
 ```
 
-当前基线：后端 **421/421**、前端 **150**、e2e **28/28**、视觉 **10/10（12 张基线）**；`pnpm lint` 0 warning、`pnpm build` 通过。视觉基线文件名带 `win32` 平台后缀，换平台或 Chrome 大版本需要重新生成。
+视觉回归默认使用 4173；若该端口被系统保留或占用，可用 `VISUAL_PORT` 覆盖：`VISUAL_PORT=5173 pnpm test:visual`（PowerShell：`$env:VISUAL_PORT=5173; pnpm test:visual`）。
+
+当前基线：后端 **443/443**、前端 **185**、e2e **31/31**、视觉 **13/13（15 张基线）**；`pnpm lint` 0 warning、`pnpm build` 通过。视觉基线文件名带 `win32` 平台后缀，换平台或 Chrome 大版本需要重新生成。
 
 Windows 上 `vite build` 若报 `Access is denied`，是 `%TEMP%` 中的 esbuild 临时文件被占用；换一个可写的独立 `TEMP` 后重试，不要据此判断代码有错。
 
