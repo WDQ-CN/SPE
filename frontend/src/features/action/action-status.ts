@@ -182,6 +182,21 @@ export function verifyCommentRequired(outcome: VerifyOutcome | null): boolean {
   return outcome == null || outcome === 'PENDING'
 }
 
+/**
+ * 是否展示“上一轮”验证结果：重开/继续整改后仍有上次验证周期，或已重新提交等待新周期。
+ *
+ * <p>列表、详情与时间轴共用同一判定，避免三处各写一遍后漂移。
+ */
+export function hasPreviousVerification(
+  action: Pick<CorrectiveActionSummary, 'status' | 'verifyYear' | 'reverifyPending'>,
+): boolean {
+  return (
+    action.reverifyPending ||
+    (action.verifyYear != null &&
+      (action.status === 'REOPENED' || action.status === 'IN_PROGRESS'))
+  )
+}
+
 /** 下期对比列/卡片的短文案 */
 export function verifySummary(action: CorrectiveActionSummary): string {
   if (action.reverifyPending) {
@@ -194,9 +209,7 @@ export function verifySummary(action: CorrectiveActionSummary): string {
   if (action.verifyYear == null) {
     return '待下期定稿'
   }
-  // 重开/继续整改后，投影里的 verifyYear 仍是上一次已定稿的周期
-  const previousRound =
-    action.status === 'REOPENED' || action.status === 'IN_PROGRESS' ? '上一轮 ' : ''
+  const previousRound = hasPreviousVerification(action) ? '上一轮 ' : ''
   const period = `${previousRound}${action.verifyYear} Q${action.verifyQuarter}`
   if (action.verifyOutcome === 'PENDING') {
     return `${period} · 待人工判断`

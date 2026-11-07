@@ -103,11 +103,24 @@ describe('整改状态记录', () => {
       buildActionTimeline(
         detail({
           status: 'REOPENED',
+          verifyYear: 2026,
+          verifyQuarter: 2,
           verifiedAt: '2026-04-01T11:00:00',
           verifyOutcome: 'NOT_IMPROVED',
         }),
       )[1].label,
-    ).toBe('验证：未改善')
+    ).toBe('上一轮验证：未改善')
+    expect(
+      buildActionTimeline(
+        detail({
+          status: 'IN_PROGRESS',
+          verifyYear: 2026,
+          verifyQuarter: 2,
+          verifiedAt: '2026-04-01T11:00:00',
+          verifyOutcome: 'NOT_IMPROVED',
+        }),
+      )[1].label,
+    ).toBe('上一轮验证：未改善')
     expect(
       buildActionTimeline(
         detail({

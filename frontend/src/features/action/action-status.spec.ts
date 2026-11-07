@@ -7,6 +7,7 @@ import {
   actionPermissions,
   actionStatusClass,
   alertActionEntry,
+  hasPreviousVerification,
   verifyCommentRequired,
   verifySummary,
 } from './action-status'
@@ -290,5 +291,22 @@ describe('状态标记、验证意见与下期摘要', () => {
         }),
       ),
     ).toBe('上一轮 2026 Q2 · 待人工判断')
+  })
+
+  it('上一轮判定供列表、详情与时间轴共用', () => {
+    expect(hasPreviousVerification(summary({}))).toBe(false)
+    expect(
+      hasPreviousVerification(summary({ status: 'REOPENED', verifyYear: 2026 })),
+    ).toBe(true)
+    expect(
+      hasPreviousVerification(summary({ status: 'IN_PROGRESS', verifyYear: 2026 })),
+    ).toBe(true)
+    expect(
+      hasPreviousVerification(
+        summary({ status: 'WAITING_VERIFICATION', verifyYear: 2026 }),
+      ),
+    ).toBe(false)
+    expect(hasPreviousVerification(summary({ reverifyPending: true }))).toBe(true)
+    expect(hasPreviousVerification(summary({ status: 'REOPENED' }))).toBe(false)
   })
 })

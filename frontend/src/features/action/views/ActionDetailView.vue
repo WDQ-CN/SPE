@@ -11,7 +11,12 @@ import {
   submitCorrectiveAction,
   verifyCorrectiveAction,
 } from '@/features/action/api'
-import { actionPermissions, actionStatusClass, verifyCommentRequired } from '@/features/action/action-status'
+import {
+  actionPermissions,
+  actionStatusClass,
+  hasPreviousVerification,
+  verifyCommentRequired,
+} from '@/features/action/action-status'
 import { buildActionTimeline } from '@/features/action/action-timeline'
 import ActionFormDialog from '@/features/action/components/ActionFormDialog.vue'
 import { useAuthStore } from '@/features/auth/store'
@@ -56,6 +61,9 @@ const isManager = computed(() =>
   auth.roles.some((role) => role === 'ADMIN' || role === 'MANAGER'),
 )
 const timeline = computed(() => (detail.value ? buildActionTimeline(detail.value) : []))
+const previousVerification = computed(() =>
+  detail.value ? hasPreviousVerification(detail.value) : false,
+)
 const headerTitle = computed(() => (detail.value ? `整改任务 #${detail.value.id}` : '整改任务'))
 const headerDescription = computed(() =>
   detail.value
@@ -76,11 +84,7 @@ const verifyConclusionNote = computed(() => {
   if (current.reverifyPending) {
     return '上一轮结论，等待新周期'
   }
-  if (
-    (current.status === 'REOPENED' || current.status === 'IN_PROGRESS') &&
-    current.verifyYear != null &&
-    current.verifiedAt != null
-  ) {
+  if (previousVerification.value) {
     return '上一轮结果'
   }
   if (current.verifyOutcome === 'PENDING') {
@@ -96,11 +100,7 @@ const actualNote = computed(() => {
   if (current.reverifyPending) {
     return '上一轮结果，等待新周期'
   }
-  if (
-    (current.status === 'REOPENED' || current.status === 'IN_PROGRESS') &&
-    current.verifyYear != null &&
-    current.verifiedAt != null
-  ) {
+  if (previousVerification.value) {
     return '上一轮结果'
   }
   return current.verifyYear

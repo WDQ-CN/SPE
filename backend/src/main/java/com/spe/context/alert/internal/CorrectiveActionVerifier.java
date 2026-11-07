@@ -71,7 +71,8 @@ public class CorrectiveActionVerifier {
    * 首次等待经理确认（`verified_at` 为空）不算，避免后续定稿覆盖尚未确认的结果。
    */
   private static boolean isReverify(CorrectiveAction action) {
-    return action.getVerifyYear() != null && action.getVerifiedAt() != null;
+    return CorrectiveActionSummaryView.isReverifyPending(
+        action.getStatus(), action.getVerifiedAt(), action.getVerifyYear());
   }
 
   private void fillOne(CorrectiveAction action, boolean reverify) {

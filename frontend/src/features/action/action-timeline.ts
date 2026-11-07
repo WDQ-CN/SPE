@@ -1,6 +1,8 @@
 import { VERIFY_OUTCOME_LABEL } from '@/shared/labels'
 import type { CorrectiveActionDetail } from '@/shared/types/dto'
 
+import { hasPreviousVerification } from './action-status'
+
 /**
  * 整改详情的「状态记录」。
  *
@@ -51,7 +53,7 @@ export function buildActionTimeline(action: CorrectiveActionDetail): ActionTimel
     const outcomeLabel = action.verifyOutcome
       ? VERIFY_OUTCOME_LABEL[action.verifyOutcome]
       : null
-    const prefix = action.reverifyPending ? '上一轮验证' : '验证'
+    const prefix = hasPreviousVerification(action) ? '上一轮验证' : '验证'
     entries.push({
       key: 'verified',
       label: outcomeLabel ? `${prefix}：${outcomeLabel}` : prefix,
