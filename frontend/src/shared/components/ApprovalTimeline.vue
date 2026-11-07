@@ -115,7 +115,7 @@ const displayTime = formatUtcLocal
 }
 .approval-timeline__line {
   color: var(--ink-secondary);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 19px;
 }
 .approval-timeline__comment {
@@ -123,7 +123,7 @@ const displayTime = formatUtcLocal
   padding-left: 10px;
   border-left: 1px solid var(--rule);
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 18px;
   white-space: pre-wrap;
 }
@@ -132,7 +132,7 @@ const displayTime = formatUtcLocal
   padding: 10px 0;
   border-bottom: 1px solid var(--rule);
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
 }
 .approval-timeline :deep(.el-timeline-item__content) {
   color: var(--ink-secondary);

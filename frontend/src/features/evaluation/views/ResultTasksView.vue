@@ -177,6 +177,6 @@ onMounted(() => void list.load())
 .result-count__unit {
   margin-left: 4px;
   color: var(--muted-2);
-  font-size: 9.5px;
+  font-size: 11px;
 }
 </style>

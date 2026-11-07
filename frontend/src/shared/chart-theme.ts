@@ -5,51 +5,53 @@
  * 只描述外观，不参与任何数据口径。
  */
 export const CHART_COLORS = [
-  '#1C1C1C',
-  '#816D70',
-  '#3F6148',
-  '#8A6A2F',
-  '#4B5563',
-  '#A33A32',
-  '#8A857C',
+  '#171717',
+  '#6E3B3A',
+  '#2F5D3A',
+  '#7A531C',
+  '#3F4A56',
+  '#9E2F28',
+  '#6B665C',
 ]
 
 export const GRADE_COLORS: Record<string, string> = {
-  A: '#3F6148',
-  B: '#1C1C1C',
-  C: '#8A6A2F',
-  D: '#A33A32',
+  A: '#2F5D3A',
+  B: '#171717',
+  C: '#7A531C',
+  D: '#9E2F28',
 }
 
 export const CHART_TEXT_STYLE = {
   fontFamily: "'Albert Sans', 'Noto Sans SC', 'Microsoft YaHei', sans-serif",
-  color: '#6B6A65',
-  fontSize: 10,
+  color: '#5F5B54',
+  fontSize: 11,
 }
 
 export const CHART_TOOLTIP = {
-  backgroundColor: '#FFFDF9',
-  borderColor: '#DED8CC',
+  backgroundColor: '#FFFCF6',
+  borderColor: '#D8D1C3',
   borderWidth: 1,
   padding: [8, 10] as [number, number],
   textStyle: {
     fontFamily: CHART_TEXT_STYLE.fontFamily,
-    color: '#1C1C1C',
-    fontSize: 11,
+    color: '#171717',
+    fontSize: 12,
   },
-  extraCssText: 'box-shadow: 0 12px 32px rgb(28 28 28 / 10%); border-radius: 0;',
+  extraCssText: 'box-shadow: 0 12px 32px rgb(23 23 23 / 10%); border-radius: 0;',
 }
 
 export const CHART_LEGEND = {
   icon: 'rect',
-  itemWidth: 8,
-  itemHeight: 8,
+  itemWidth: 9,
+  itemHeight: 9,
   itemGap: 16,
   textStyle: CHART_TEXT_STYLE,
 }
 
+export const CHART_ARIA = { enabled: true, decal: { show: false } }
+
 export const CATEGORY_AXIS = {
-  axisLine: { lineStyle: { color: '#DED8CC' } },
+  axisLine: { lineStyle: { color: '#D8D1C3' } },
   axisTick: { show: false },
   axisLabel: CHART_TEXT_STYLE,
   splitLine: { show: false },
@@ -60,4 +62,11 @@ export const VALUE_AXIS = {
   axisTick: { show: false },
   axisLabel: CHART_TEXT_STYLE,
   splitLine: { lineStyle: { color: '#EDE8DE' } },
+}
+
+export function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+  )
 }

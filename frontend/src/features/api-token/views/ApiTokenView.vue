@@ -335,11 +335,11 @@ async function disable(row: ApiTokenSummary): Promise<void> {
 .token-prefix {
   color: var(--ink-secondary);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
 }
 .token-muted {
   color: var(--muted-2);
-  font-size: 10.5px;
+  font-size: 11px;
 }
 .token__name {
   margin: 14px 0 8px;
@@ -361,7 +361,7 @@ async function disable(row: ApiTokenSummary): Promise<void> {
   overflow-wrap: anywhere;
   color: var(--ink-secondary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
 }
 </style>

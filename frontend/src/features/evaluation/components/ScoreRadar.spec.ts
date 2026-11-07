@@ -20,7 +20,11 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('echarts/core', () => ({ init: mocks.init, use: vi.fn() }))
 vi.mock('echarts/charts', () => ({ RadarChart: {} }))
-vi.mock('echarts/components', () => ({ RadarComponent: {}, TooltipComponent: {} }))
+vi.mock('echarts/components', () => ({
+  AriaComponent: {},
+  RadarComponent: {},
+  TooltipComponent: {},
+}))
 vi.mock('echarts/renderers', () => ({ CanvasRenderer: {} }))
 
 import ScoreRadar from './ScoreRadar.vue'

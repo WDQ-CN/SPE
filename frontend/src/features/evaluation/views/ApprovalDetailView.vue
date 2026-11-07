@@ -317,7 +317,7 @@ onMounted(() => void load())
 }
 .approval-score small {
   font-family: var(--font-sans);
-  font-size: 10px;
+  font-size: 11px;
 }
 .approval-notices {
   display: flex;
@@ -340,14 +340,14 @@ onMounted(() => void load())
 }
 .approval-decision__label {
   color: var(--muted-2);
-  font-size: 8.5px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 .approval-decision__copy p {
   margin: 4px 0 0;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 18px;
 }
 .approval-decision__actions {

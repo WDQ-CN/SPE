@@ -2,6 +2,7 @@ import type { EChartsCoreOption } from 'echarts/core'
 
 import {
   CATEGORY_AXIS,
+  CHART_ARIA,
   CHART_COLORS,
   CHART_LEGEND,
   CHART_TEXT_STYLE,
@@ -28,7 +29,7 @@ function axisTooltip(): Record<string, unknown> {
   return {
     ...CHART_TOOLTIP,
     trigger: 'axis',
-    axisPointer: { type: 'line', lineStyle: { color: '#816D70', width: 1 } },
+    axisPointer: { type: 'line', lineStyle: { color: '#6E3B3A', width: 1 } },
   }
 }
 
@@ -56,6 +57,7 @@ export function trendOption(trend: AnalyticsTrend): EChartsCoreOption {
           }),
   }))
   return {
+    aria: CHART_ARIA,
     color: CHART_COLORS,
     textStyle: CHART_TEXT_STYLE,
     tooltip: axisTooltip(),
@@ -70,6 +72,7 @@ export function trendOption(trend: AnalyticsTrend): EChartsCoreOption {
 export function gradeOption(counts: AnalyticsGradeCount[]): EChartsCoreOption {
   const byGrade = new Map(counts.map((item) => [item.grade, item.count]))
   return {
+    aria: CHART_ARIA,
     color: CHART_COLORS,
     textStyle: CHART_TEXT_STYLE,
     tooltip: { ...axisTooltip(), axisPointer: { type: 'shadow' } },
@@ -99,6 +102,7 @@ export function compareOption(compare: AnalyticsCompare): EChartsCoreOption {
   }
   const dimensions = [...names]
   return {
+    aria: CHART_ARIA,
     color: CHART_COLORS,
     textStyle: CHART_TEXT_STYLE,
     tooltip: axisTooltip(),

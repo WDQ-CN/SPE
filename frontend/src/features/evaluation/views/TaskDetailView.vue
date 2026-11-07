@@ -439,7 +439,7 @@ onMounted(load)
   padding-top: 1px;
   color: var(--muted-2);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 15px;
 }
 
@@ -451,7 +451,7 @@ onMounted(load)
 
 .approval-name {
   color: var(--ink-secondary);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
   line-height: 17px;
 }
@@ -459,7 +459,7 @@ onMounted(load)
 .approval-meta {
   margin-top: 1px;
   color: var(--muted);
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 14px;
 }
 
@@ -469,7 +469,7 @@ onMounted(load)
   border-top: 1px solid var(--ink);
   border-bottom: 1px solid var(--rule);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .approval-note {
@@ -478,7 +478,7 @@ onMounted(load)
   border-left: 2px solid var(--accent);
   background: var(--accent-soft);
   color: var(--ink-secondary);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 18px;
 }
 
@@ -491,7 +491,7 @@ onMounted(load)
 .assign-summary {
   margin: 0 0 14px;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 @media (max-width: 1300px) {

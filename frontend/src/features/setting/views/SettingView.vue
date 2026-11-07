@@ -352,7 +352,7 @@ async function save(): Promise<void> {
 .page__hint {
   margin: 0 0 14px;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 19px;
 }
 

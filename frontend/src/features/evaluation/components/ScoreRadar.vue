@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { RadarChart } from 'echarts/charts'
-import { RadarComponent, TooltipComponent } from 'echarts/components'
+import { AriaComponent, RadarComponent, TooltipComponent } from 'echarts/components'
 import * as echarts from 'echarts/core'
 import type { EChartsCoreOption } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+import { prefersReducedMotion } from '@/shared/chart-theme'
+
 import { buildRadarOption, radarPoints, type RadarDimension } from '../radar'
 
-echarts.use([RadarChart, RadarComponent, TooltipComponent, CanvasRenderer])
+echarts.use([RadarChart, RadarComponent, TooltipComponent, AriaComponent, CanvasRenderer])
 
 /**
  * 维度雷达图（01 B3 / 15 E12）：ECharts **按需引入**（D4），只注册用到的坐标/系列/渲染器。
@@ -34,7 +36,14 @@ function render(): void {
   if (!chart) {
     chart = echarts.init(host.value)
   }
-  chart.setOption(buildRadarOption(props.dimensions) as unknown as EChartsCoreOption, true)
+  chart.setOption(
+    {
+      ...buildRadarOption(props.dimensions),
+      aria: { enabled: true },
+      animation: !prefersReducedMotion(),
+    } as unknown as EChartsCoreOption,
+    true,
+  )
 }
 
 function resize(): void {

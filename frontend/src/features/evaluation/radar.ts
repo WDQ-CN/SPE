@@ -1,3 +1,5 @@
+import { formatScore } from '@/shared/format'
+
 /**
  * 雷达图的纯数据/配置构造（D4 裁决：ECharts 按需引入，只画维度雷达）。
  *
@@ -56,22 +58,22 @@ export function radarPoints(dimensions: RadarDimension[]): RadarPoint[] {
 
 export function buildRadarOption(dimensions: RadarDimension[]): RadarOption {
   const points = radarPoints(dimensions)
-  const accent = '#816D70'
+  const accent = '#6E3B3A'
   const fontFamily = "'Albert Sans', 'Noto Sans SC', 'Microsoft YaHei', sans-serif"
   return {
     color: [accent],
-    textStyle: { fontFamily, color: '#3F3B36' },
+    textStyle: { fontFamily, color: '#3B3833' },
     tooltip: {
       trigger: 'item',
       // 见文件头的注入面说明：不能改成 'html'
       renderMode: 'richText',
-      backgroundColor: '#FFFDF9',
-      borderColor: '#DED8CC',
-      textStyle: { color: '#1C1C1C', fontFamily, fontSize: 11 },
+      backgroundColor: '#FFFCF6',
+      borderColor: '#D8D1C3',
+      textStyle: { color: '#171717', fontFamily, fontSize: 12 },
       formatter: (params) => {
         const values = params.value ?? []
         return points
-          .map((point, index) => `${point.name}：${values[index]?.toFixed(2) ?? '—'}`)
+          .map((point, index) => `${point.name}：${formatScore(values[index])}`)
           .join('\n')
       },
     },
@@ -79,10 +81,10 @@ export function buildRadarOption(dimensions: RadarDimension[]): RadarOption {
       indicator: points.map((point) => ({ name: point.name, max: 100 })),
       radius: '65%',
       splitNumber: 4,
-      axisName: { color: '#3F3B36', fontSize: 11 },
-      axisLine: { lineStyle: { color: '#DED8CC' } },
-      splitLine: { lineStyle: { color: '#DED8CC' } },
-      splitArea: { areaStyle: { color: ['#FFFDF9', '#FAF7F0'] } },
+      axisName: { color: '#3B3833', fontSize: 11 },
+      axisLine: { lineStyle: { color: '#D8D1C3' } },
+      splitLine: { lineStyle: { color: '#D8D1C3' } },
+      splitArea: { areaStyle: { color: ['#FFFCF6', '#F6F2E9'] } },
     },
     series: [
       {

@@ -301,7 +301,7 @@ onMounted(() => void load())
 .result-supplier-code {
   display: block;
   margin-top: 1px;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 13px;
 }
 .result-score {

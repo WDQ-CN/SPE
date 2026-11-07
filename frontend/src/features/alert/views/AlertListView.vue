@@ -340,12 +340,12 @@ onMounted(() => void list.load())
 .alert-code {
   display: block;
   margin-top: 1px;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 13px;
 }
 .alert-handled {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 18px;
 }
 .alert-actions {
@@ -356,13 +356,13 @@ onMounted(() => void list.load())
 }
 .alert-action-link {
   color: var(--ink);
-  font-size: 11px;
+  font-size: 12px;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 .alert-legacy-hint {
   color: var(--muted-2);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.04em;
 }
 .alerts__target {

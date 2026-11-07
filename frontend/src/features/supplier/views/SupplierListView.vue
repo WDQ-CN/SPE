@@ -343,7 +343,7 @@ async function toggleStatus(row: SupplierSummary): Promise<void> {
 .supplier-code {
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .supplier-name {

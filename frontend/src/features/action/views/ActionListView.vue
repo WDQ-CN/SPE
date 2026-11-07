@@ -361,7 +361,7 @@ onMounted(() => {
 .action-code {
   display: block;
   margin-top: 1px;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 13px;
 }
 .action-alert {
@@ -374,7 +374,7 @@ onMounted(() => {
   display: block;
   margin-top: 2px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 14px;
 }
 .action-overdue {

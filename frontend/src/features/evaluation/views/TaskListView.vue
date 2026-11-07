@@ -605,7 +605,7 @@ onMounted(() => void list.load())
 .hint {
   margin-left: 8px;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .quarter {

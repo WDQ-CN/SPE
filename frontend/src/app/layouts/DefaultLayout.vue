@@ -13,6 +13,7 @@ const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const viewKey = useViewKey()
+const pageKey = computed(() => `${route.fullPath}:${viewKey.value}`)
 const notifications = useNotificationStore()
 
 const menus = computed(() => visibleMenus(auth.roles))
@@ -78,6 +79,10 @@ function navigateFromMobile(command: string): void {
 
 <template>
   <div class="layout">
+    <a
+      class="skip-link"
+      href="#main-content"
+    >跳到主内容</a>
     <aside class="layout__aside">
       <RouterLink
         class="layout__brand"
@@ -97,14 +102,19 @@ function navigateFromMobile(command: string): void {
         :key="activeMenu"
         :default-active="activeMenu"
         class="layout__menu"
+        aria-label="主导航"
         router
       >
         <el-menu-item
           v-for="menu in menus"
           :key="menu.path"
           :index="menu.path"
+          :aria-current="menu.path === activeMenu ? 'page' : undefined"
         >
-          <span class="layout__menu-mark" />
+          <span
+            class="layout__menu-mark"
+            aria-hidden="true"
+          />
           <span>{{ menu.title }}</span>
         </el-menu-item>
       </el-menu>
@@ -238,8 +248,15 @@ function navigateFromMobile(command: string): void {
         </div>
       </header>
 
-      <main class="layout__content">
-        <div class="layout__page">
+      <main
+        id="main-content"
+        class="layout__content"
+        tabindex="-1"
+      >
+        <div
+          :key="pageKey"
+          class="layout__page"
+        >
           <router-view :key="viewKey" />
         </div>
       </main>
@@ -252,6 +269,7 @@ function navigateFromMobile(command: string): void {
   display: grid;
   grid-template-columns: var(--sidebar) minmax(0, 1fr);
   height: 100vh;
+  height: 100dvh;
   min-height: 0;
   background: var(--paper);
 }
@@ -260,7 +278,7 @@ function navigateFromMobile(command: string): void {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 18px 14px 14px;
+  padding: 20px 16px 16px;
   background: var(--surface);
   border-right: 1px solid var(--rule);
   overflow-y: auto;
@@ -278,41 +296,41 @@ function navigateFromMobile(command: string): void {
 .layout__brand-mark {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   flex: none;
   border: 1px solid var(--ink);
   border-radius: 999px;
   font-family: var(--font-serif);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1;
 }
 
 .layout__brand-copy strong {
   display: block;
   font-family: var(--font-serif);
-  font-size: 22px;
-  line-height: 24px;
+  font-size: 24px;
+  line-height: 26px;
   font-weight: 600;
   letter-spacing: -0.6px;
 }
 
 .layout__brand-copy small {
   display: block;
-  margin-top: 1px;
+  margin-top: 2px;
   color: var(--muted-2);
-  font-size: 7px;
-  line-height: 10px;
-  letter-spacing: 0.13em;
+  font-size: 11px;
+  line-height: 14px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
 .layout__nav-label {
-  margin: 22px 8px 7px;
+  margin: 24px 8px 8px;
   color: var(--muted-2);
-  font-size: 8px;
-  line-height: 12px;
-  letter-spacing: 0.14em;
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -325,20 +343,21 @@ function navigateFromMobile(command: string): void {
 .layout__menu :deep(.el-menu-item) {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 34px;
-  line-height: 34px;
-  margin: 1px 0;
-  padding: 0 8px !important;
+  gap: 10px;
+  height: 40px;
+  line-height: 40px;
+  margin: 2px 0;
+  padding: 0 10px !important;
   border-left: 2px solid transparent;
-  border-radius: 2px;
+  border-radius: var(--radius-control);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
+  transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out);
 }
 
 .layout__menu :deep(.el-menu-item:hover) {
   color: var(--ink);
-  background: rgb(129 109 112 / 5%);
+  background: rgb(110 59 58 / 5%);
 }
 
 .layout__menu :deep(.el-menu-item.is-active) {
@@ -349,8 +368,8 @@ function navigateFromMobile(command: string): void {
 }
 
 .layout__menu-mark {
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   flex: none;
   background: currentColor;
   opacity: 0.45;
@@ -375,13 +394,13 @@ function navigateFromMobile(command: string): void {
 .layout__avatar {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   flex: none;
   border: 1px solid var(--ink);
   border-radius: 999px;
   font-family: var(--font-serif);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .layout__user-meta {
@@ -392,30 +411,31 @@ function navigateFromMobile(command: string): void {
 .layout__user-name {
   overflow: hidden;
   color: var(--ink-secondary);
-  font-size: 10.5px;
-  line-height: 15px;
+  font-size: 12px;
+  line-height: 16px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .layout__user :deep(.el-tag) {
-  height: 17px;
+  height: 20px;
   margin-top: 2px;
-  padding: 0 5px;
+  padding: 0 6px;
   border-color: var(--rule);
   color: var(--muted);
-  font-size: 8px;
-  line-height: 15px;
+  font-size: 11px;
+  line-height: 18px;
 }
 
 .layout__logout {
-  padding: 0;
+  min-height: 32px;
+  padding: 6px 0;
   border: 0;
   border-bottom: 1px solid var(--rule);
   background: transparent;
   color: var(--muted-2);
-  font-size: 9px;
-  line-height: 15px;
+  font-size: 12px;
+  line-height: 18px;
   cursor: pointer;
 }
 
@@ -438,7 +458,7 @@ function navigateFromMobile(command: string): void {
   gap: 16px;
   height: var(--topbar);
   flex: none;
-  padding: 0 30px;
+  padding: 0 24px;
   background: var(--surface);
   border-bottom: 1px solid var(--rule);
 }
@@ -448,8 +468,8 @@ function navigateFromMobile(command: string): void {
   align-items: center;
   gap: 8px;
   color: var(--muted);
-  font-size: 10px;
-  line-height: 15px;
+  font-size: 11px;
+  line-height: 16px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -472,14 +492,15 @@ function navigateFromMobile(command: string): void {
 .layout__icon-btn {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 2px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
+  transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out);
 }
 
 .layout__icon-btn:hover {
@@ -489,8 +510,8 @@ function navigateFromMobile(command: string): void {
 }
 
 .layout__icon {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.6;
@@ -502,12 +523,17 @@ function navigateFromMobile(command: string): void {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 28px 32px 32px;
+  padding: clamp(20px, 2.5vw, 36px) 32px 40px;
   background: var(--paper);
+  scrollbar-gutter: stable;
+}
+
+.layout__content:focus {
+  outline: none;
 }
 
 .layout__page {
-  max-width: 1440px;
+  max-width: var(--content-max);
   margin: 0 auto;
 }
 
@@ -518,15 +544,15 @@ function navigateFromMobile(command: string): void {
 
 .notice__title {
   color: var(--ink);
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 500;
 }
 
 .notice__content {
   margin-top: 2px;
   color: var(--muted);
-  font-size: 10.5px;
-  line-height: 17px;
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .notice__footer {
@@ -552,7 +578,17 @@ function navigateFromMobile(command: string): void {
   }
 
   .layout__content {
-    padding: 18px 16px;
+    padding: 20px 16px 32px;
+  }
+
+  .layout__icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .layout__logout {
+    min-height: 44px;
+    padding: 10px 0;
   }
 }
 </style>

@@ -580,21 +580,21 @@ watch(() => route.params.id, () => void load())
 .hint {
   margin-top: 2px;
   color: var(--muted-2);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 14px;
 }
 
 .error {
   margin-top: 1px;
   color: var(--danger);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 14px;
 }
 
 .score-trial__note {
   margin: 0 0 14px;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 18px;
 }
 
@@ -613,7 +613,7 @@ watch(() => route.params.id, () => void load())
   justify-content: space-between;
   margin-bottom: 6px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -631,7 +631,7 @@ watch(() => route.params.id, () => void load())
   flex: 1;
   margin: 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 17px;
 }
 </style>

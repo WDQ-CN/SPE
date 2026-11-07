@@ -139,17 +139,18 @@ async function submit(): Promise<void> {
   display: grid;
   place-items: center;
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 32px;
   background:
-    linear-gradient(rgb(247 244 237 / 92%), rgb(247 244 237 / 92%)),
-    repeating-linear-gradient(0deg, transparent 0 63px, rgb(222 216 204 / 38%) 63px 64px);
+    linear-gradient(rgb(246 242 233 / 92%), rgb(246 242 233 / 92%)),
+    repeating-linear-gradient(0deg, transparent 0 63px, rgb(216 209 195 / 38%) 63px 64px);
 }
 
 .login__panel {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
-  width: min(1000px, calc(100vw - 64px));
-  min-height: 560px;
+  grid-template-columns: minmax(0, 1.05fr) minmax(380px, 0.95fr);
+  width: min(1040px, calc(100vw - 64px));
+  min-height: 600px;
   border: 1px solid var(--rule);
   background: var(--surface);
 }
@@ -157,17 +158,17 @@ async function submit(): Promise<void> {
 .login__brand {
   display: flex;
   flex-direction: column;
-  padding: 42px 48px 36px;
+  padding: 48px 52px 40px;
   background: var(--ink);
   color: var(--paper);
 }
 
 .login__eyebrow {
   margin: 0;
-  color: rgb(247 244 237 / 48%);
-  font-size: 8.5px;
-  line-height: 13px;
-  letter-spacing: 0.16em;
+  color: rgb(246 242 233 / 72%);
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
@@ -190,19 +191,20 @@ async function submit(): Promise<void> {
 
 .login__quote {
   margin: 0;
-  color: rgb(247 244 237 / 88%);
+  color: rgb(246 242 233 / 88%);
   font-family: var(--font-serif);
-  font-size: 23px;
-  line-height: 34px;
+  font-size: 24px;
+  line-height: 36px;
   font-weight: 500;
 }
 
 .login__brand-note {
   margin: auto 0 0;
-  color: rgb(247 244 237 / 38%);
+  color: rgb(246 242 233 / 62%);
   font-family: var(--font-mono);
-  font-size: 9px;
-  line-height: 16px;
+  font-size: 11px;
+  line-height: 17px;
+  font-variant-numeric: tabular-nums;
 }
 
 .login :deep(.login__card.el-card) {
@@ -224,26 +226,26 @@ async function submit(): Promise<void> {
 .login__card-eyebrow {
   margin: 0;
   color: var(--muted-2);
-  font-size: 8.5px;
-  line-height: 13px;
-  letter-spacing: 0.16em;
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .login__card-title {
   margin: 8px 0 0;
   font-family: var(--font-serif);
-  font-size: 34px;
-  line-height: 40px;
+  font-size: 36px;
+  line-height: 1.1;
   font-weight: 500;
   letter-spacing: -1px;
 }
 
 .login__card-sub {
-  margin: 7px 0 0;
+  margin: 8px 0 0;
   color: var(--muted);
-  font-size: 11px;
-  line-height: 18px;
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .login__error {

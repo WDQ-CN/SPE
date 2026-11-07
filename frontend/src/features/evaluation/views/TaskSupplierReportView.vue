@@ -254,7 +254,7 @@ onMounted(() => void load())
 }
 .report-kicker {
   color: var(--muted-2);
-  font-size: 8.5px;
+  font-size: 11px;
   line-height: 13px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -288,7 +288,7 @@ onMounted(() => void load())
 .report-hero__note {
   margin: 12px 0 0;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 18px;
 }
 .report-meta {

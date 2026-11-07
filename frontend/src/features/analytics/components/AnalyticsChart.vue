@@ -1,14 +1,22 @@
 <script setup lang="ts">
 import { BarChart, LineChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import {
+  AriaComponent,
+  GridComponent,
+  LegendComponent,
+  TooltipComponent,
+} from 'echarts/components'
 import * as echarts from 'echarts/core'
 import type { EChartsCoreOption } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+import { prefersReducedMotion } from '@/shared/chart-theme'
+
 echarts.use([
   LineChart,
   BarChart,
+  AriaComponent,
   GridComponent,
   TooltipComponent,
   LegendComponent,
@@ -33,7 +41,7 @@ function render(): void {
   if (!chart) {
     chart = echarts.init(host.value)
   }
-  chart.setOption(props.option, true)
+  chart.setOption({ ...props.option, animation: !prefersReducedMotion() }, true)
 }
 
 function resize(): void {
@@ -69,5 +77,6 @@ watch(
 <style scoped>
 .analytics-chart {
   width: 100%;
+  min-width: 0;
 }
 </style>

@@ -337,7 +337,7 @@ function deltaClass(value: number | null): string {
         >
           <el-table-column
             label="序"
-            width="52"
+            width="48"
           >
             <template #default="{ $index }">
               <span class="mono">{{ String($index + 1).padStart(2, '0') }}</span>
@@ -345,7 +345,7 @@ function deltaClass(value: number | null): string {
           </el-table-column>
           <el-table-column
             label="供应商"
-            min-width="190"
+            min-width="180"
           >
             <template #default="{ row }">
               <span class="analytics-supplier-name">{{ row.supplierName }}</span>
@@ -354,7 +354,7 @@ function deltaClass(value: number | null): string {
           </el-table-column>
           <el-table-column
             label="分类"
-            width="110"
+            width="100"
           >
             <template #default="{ row }">
               {{ row.category ?? '—' }}
@@ -362,7 +362,7 @@ function deltaClass(value: number | null): string {
           </el-table-column>
           <el-table-column
             label="总分"
-            width="100"
+            width="95"
             align="right"
           >
             <template #default="{ row }">
@@ -371,7 +371,7 @@ function deltaClass(value: number | null): string {
           </el-table-column>
           <el-table-column
             label="等级"
-            width="80"
+            width="75"
           >
             <template #default="{ row }">
               <span
@@ -384,7 +384,7 @@ function deltaClass(value: number | null): string {
           </el-table-column>
           <el-table-column
             label="上期"
-            width="90"
+            width="85"
             align="right"
           >
             <template #default="{ row }">
@@ -393,7 +393,7 @@ function deltaClass(value: number | null): string {
           </el-table-column>
           <el-table-column
             label="环比"
-            width="90"
+            width="85"
             align="right"
           >
             <template #default="{ row }">
@@ -505,7 +505,7 @@ function deltaClass(value: number | null): string {
 }
 .analytics-bar__field > span {
   color: var(--muted-2);
-  font-size: 8.5px;
+  font-size: 11px;
   line-height: 13px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -513,7 +513,7 @@ function deltaClass(value: number | null): string {
 .analytics-bar__note {
   margin: 0 0 2px auto;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 18px;
 }
 .analytics__period {
@@ -535,9 +535,15 @@ function deltaClass(value: number | null): string {
 }
 .analytics-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
   gap: 36px;
   align-items: start;
+}
+.analytics-layout > .section-card {
+  min-width: 0;
+}
+.analytics-layout .el-table {
+  min-width: 0;
 }
 .analytics-layout .section-card {
   margin-top: 24px;
@@ -556,7 +562,7 @@ function deltaClass(value: number | null): string {
   margin-top: 1px;
   color: var(--muted-2);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 13px;
 }
 .analytics-score {
@@ -572,7 +578,7 @@ function deltaClass(value: number | null): string {
 .delta--down {
   color: var(--danger);
 }
-@media (max-width: 1200px) {
+@media (max-width: 1400px) {
   .analytics-layout {
     grid-template-columns: 1fr;
   }

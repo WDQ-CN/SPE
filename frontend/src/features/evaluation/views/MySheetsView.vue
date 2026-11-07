@@ -138,7 +138,7 @@ onMounted(load)
 .sheet-supplier-code {
   display: block;
   margin-top: 1px;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 13px;
 }
 </style>

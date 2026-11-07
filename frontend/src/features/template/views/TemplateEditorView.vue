@@ -927,7 +927,7 @@ function statusTagType(): 'success' | 'warning' | 'info' {
   padding-top: 4px;
   color: var(--muted-2);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 15px;
 }
 
@@ -944,7 +944,7 @@ function statusTagType(): 'success' | 'warning' | 'info' {
 .editor__dimension-meta {
   margin: 3px 0 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 16px;
 }
 
@@ -964,7 +964,7 @@ function statusTagType(): 'success' | 'warning' | 'info' {
 .editor__muted {
   margin-left: 8px;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .editor-table {
@@ -977,7 +977,7 @@ function statusTagType(): 'success' | 'warning' | 'info' {
   border-bottom: 1px solid var(--rule);
   text-align: center;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* ⚠️ 2xxx（如"编码重复 2014"、"维度不存在 2015"）由 useSubmit 只写进 errorMessage，
@@ -986,7 +986,7 @@ function statusTagType(): 'success' | 'warning' | 'info' {
 .editor__error-text {
   margin: 0 0 4px;
   color: var(--danger);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .editor__add-dimension {

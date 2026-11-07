@@ -782,7 +782,7 @@ async function confirmCancel(): Promise<void> {
 .action-kicker {
   display: block;
   color: var(--muted-2);
-  font-size: 8.5px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -824,11 +824,11 @@ async function confirmCancel(): Promise<void> {
 }
 .action-verify__row span {
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
 }
 .action-verify__row strong {
   color: var(--ink-secondary);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
   text-align: right;
 }
@@ -844,7 +844,7 @@ async function confirmCancel(): Promise<void> {
 .action-timeline__detail {
   margin: 4px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.8;
   white-space: pre-wrap;
 }
@@ -860,7 +860,7 @@ async function confirmCancel(): Promise<void> {
   overflow: auto;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.55;
   white-space: pre-wrap;
 }
@@ -878,7 +878,7 @@ async function confirmCancel(): Promise<void> {
 .action-decisions__copy p {
   margin: 5px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
 }
 .action-decisions__hint {
@@ -892,7 +892,7 @@ async function confirmCancel(): Promise<void> {
 .action-dialog__meta {
   margin: 0 0 12px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.7;
 }
 </style>

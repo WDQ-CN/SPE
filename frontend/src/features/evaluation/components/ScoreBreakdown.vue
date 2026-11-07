@@ -149,7 +149,7 @@ function scoreLine(dimension: ReportDimension): string {
 .breakdown__meta {
   color: var(--muted-2);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.02em;
 }
 .breakdown__score {

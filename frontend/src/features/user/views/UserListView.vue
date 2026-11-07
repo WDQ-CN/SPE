@@ -455,14 +455,14 @@ async function submitReset(): Promise<void> {
 .page__hint {
   margin: 0 0 12px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 18px;
 }
 
 .user-username {
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .user-name {

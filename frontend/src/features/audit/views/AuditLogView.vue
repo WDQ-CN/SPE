@@ -203,7 +203,7 @@ onMounted(async () => {
   width: 220px;
   color: var(--ink-secondary);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
 }
 .audit__target {
   width: 150px;
@@ -220,7 +220,7 @@ onMounted(async () => {
   background: var(--paper-deep);
   color: var(--ink-secondary);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 18px;
   white-space: pre-wrap;
 }

@@ -7,8 +7,8 @@ import { watchConsole } from './support'
  * 像素级视觉回归：固定数据 + 固定视口 + 系统 Chrome。
  *
  * <p>基线生成：`pnpm test:visual:update`；日常校验：`pnpm test:visual`。
- * 截图前统一等待自托管字体与（如有）ECharts 画布稳定；CSS 动画由
- * `toHaveScreenshot.animations = disabled` 快进。
+ * 截图前统一等待自托管字体与（如有）ECharts 画布稳定；视觉配置固定
+ * `reducedMotion: 'reduce'`，CSS 与 ECharts 入场动画都不播放。
  */
 
 async function settle(page: Page, hasChart = false): Promise<void> {
@@ -26,7 +26,7 @@ async function settle(page: Page, hasChart = false): Promise<void> {
   })
   if (hasChart) {
     await page.locator('canvas').first().waitFor({ state: 'visible' })
-    // ECharts 默认 1s 入场动画；等它走完再截 canvas，避免抓到中间帧。
+    // reducedMotion 下 ECharts 不播放入场动画；保留短等待确保画布完成最终绘制。
     await page.waitForTimeout(1200)
   }
 }

@@ -30,6 +30,8 @@ export default defineConfig({
     baseURL: visualBaseUrl,
     channel: 'chrome',
     locale: 'zh-CN',
+    // 固定 reduced-motion：CSS 与 ECharts 都不播放入场动画，避免截到中间帧。
+    reducedMotion: 'reduce',
     viewport: { width: 1440, height: 1000 },
     deviceScaleFactor: 1,
     trace: 'retain-on-failure',

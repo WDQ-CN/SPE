@@ -333,7 +333,7 @@ async function save(): Promise<void> {
 .action-form__source-meta {
   margin-top: 4px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .action-form__source-score {
   margin-top: 6px;

@@ -120,7 +120,7 @@ const shortcuts = computed(() => visibleMenus(auth.roles).filter((menu) => menu.
 .home-kicker {
   margin: 0;
   color: var(--muted-2);
-  font-size: 8.5px;
+  font-size: 11px;
   line-height: 13px;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -158,7 +158,7 @@ const shortcuts = computed(() => visibleMenus(auth.roles).filter((menu) => menu.
 .home-meta-grid span {
   display: block;
   color: var(--muted-2);
-  font-size: 8.5px;
+  font-size: 11px;
   line-height: 13px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -188,7 +188,7 @@ const shortcuts = computed(() => visibleMenus(auth.roles).filter((menu) => menu.
   margin-left: 4px;
   color: var(--muted);
   font-family: var(--font-sans);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 400;
 }
 
@@ -200,7 +200,7 @@ const shortcuts = computed(() => visibleMenus(auth.roles).filter((menu) => menu.
 .home-note p {
   margin: 10px 0 0;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 21px;
 }
 
@@ -227,7 +227,7 @@ const shortcuts = computed(() => visibleMenus(auth.roles).filter((menu) => menu.
 .home-section-head span {
   color: var(--muted-2);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.02em;
 }
 
@@ -262,7 +262,7 @@ const shortcuts = computed(() => visibleMenus(auth.roles).filter((menu) => menu.
   flex: none;
   color: var(--muted-2);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .home-link-title {
@@ -313,7 +313,7 @@ const shortcuts = computed(() => visibleMenus(auth.roles).filter((menu) => menu.
 .home-convention > span {
   color: var(--muted-2);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 16px;
 }
 
@@ -328,7 +328,7 @@ const shortcuts = computed(() => visibleMenus(auth.roles).filter((menu) => menu.
 .home-convention p {
   margin: 5px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 20px;
 }
 
