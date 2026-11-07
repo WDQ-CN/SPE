@@ -11,6 +11,18 @@ import {
   verifySummary,
 } from './action-status'
 
+function summary(overrides: Partial<CorrectiveActionSummary>): CorrectiveActionSummary {
+  return {
+    status: 'OPEN',
+    reverifyPending: false,
+    verifyYear: null,
+    verifyQuarter: null,
+    verifyScore: null,
+    verifyOutcome: null,
+    ...overrides,
+  } as CorrectiveActionSummary
+}
+
 function alert(overrides: Partial<AlertView>): AlertView {
   return {
     id: 1,
@@ -212,40 +224,71 @@ describe('状态标记、验证意见与下期摘要', () => {
   })
 
   it('下期摘要区分未回填、待人工判断、上一轮与已回填', () => {
-    const base = {
-      reverifyPending: false,
-      verifyYear: null,
-      verifyQuarter: null,
-      verifyScore: null,
-      verifyOutcome: null,
-    } as CorrectiveActionSummary
-    expect(verifySummary(base)).toBe('待下期定稿')
+    expect(verifySummary(summary({}))).toBe('待下期定稿')
     expect(
-      verifySummary({
-        ...base,
-        verifyYear: 2026,
-        verifyQuarter: 2,
-        verifyOutcome: 'PENDING',
-      }),
+      verifySummary(
+        summary({ verifyYear: 2026, verifyQuarter: 2, verifyOutcome: 'PENDING' }),
+      ),
     ).toBe('2026 Q2 · 待人工判断')
     expect(
-      verifySummary({
-        ...base,
-        reverifyPending: true,
-        verifyYear: 2026,
-        verifyQuarter: 2,
-        verifyScore: 72.4,
-        verifyOutcome: 'IMPROVED',
-      }),
+      verifySummary(
+        summary({
+          reverifyPending: true,
+          verifyYear: 2026,
+          verifyQuarter: 2,
+          verifyScore: 72.4,
+          verifyOutcome: 'IMPROVED',
+        }),
+      ),
     ).toBe('上一轮 2026 Q2 · 72.40')
     expect(
-      verifySummary({
-        ...base,
-        verifyYear: 2026,
-        verifyQuarter: 2,
-        verifyScore: 75,
-        verifyOutcome: 'IMPROVED',
-      }),
+      verifySummary(
+        summary({
+          verifyYear: 2026,
+          verifyQuarter: 2,
+          verifyScore: 75,
+          verifyOutcome: 'IMPROVED',
+        }),
+      ),
     ).toBe('2026 Q2 · 75.00')
+  })
+
+  it('REOPENED 的旧验证结果显示上一轮，无周期仍待定稿', () => {
+    expect(
+      verifySummary(
+        summary({
+          status: 'REOPENED',
+          verifyYear: 2026,
+          verifyQuarter: 2,
+          verifyScore: 72.4,
+          verifyOutcome: 'IMPROVED',
+        }),
+      ),
+    ).toBe('上一轮 2026 Q2 · 72.40')
+    expect(verifySummary(summary({ status: 'REOPENED' }))).toBe('待下期定稿')
+    expect(
+      verifySummary(
+        summary({
+          status: 'REOPENED',
+          reverifyPending: true,
+          verifyYear: 2026,
+          verifyQuarter: 2,
+          verifyOutcome: 'PENDING',
+        }),
+      ),
+    ).toBe('上一轮 2026 Q2 · —')
+  })
+
+  it('IN_PROGRESS 的旧验证结果待人工判断时标记上一轮', () => {
+    expect(
+      verifySummary(
+        summary({
+          status: 'IN_PROGRESS',
+          verifyYear: 2026,
+          verifyQuarter: 2,
+          verifyOutcome: 'PENDING',
+        }),
+      ),
+    ).toBe('上一轮 2026 Q2 · 待人工判断')
   })
 })

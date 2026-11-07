@@ -194,7 +194,10 @@ export function verifySummary(action: CorrectiveActionSummary): string {
   if (action.verifyYear == null) {
     return '待下期定稿'
   }
-  const period = `${action.verifyYear} Q${action.verifyQuarter}`
+  // 重开/继续整改后，投影里的 verifyYear 仍是上一次已定稿的周期
+  const previousRound =
+    action.status === 'REOPENED' || action.status === 'IN_PROGRESS' ? '上一轮 ' : ''
+  const period = `${previousRound}${action.verifyYear} Q${action.verifyQuarter}`
   if (action.verifyOutcome === 'PENDING') {
     return `${period} · 待人工判断`
   }

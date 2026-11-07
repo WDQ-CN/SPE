@@ -224,7 +224,8 @@ public class CorrectiveActionService {
     }
     CorrectiveAction current = load(id);
     ensureVersion(current, version);
-    if (isReverifyPending(current)) {
+    if (CorrectiveActionSummaryView.isReverifyPending(
+        current.getStatus(), current.getVerifiedAt(), current.getVerifyYear())) {
       throw new BizException(
           ErrorCode.CORRECTIVE_ACTION_STATUS_INVALID, "整改正在等待下期验证，不能提前确认");
     }
@@ -370,13 +371,6 @@ public class CorrectiveActionService {
     if (!manager && action.getOwnerId() != operatorId) {
       throw new BizException(ErrorCode.FORBIDDEN);
     }
-  }
-
-  /** 已重新提交等待新周期：上次经理决定留下 verified_at，验证器回填新周期时才会清空。 */
-  private static boolean isReverifyPending(CorrectiveAction action) {
-    return CorrectiveActionStatus.WAITING_VERIFICATION.name().equals(action.getStatus())
-        && action.getVerifiedAt() != null
-        && action.getVerifyYear() != null;
   }
 
   /** 改派负责人是 ADMIN/MANAGER 的动作；EVALUATOR 只能改自己任务的其他字段。 */
