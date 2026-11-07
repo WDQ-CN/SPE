@@ -13,8 +13,8 @@ SPE（Supplier Performance Evaluation）是一个面向采购与质量团队的�
 - **M1～M6 全部达成，并补齐「预警 → 整改任务 → 下期验证」闭环**：身份与档案、模板版本、评估流程、审批定级、分析/预警、整改闭环、开放 API。
 - 后端 **443** 个测试、前端 **186** 个 Vitest 用例、真实全栈 **31** 个 Playwright e2e、像素级视觉回归 **13 个用例 / 15 张基线**。
 - `pnpm lint` 0 warning、`pnpm build` 通过；应用依赖 OSV **0/0**，MySQL 8.4.13 的 NVD 与 Oracle Linux errata 已核对。
-- 视觉基线：**Editorial Ledger**（纸面、墨色、衬线标题/数字、1px 规则线），覆盖全部页面与移动端菜单。
-- 代码在 `main`；后端/前端/端到端/视觉回归的原始验证日志保存在根目录 `36-final-*.log` 与 `37-p3-*.log`。
+- 视觉基线：**Precision Ledger**（Editorial Ledger 的 2026-11 升级：纸面/墨色/衬线标题/等宽数字、章节序号、WCAG AA 对比度、可见焦点、44px 移动触控与响应式表格），覆盖全部页面与移动端菜单。
+- 代码在 `main`；后端/前端/端到端/视觉回归的原始验证日志保存在根目录 `36-final-*.log`、`37-p3-*.log` 与 `39-visual-*.log`。
 
 ## 功能
 
