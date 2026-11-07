@@ -1,5 +1,8 @@
 import { defineConfig } from '@playwright/test'
 
+const visualPort = Number(process.env.VISUAL_PORT ?? 4173)
+const visualBaseUrl = `http://localhost:${visualPort}`
+
 /**
  * 像素级视觉回归：**不依赖后端/Docker**。
  *
@@ -24,7 +27,7 @@ export default defineConfig({
   retries: 0,
   reporter: [['list']],
   use: {
-    baseURL: 'http://localhost:4173',
+    baseURL: visualBaseUrl,
     channel: 'chrome',
     locale: 'zh-CN',
     viewport: { width: 1440, height: 1000 },
@@ -33,8 +36,8 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: {
-    command: 'pnpm dev --port 4173 --strictPort',
-    url: 'http://localhost:4173',
+    command: `pnpm dev --port ${visualPort} --strictPort`,
+    url: visualBaseUrl,
     reuseExistingServer: false,
     timeout: 120_000,
   },
