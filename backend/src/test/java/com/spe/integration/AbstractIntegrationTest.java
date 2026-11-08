@@ -34,7 +34,11 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
-@TestPropertySource(properties = "app.jwt.secret=spe-integration-test-secret-0123456789abcdef")
+@TestPropertySource(
+    properties = {
+      "app.jwt.secret=spe-integration-test-secret-0123456789abcdef",
+      "app.integration.webhook.allow-private-targets=true"
+    })
 public abstract class AbstractIntegrationTest {
 
   /** 种子账号（`V5__seed_admin.sql`，仅演示环境）。 */

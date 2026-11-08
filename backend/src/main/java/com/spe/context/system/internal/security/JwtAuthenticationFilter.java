@@ -1,6 +1,7 @@
 package com.spe.context.system.internal.security;
 
 import com.spe.common.security.AuthenticatedOperator;
+import com.spe.common.security.BearerTokens;
 import com.spe.context.system.api.UserBrief;
 import com.spe.context.system.api.UserQueryFacade;
 import io.jsonwebtoken.JwtException;
@@ -37,28 +38,26 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-  private static final String BEARER_PREFIX = "Bearer ";
   private static final String ROLE_PREFIX = "ROLE_";
 
   private final JwtService jwtService;
   private final UserQueryFacade userQueryFacade;
 
+  /** 门户路径由 {@link SupplierPortalAuthenticationFilter} 处理，内部 JWT 不参与。 */
+  @Override
+  protected boolean shouldNotFilter(HttpServletRequest request) {
+    return request.getRequestURI().startsWith("/api/supplier-portal/");
+  }
+
   @Override
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
-    String header = request.getHeader(HttpHeaders.AUTHORIZATION);
-    if (hasBearerPrefix(header) && SecurityContextHolder.getContext().getAuthentication() == null) {
-      authenticate(header.substring(BEARER_PREFIX.length()), request);
+    String token = BearerTokens.extract(request.getHeader(HttpHeaders.AUTHORIZATION));
+    if (token != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+      authenticate(token, request);
     }
     filterChain.doFilter(request, response);
-  }
-
-  /** RFC 6750 规定 auth-scheme 大小写不敏感；长度比较同时排除只有「Bearer 」而无可校验令牌的头。 */
-  private static boolean hasBearerPrefix(String header) {
-    return header != null
-        && header.length() > BEARER_PREFIX.length()
-        && header.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length());
   }
 
   private void authenticate(String token, HttpServletRequest request) {

@@ -1,11 +1,8 @@
 package com.spe.context.system.internal.token;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import com.spe.common.security.Hashes;
 import java.security.SecureRandom;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.Objects;
 
 /**
@@ -33,14 +30,7 @@ public final class TokenHasher {
 
   public static String hash(String token) {
     Objects.requireNonNull(token, "token");
-    try {
-      byte[] digest =
-          MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
-      return HexFormat.of().formatHex(digest);
-    } catch (NoSuchAlgorithmException ex) {
-      // JDK 必须提供 SHA-256；缺失属运行环境损坏，不是业务错误
-      throw new IllegalStateException("JVM 不提供 SHA-256", ex);
-    }
+    return Hashes.sha256Hex(token);
   }
 
   public static String displayPrefix(String token) {

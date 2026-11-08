@@ -28,13 +28,23 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@EnableConfigurationProperties({JwtProperties.class, LoginLimiterProperties.class})
+@EnableConfigurationProperties({
+  JwtProperties.class,
+  PortalJwtProperties.class,
+  LoginLimiterProperties.class
+})
 public class SecurityConfig {
 
   /** JwtService 不带 Spring 注解，便于单元测试直接构造。 */
   @Bean
   public JwtService jwtService(JwtProperties jwtProperties) {
     return new JwtService(jwtProperties);
+  }
+
+  @Bean
+  public PortalJwtService portalJwtService(
+      PortalJwtProperties portalJwtProperties, JwtProperties jwtProperties) {
+    return new PortalJwtService(portalJwtProperties, jwtProperties);
   }
 
   /**
@@ -76,10 +86,21 @@ public class SecurityConfig {
   }
 
   @Bean
+  public FilterRegistrationBean<SupplierPortalAuthenticationFilter>
+      supplierPortalAuthenticationFilterRegistration(
+          SupplierPortalAuthenticationFilter supplierPortalAuthenticationFilter) {
+    FilterRegistrationBean<SupplierPortalAuthenticationFilter> registration =
+        new FilterRegistrationBean<>(supplierPortalAuthenticationFilter);
+    registration.setEnabled(false);
+    return registration;
+  }
+
+  @Bean
   public SecurityFilterChain securityFilterChain(
       HttpSecurity http,
       JwtAuthenticationFilter jwtAuthenticationFilter,
       ApiTokenAuthenticationFilter apiTokenAuthenticationFilter,
+      SupplierPortalAuthenticationFilter supplierPortalAuthenticationFilter,
       RestAuthenticationEntryPoint authenticationEntryPoint,
       RestAccessDeniedHandler accessDeniedHandler)
       throws Exception {
@@ -92,8 +113,17 @@ public class SecurityConfig {
             requests ->
                 requests
                     // 登录必须免认证：否则「未认证 → 401」会先于 AuthController 生效，永远登不进来
-                    .requestMatchers("/api/ping", "/api/auth/login")
+                    .requestMatchers(
+                        "/api/ping",
+                        "/api/auth/login",
+                        "/api/supplier-portal/auth/login",
+                        "/api/supplier-portal/auth/refresh",
+                        "/api/supplier-portal/invitations/*/accept",
+                        "/api/supplier-portal/auctions/*/stream")
                     .permitAll()
+                    // 供应商门户只接受门户独立令牌（PORTAL_SUPPLIER），内部 JWT 不适用
+                    .requestMatchers("/api/supplier-portal/**")
+                    .hasAuthority("PORTAL_SUPPLIER")
                     // 健康检查免认证：容器 healthcheck 用它，且不展示组件细节（show-details=never）
                     .requestMatchers("/actuator/health")
                     .permitAll()
@@ -111,7 +141,8 @@ public class SecurityConfig {
             handling -> handling.authenticationEntryPoint(authenticationEntryPoint)
                 .accessDeniedHandler(accessDeniedHandler))
         .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-        .addFilterAfter(apiTokenAuthenticationFilter, JwtAuthenticationFilter.class);
+        .addFilterAfter(supplierPortalAuthenticationFilter, JwtAuthenticationFilter.class)
+        .addFilterAfter(apiTokenAuthenticationFilter, SupplierPortalAuthenticationFilter.class);
     return http.build();
   }
 }

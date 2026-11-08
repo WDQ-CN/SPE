@@ -36,6 +36,10 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class AuthService {
 
+  /** 固定 cost 的无效哈希：账号不存在时也跑一次 BCrypt，避免用响应时间枚举账号。 */
+  private static final String DUMMY_PASSWORD_HASH =
+      "$2a$10$XN4FIyPaEhAv6Z/6Pms6quxg7qd1RlAZV8.dCcOl.YvcqCxxy9jsm";
+
   private final SysUserMapper sysUserMapper;
   private final PasswordEncoder passwordEncoder;
   private final JwtService jwtService;
@@ -68,7 +72,10 @@ public class AuthService {
     }
 
     SysUser user = sysUserMapper.findByUsernameForAuth(username).orElse(null);
-    if (user == null || !passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+    String hash = user == null ? DUMMY_PASSWORD_HASH : user.getPasswordHash();
+    // 先算匹配再判 user：否则 `user == null || ...` 会短路，未知账号根本不跑 BCrypt，时序差仍在。
+    boolean passwordMatches = passwordEncoder.matches(rawPassword, hash);
+    if (user == null || !passwordMatches) {
       recordFailureAndMaybeLock(username, clientIp);
       throw new BizException(ErrorCode.LOGIN_FAILED);
     }

@@ -2,6 +2,7 @@ package com.spe.context.system.internal.audit;
 
 import com.spe.common.security.AuthenticatedOperator;
 import com.spe.common.web.ClientIpResolver;
+import com.spe.common.web.TraceIdFilter;
 import com.spe.context.system.api.AuditAction;
 import com.spe.context.system.api.AuditFacade;
 import com.spe.context.system.api.AuditTargetType;
@@ -21,9 +22,9 @@ import tools.jackson.databind.ObjectMapper;
  * <p><b>事务</b>：本类方法用默认传播（REQUIRED），调用方已有事务时**加入同一事务**——业务行与审计行
  * 同生共死；单独调用（登录、越权留痕）时自己开一个事务。
  *
- * <p><b>来源 IP</b>：走 {@link ClientIpResolver}（与登录限流共用同一处实现）。Nginx 反代下它给出的是
- * 真实客户端地址而非容器地址，前提是后端 `forward-headers-strategy=framework` **且** nginx 覆盖而非
- * 追加 `X-Forwarded-For`（03 §16 的 SEC-2，两项都已落实）。
+ * <p><b>来源 IP</b>：走 {@link ClientIpResolver} 的 {@code getRemoteAddr()}。当前
+ * `application.yml` 明确 `forward-headers-strategy: none`，不采信可伪造的 X-Forwarded-For
+ * （03 §38 的 P1-4/P1-5）；单机拓扑下记录的是网关地址，迁移到有真实源 IP 的环境时再同步调整。
  *
  * <p><b>脱敏</b>：只接受调用方给的业务字段，本类不碰请求体、不碰口令与令牌（06 §2.8）。
  */
@@ -71,6 +72,7 @@ public class AuditFacadeImpl implements AuditFacade {
     entry.setTargetId(targetId);
     entry.setDetail(writeDetail(detail));
     entry.setIp(ClientIpResolver.current());
+    entry.setTraceId(TraceIdFilter.current());
     auditLogMapper.insert(entry);
     // 日志只记动作与目标，不记载荷（载荷可能含业务细节，06 §2.8）
     log.info("审计 {} target={}#{} by {}", action, targetType, targetId, operatorName);

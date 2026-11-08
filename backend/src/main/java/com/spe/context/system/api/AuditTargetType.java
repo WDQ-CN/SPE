@@ -25,5 +25,75 @@ public enum AuditTargetType {
   /** M6 起：开放 API Token（生成/停用；目标 id = api_token.id）。 */
   TOKEN,
   /** 整改任务（V1004；目标 id = corrective_action.id）。 */
-  CORRECTIVE_ACTION
+  CORRECTIVE_ACTION,
+  /** E1 主数据（V1006；目标 id = 各自主键）。 */
+  COMPANY,
+  PLANT,
+  WAREHOUSE,
+  /** 仓库库位（V1013）。 */
+  WAREHOUSE_LOCATION,
+  ITEM,
+  CUSTOMER,
+  PRICE_LIST,
+  TAX_CODE,
+  GL_ACCOUNT,
+  ACCOUNT_MAPPING,
+  /** E1 P2P（V1008）：请购单 / 采购订单 / 收货单。 */
+  PURCHASE_REQUISITION,
+  PURCHASE_ORDER,
+  GOODS_RECEIPT,
+  /** W3 库存移动（目标 id = inventory_movement.id）。 */
+  INVENTORY_MOVEMENT,
+  /** W3 采购退货（目标 id = purchase_return.id）。 */
+  PURCHASE_RETURN,
+  /** W3 库存批次（V1013；目标 id = inventory_lot.id）。 */
+  INVENTORY_LOT,
+  /** E2 库存运营（V1016）：预留/冻结/调拨/盘点/库位容量。 */
+  INVENTORY_RESERVATION,
+  INVENTORY_FREEZE,
+  INVENTORY_TRANSFER,
+  INVENTORY_COUNT,
+  LOCATION_CAPACITY,
+  SOURCING_RFQ,
+  SUPPLIER_QUOTE,
+  SOURCING_AWARD,
+  PURCHASE_CONTRACT,
+  SUPPLIER_PRICE,
+  SUPPLIER_PORTAL_INVITATION,
+  SALES_QUOTE,
+  SALES_ORDER,
+  SALES_SHIPMENT,
+  SALES_INVOICE,
+  CUSTOMER_RECEIPT,
+  SALES_RETURN,
+  BOM,
+  WORK_ORDER,
+  INSPECTION_PLAN,
+  INSPECTION_ORDER,
+  NCR,
+  CAPA,
+  SUPPLIER_CERTIFICATE,
+  FIXED_ASSET,
+  PROJECT,
+  PROJECT_BUDGET,
+  TIMESHEET,
+  WORKFLOW_DEFINITION,
+  WORKFLOW_INSTANCE,
+  WORKFLOW_TASK,
+  EVENT_SUBSCRIPTION,
+  OUTBOX_EVENT,
+  SOD_RULE,
+  SOD_EXCEPTION,
+  REPORT_DEFINITION,
+  REPORT_RUN,
+  /** 供应商门户账号（V1014；目标 id = supplier_portal_user.id）。 */
+  SUPPLIER_PORTAL_USER,
+  /** 竞价事件（V1014；目标 id = auction_event.id）。 */
+  AUCTION,
+  AUCTION_RESULT,
+  /** E1 发票与付款（W4）。 */
+  SUPPLIER_INVOICE,
+  PAYMENT,
+  /** E1 最小财务（W5）：会计凭证。 */
+  JOURNAL_ENTRY
 }

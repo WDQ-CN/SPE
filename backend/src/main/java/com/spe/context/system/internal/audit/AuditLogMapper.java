@@ -14,9 +14,10 @@ public interface AuditLogMapper {
   @Insert(
       """
       INSERT INTO audit_log
-        (operator_id, operator_name, action, target_type, target_id, detail, ip)
+        (operator_id, operator_name, action, target_type, target_id, detail, ip, trace_id)
       VALUES
-        (#{operatorId}, #{operatorName}, #{action}, #{targetType}, #{targetId}, #{detail}, #{ip})
+        (#{operatorId}, #{operatorName}, #{action}, #{targetType}, #{targetId}, #{detail}, #{ip},
+         #{traceId})
       """)
   int insert(AuditLog log);
 }

@@ -33,4 +33,6 @@ public class AuditLog {
   private String detail;
 
   private String ip;
+
+  private String traceId;
 }

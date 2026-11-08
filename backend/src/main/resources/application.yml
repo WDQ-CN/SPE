@@ -83,8 +83,24 @@ app:
     # 必须由环境变量提供；缺失或短于 32 字节时启动即失败（09 D6）
     secret: ${JWT_SECRET:}
     ttl: 2h
+  # 供应商门户独立令牌（E2）。未设置 PORTAL_JWT_SECRET 时回落到 JWT_SECRET，
+  # 但 issuer/claims/过滤器仍与内部令牌隔离；生产建议单独配置。
+  portal-jwt:
+    secret: ${PORTAL_JWT_SECRET:${JWT_SECRET:}}
+    ttl: 15m
+    refresh-ttl: 7d
+  integration:
+    webhook:
+      # SSRF 防线：默认拒绝回环/RFC1918/CGNAT 目标；云元数据（169.254.169.254、fe80::/10）始终拒绝。
+      # 本地联调可设 true（仅放开私网与回环），生产不要打开。
+      allow-private-targets: ${WEBHOOK_ALLOW_PRIVATE_TARGETS:false}
   # 登录失败限流（03 §16 的 SEC-5；参数外化见 03 §18）。四项都可按环境覆盖——
   # 阈值是运行期策略，改一个数字不该重新构建镜像；不写则回落代码默认值，行为与优化前一致。
+  # 门户出价频控（56 §11）：按门户账号+竞价固定窗口；单机内存实现，多实例需改网关/Redis。
+  portal-bid-limiter:
+    max-per-window: ${PORTAL_BID_MAX_PER_WINDOW:20}
+    window: ${PORTAL_BID_WINDOW:10s}
+    max-entries: ${PORTAL_BID_MAX_ENTRIES:100000}
   login-limiter:
     max-failures-per-account: ${LOGIN_MAX_FAILURES_PER_ACCOUNT:5}
     # 20 → 200（03 §38 的 P1-5）：单机拓扑下所有客户端共用一个 IP 键，20 次**实为全局预算**，

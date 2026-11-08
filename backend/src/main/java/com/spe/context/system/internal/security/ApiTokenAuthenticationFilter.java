@@ -1,6 +1,7 @@
 package com.spe.context.system.internal.security;
 
 import com.spe.common.security.ApiTokenPrincipal;
+import com.spe.common.security.BearerTokens;
 import com.spe.context.system.internal.token.ApiTokenService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -30,7 +31,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @RequiredArgsConstructor
 public class ApiTokenAuthenticationFilter extends OncePerRequestFilter {
 
-  private static final String BEARER_PREFIX = "Bearer ";
   private static final String ROLE_API_TOKEN = "ROLE_API_TOKEN";
 
   private final ApiTokenService apiTokenService;
@@ -44,19 +44,13 @@ public class ApiTokenAuthenticationFilter extends OncePerRequestFilter {
   protected void doFilterInternal(
       HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
       throws ServletException, IOException {
-    String header = request.getHeader(HttpHeaders.AUTHORIZATION);
-    if (hasBearerPrefix(header)) {
+    String token = BearerTokens.extract(request.getHeader(HttpHeaders.AUTHORIZATION));
+    if (token != null) {
       apiTokenService
-          .authenticate(header.substring(BEARER_PREFIX.length()))
+          .authenticate(token)
           .ifPresent(principal -> setAuthentication(request, principal));
     }
     filterChain.doFilter(request, response);
-  }
-
-  private static boolean hasBearerPrefix(String header) {
-    return header != null
-        && header.length() > BEARER_PREFIX.length()
-        && header.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length());
   }
 
   private static void setAuthentication(HttpServletRequest request, ApiTokenPrincipal principal) {
