@@ -28,7 +28,7 @@ import {
 
 // 探针账号约定、控制台监视、登录与菜单定位统一放在 ./support（w5/w6 也用），见那里的注释
 
-test('admin 登录后落首页：菜单十三项、身份正确、控制台无错误', async ({ page }) => {
+test('admin 登录后落首页：菜单二十二项、身份正确、控制台无错误', async ({ page }) => {
   const console_ = watchConsole(page)
 
   await loginAsAdmin(page)
@@ -36,21 +36,31 @@ test('admin 登录后落首页：菜单十三项、身份正确、控制台无�
   await expect(page).toHaveURL(/localhost:18081\/$/)
   const items = page.locator('.el-menu-item')
   // P2-W4 起多一个「评估模板」；P3-W6 起又多「评估任务」；P4-W6 加「我的审批」「结果报表」；
-  // M5 再加「分析看板」「预警」「操作日志」；M6 加「开放 API」；W4 加「整改任务」。
-  await expect(items).toHaveCount(13)
+  // M5 再加「分析看板」「预警」「操作日志」；M6 加「开放 API」；W4 加「整改任务」；
+  // ERP 加主数据、寻源、库存/销售/采购/制造/质量/资产项目/报表中心九项。
+  await expect(items).toHaveCount(22)
   await expect(items.nth(0)).toContainText('首页')
   await expect(items.nth(1)).toContainText('供应商')
-  await expect(items.nth(2)).toContainText('评估模板')
-  await expect(items.nth(3)).toContainText('评估任务')
-  await expect(items.nth(4)).toContainText('我的审批')
-  await expect(items.nth(5)).toContainText('结果报表')
-  await expect(items.nth(6)).toContainText('分析看板')
-  await expect(items.nth(7)).toContainText('预警')
-  await expect(items.nth(8)).toContainText('整改任务')
-  await expect(items.nth(9)).toContainText('用户管理')
-  await expect(items.nth(10)).toContainText('系统设置')
-  await expect(items.nth(11)).toContainText('操作日志')
-  await expect(items.nth(12)).toContainText('开放 API')
+  await expect(items.nth(2)).toContainText('主数据')
+  await expect(items.nth(3)).toContainText('评估模板')
+  await expect(items.nth(4)).toContainText('评估任务')
+  await expect(items.nth(5)).toContainText('我的审批')
+  await expect(items.nth(6)).toContainText('结果报表')
+  await expect(items.nth(7)).toContainText('分析看板')
+  await expect(items.nth(8)).toContainText('预警')
+  await expect(items.nth(9)).toContainText('整改任务')
+  await expect(items.nth(10)).toContainText('寻源')
+  await expect(items.nth(11)).toContainText('库存')
+  await expect(items.nth(12)).toContainText('销售订单')
+  await expect(items.nth(13)).toContainText('采购订单')
+  await expect(items.nth(14)).toContainText('生产工单')
+  await expect(items.nth(15)).toContainText('质量管理')
+  await expect(items.nth(16)).toContainText('资产项目')
+  await expect(items.nth(17)).toContainText('报表中心')
+  await expect(items.nth(18)).toContainText('用户管理')
+  await expect(items.nth(19)).toContainText('系统设置')
+  await expect(items.nth(20)).toContainText('操作日志')
+  await expect(items.nth(21)).toContainText('开放 API')
 
   // 「系统管理员」在页头标签和首页信息卡里都会出现，getByText 会因命中多个而报 strict mode violation
   await expect(page.locator('.layout__user .el-tag')).toHaveText('系统管理员')
@@ -69,7 +79,9 @@ test('未登录直接访问受保护路径 → 跳登录页并带上回跳目标
 test('口令错误的探针账号：留在登录页、在表单内提示、控制台无错误', async ({ page }) => {
   const console_ = watchConsole(page)
 
-  await login(page, FAILURE_PROBE, 'whatever-wrong')
+  // 限流器按账号累计且是进程内状态：复用固定探针名会在多次 e2e 后被锁成 1003。
+  // 每次用唯一后缀，仍走「未知账号 + 错误口令」的真实登录失败路径。
+  await login(page, `${FAILURE_PROBE}-${Date.now()}`, 'whatever-wrong')
 
   await expect(page).toHaveURL(/\/login/)
   await expect(page.locator('.el-alert__title')).toContainText('账号或密码错误')

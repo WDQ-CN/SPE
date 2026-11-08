@@ -9,10 +9,11 @@ import { canAccess, visibleMenus } from './menu'
  * 「菜单里看不到、但直接输地址就进去了」——手工点界面试不出来，只有把矩阵写成用例才守得住。
  */
 describe('侧边菜单可见性（01 §7）', () => {
-  it('ADMIN 能看到十三个入口（M6 开放 API + W4 整改任务）', () => {
+  it('ADMIN 能看到二十二个入口（原 SPE 十三项 + ERP 九项）', () => {
     expect(visibleMenus(['ADMIN']).map((menu) => menu.path)).toEqual([
       '/',
       '/suppliers',
+      '/masterdata',
       '/templates',
       '/tasks',
       '/approvals',
@@ -20,6 +21,14 @@ describe('侧边菜单可见性（01 §7）', () => {
       '/analytics',
       '/alerts',
       '/actions',
+      '/sourcing',
+      '/inventory',
+      '/sales/orders',
+      '/procurement/orders',
+      '/manufacturing/work-orders',
+      '/quality',
+      '/assets-projects',
+      '/report-center',
       '/users',
       '/settings',
       '/audit',
@@ -27,10 +36,11 @@ describe('侧边菜单可见性（01 §7）', () => {
     ])
   })
 
-  it('MANAGER 能看到首页、供应商、模板、评估任务、我的待办、我的审批、结果报表、分析看板、预警与整改任务', () => {
+  it('MANAGER 能看到首页、评估入口、整改任务与 ERP 九个入口', () => {
     expect(visibleMenus(['MANAGER']).map((menu) => menu.path)).toEqual([
       '/',
       '/suppliers',
+      '/masterdata',
       '/templates',
       '/tasks',
       '/my',
@@ -39,6 +49,14 @@ describe('侧边菜单可见性（01 §7）', () => {
       '/analytics',
       '/alerts',
       '/actions',
+      '/sourcing',
+      '/inventory',
+      '/sales/orders',
+      '/procurement/orders',
+      '/manufacturing/work-orders',
+      '/quality',
+      '/assets-projects',
+      '/report-center',
     ])
   })
 
@@ -72,6 +90,19 @@ describe('入口级访问判定', () => {
     expect(canAccess('/users', ['ADMIN'])).toBe(true)
     expect(canAccess('/suppliers', ['MANAGER'])).toBe(true)
     expect(canAccess('/', ['VIEWER'])).toBe(true)
+  })
+
+  it('采购/销售执行隐藏入口单独登记：VIEWER 直输地址也不放行', () => {
+    expect(canAccess('/procurement/operations', ['ADMIN'])).toBe(true)
+    expect(canAccess('/procurement/operations', ['MANAGER'])).toBe(true)
+    expect(canAccess('/procurement/operations', ['VIEWER'])).toBe(false)
+    expect(canAccess('/procurement/operations', ['EVALUATOR'])).toBe(false)
+    expect(canAccess('/sales/operations', ['ADMIN'])).toBe(true)
+    expect(canAccess('/sales/operations', ['MANAGER'])).toBe(true)
+    expect(canAccess('/sales/operations', ['VIEWER'])).toBe(false)
+    expect(canAccess('/sales/operations', ['EVALUATOR'])).toBe(false)
+    expect(canAccess('/manufacturing/boms', ['MANAGER'])).toBe(true)
+    expect(canAccess('/manufacturing/boms', ['VIEWER'])).toBe(false)
   })
 
   it('M5 新入口：分析看板/预警对 VIEWER 开放，操作日志仅 ADMIN', () => {

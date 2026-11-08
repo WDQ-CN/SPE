@@ -30,6 +30,7 @@ const {
   loading,
   error,
   run: load,
+  reset: resetReport,
 } = useAsyncData(
   () => getTaskSupplierReport(taskSupplierId.value),
   null as TaskSupplierReport | null,
@@ -83,6 +84,7 @@ watch(
   () => route.params.id,
   () => {
     taskSupplierId.value = Number(route.params.id)
+    resetReport()
     void load()
   },
 )

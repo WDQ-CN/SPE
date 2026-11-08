@@ -66,6 +66,11 @@ export function watchConsole(
     if (/Failed to load resource/i.test(text)) {
       return
     }
+    // 本机安全软件（Kaspersky）向每个页面注入脚本，CSP 按设计拦下它；
+    // 这是环境注入而不是应用资源，只有这个第三方域名被豁免，其余 CSP 违规仍按失败处理。
+    if (/kaspersky-labs\.com/i.test(text) && /Content Security Policy|Refused to/i.test(text)) {
+      return
+    }
     all.push(text)
     if (/Content Security Policy|Refused to (load|execute|apply)/i.test(text)) {
       csp.push(text)

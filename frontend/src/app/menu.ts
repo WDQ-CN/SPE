@@ -29,6 +29,8 @@ const MENUS: MenuItem[] = [
   { path: '/', title: '首页', roles: [] },
   // 01 §7：供应商维护 = ADMIN / MANAGER
   { path: '/suppliers', title: '供应商', roles: ['ADMIN', 'MANAGER'] },
+  // ERP 主数据：公司/工厂/仓库/物料/客户，均为 ADMIN/MANAGER（后端同权限）
+  { path: '/masterdata', title: '主数据', roles: ['ADMIN', 'MANAGER'] },
   // 01 §7：评估模板管理 = ADMIN（写）/ MANAGER（查看），即两者都可见这个入口
   { path: '/templates', title: '评估模板', roles: ['ADMIN', 'MANAGER'] },
   // 01 §7：评估任务 = ADMIN（只读）/ MANAGER（建、改、发布）
@@ -48,6 +50,35 @@ const MENUS: MenuItem[] = [
   { path: '/reports', title: '评估报告', roles: [], hidden: true },
   // 打分页：从待办/详情点进去，不进菜单，但必须登记才能让守卫按前缀拦住越权角色
   { path: '/sheets', title: '评分单', roles: ['MANAGER', 'EVALUATOR'], hidden: true },
+  // ERP 交易与查询入口：后端均为 ADMIN/MANAGER（docs/erp/49）
+  { path: '/sourcing', title: '寻源', roles: ['ADMIN', 'MANAGER'] },
+  { path: '/inventory', title: '库存', roles: ['ADMIN', 'MANAGER'] },
+  { path: '/sales/orders', title: '销售订单', roles: ['ADMIN', 'MANAGER'] },
+  // 与采购执行同理：/sales/operations 不在 /sales/orders 前缀下，必须单独登记
+  {
+    path: '/sales/operations',
+    title: '销售执行',
+    roles: ['ADMIN', 'MANAGER'],
+    hidden: true,
+  },
+  { path: '/procurement/orders', title: '采购订单', roles: ['ADMIN', 'MANAGER'] },
+  // 隐藏入口：路径不在 /procurement/orders 前缀下，必须单独登记，否则 canAccess 会一律放行
+  {
+    path: '/procurement/operations',
+    title: '采购执行',
+    roles: ['ADMIN', 'MANAGER'],
+    hidden: true,
+  },
+  { path: '/manufacturing/work-orders', title: '生产工单', roles: ['ADMIN', 'MANAGER'] },
+  {
+    path: '/manufacturing/boms',
+    title: 'BOM 维护',
+    roles: ['ADMIN', 'MANAGER'],
+    hidden: true,
+  },
+  { path: '/quality', title: '质量管理', roles: ['ADMIN', 'MANAGER'] },
+  { path: '/assets-projects', title: '资产项目', roles: ['ADMIN', 'MANAGER'] },
+  { path: '/report-center', title: '报表中心', roles: ['ADMIN', 'MANAGER'] },
   // 01 §7：用户、系统设置 = 仅 ADMIN
   { path: '/users', title: '用户管理', roles: ['ADMIN'] },
   { path: '/settings', title: '系统设置', roles: ['ADMIN'] },

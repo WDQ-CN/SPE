@@ -2,6 +2,7 @@ import type { Router } from 'vue-router'
 
 import { canAccess } from '@/app/menu'
 import { useAuthStore } from '@/features/auth/store'
+import { portalAuthenticated } from '@/features/portal/api'
 
 /**
  * 鉴权守卫（09 WP2 / 06 §3.3）：无 token 访问受保护路由跳登录页；已登录访问登录页回首页。
@@ -13,6 +14,14 @@ import { useAuthStore } from '@/features/auth/store'
 export function registerGuard(router: Router): void {
   router.beforeEach((to) => {
     const auth = useAuthStore()
+
+    // 供应商门户是独立身份：不看内部 token，也不允许内部登录态把它重定向回首页
+    if (to.meta.portal) {
+      if (to.name === 'portal-login' || to.name === 'portal-invite') {
+        return true
+      }
+      return portalAuthenticated() ? true : { name: 'portal-login', query: { redirect: to.fullPath } }
+    }
 
     if (!to.meta.public && !auth.isAuthenticated) {
       return { name: 'login', query: { redirect: to.fullPath } }
